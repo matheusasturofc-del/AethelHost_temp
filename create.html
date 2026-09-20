@@ -60,7 +60,13 @@
         </div>
 
         <div class="field">
-          <label for="version">Versão</label>
+          <label for="software">Software</label>
+          <select id="software"><option>Carregando…</option></select>
+          <div class="hint" id="softwareHint"></div>
+        </div>
+
+        <div class="field">
+          <label for="version">Versão do Minecraft</label>
           <select id="version"><option>Carregando…</option></select>
           <div class="hint" id="versionHint"></div>
         </div>
@@ -163,23 +169,46 @@
 
     const currentPlan = () => document.querySelector('input[name="plan"]:checked').value;
 
-    // ---- Versões (o backend diz quais este PC consegue rodar) ----
+    // ---- Software e versões (o backend consulta os sites oficiais e diz o que este PC consegue rodar) ----
+    let meta = null;
+    let versionSeq = 0;
+
     async function init() {
       try {
-        const meta = await api("GET", "/meta");
-        $("version").innerHTML = meta.versions.map((v) =>
-          `<option value="${v.version}" ${v.available ? "" : "disabled"}>${v.version}${v.available ? "" : ` (precisa de Java ${v.java})`}</option>`
-        ).join("");
-        const first = meta.versions.find((v) => v.available);
-        if (first) $("version").value = first.version;
-        if (meta.versions.some((v) => !v.available)) {
-          $("versionHint").textContent = "As versões desativadas precisam de um Java que não está instalado neste PC.";
-        }
+        meta = await api("GET", "/meta");
+        $("software").innerHTML = meta.software.map((s) => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
+        await loadVersions();
       } catch (e) {
         $("formErr").textContent = e.message;
         $("next1").disabled = true;
       }
     }
+
+    async function loadVersions() {
+      const sw = $("software").value;
+      const seq = ++versionSeq;
+      $("softwareHint").textContent = meta.software.find((s) => s.id === sw).desc;
+      $("version").disabled = $("next1").disabled = true;
+      $("version").innerHTML = "<option>Carregando versões…</option>";
+      $("versionHint").textContent = "";
+      try {
+        const r = await api("GET", `/software/${encodeURIComponent(sw)}/versions`);
+        if (seq !== versionSeq) return;  // o usuário já trocou de software
+        $("version").innerHTML = r.versions.map((v) =>
+          `<option value="${esc(v.version)}" ${v.available ? "" : "disabled"}>${esc(v.version)}${v.available ? "" : ` (precisa de Java ${v.java})`}</option>`
+        ).join("");
+        const first = r.versions.find((v) => v.available);
+        if (first) $("version").value = first.version;
+        $("versionHint").textContent = r.missingJava.length
+          ? `Versões desativadas precisam de um Java que não está instalado neste PC. Para liberar, rode no terminal: ${r.missingJava.map((n) => `winget install EclipseAdoptium.Temurin.${n}.JDK`).join("  ou  ")}`
+          : "";
+        $("version").disabled = $("next1").disabled = false;
+      } catch (e) {
+        if (seq === versionSeq) $("formErr").textContent = e.message;
+      }
+    }
+
+    $("software").addEventListener("change", loadVersions);
 
     function showStep(n) {
       $("formErr").textContent = "";
@@ -269,6 +298,7 @@
         name: $("name").value.trim(),
         subtitle: $("subtitle").value.trim(),
         ip: $("ip").value,
+        software: $("software").value,
         version: $("version").value,
         plan: currentPlan(),
         eula: $("eula").checked,

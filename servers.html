@@ -45,7 +45,7 @@
           <div class="addr">${esc(s.publicName)}</div>
           <div class="card-foot">
             <span class="status ${esc(s.runtime.state)}">${STATUS_LABEL[s.runtime.state]}</span>
-            <span><span class="badge">Java ${esc(s.version)}</span> <span class="badge">${s.plan === "vps" ? "VPS" : "Grátis"}</span></span>
+            <span><span class="badge">${esc(s.softwareLabel)} ${esc(s.version)}</span> <span class="badge">${s.plan === "vps" ? "VPS" : "Grátis"}</span></span>
           </div>
         </a>`).join("") + `</div>`;
     }

@@ -21,9 +21,10 @@
       <a class="back" href="servers.html">← Servidores</a>
       <button class="active" data-tab="server">Servidor</button>
       <button data-tab="console">Console</button>
+      <button data-tab="software">Software</button>
+      <button data-tab="content" id="contentBtn">Mods</button>
       <button data-tab="options">Opções</button>
       <button disabled title="Em breve">Jogadores</button>
-      <button disabled title="Em breve">Software</button>
       <button disabled title="Em breve">Arquivos</button>
       <button disabled title="Em breve">Mundos</button>
       <button disabled title="Em breve">Backups</button>
@@ -73,6 +74,56 @@
           <input type="text" id="cmd" placeholder="Digite um comando (ex.: say olá)" autocomplete="off" maxlength="200">
           <button class="btn btn-primary" type="submit" id="cmdSend">Enviar</button>
         </form>
+      </div>
+
+      <!-- Aba: Software -->
+      <div id="tab-software" hidden>
+        <div class="card">
+          <div class="notice" id="swNotice" hidden></div>
+          <div class="field">
+            <label>Software do servidor</label>
+            <div class="plans" id="swCards"></div>
+          </div>
+          <div class="field">
+            <label for="swVersion">Versão do Minecraft</label>
+            <select id="swVersion"></select>
+            <div class="hint" id="swHint"></div>
+          </div>
+          <div class="field">
+            <label for="swRam">Memória (RAM)</label>
+            <select id="swRam"></select>
+            <div class="hint" id="ramHint"></div>
+          </div>
+          <div class="error" id="swErr"></div>
+          <div class="ok-msg" id="swOk"></div>
+          <button class="btn btn-primary" id="swSave">Salvar e aplicar</button>
+        </div>
+      </div>
+
+      <!-- Aba: Mods / Plugins -->
+      <div id="tab-content" hidden>
+        <div class="notice" id="ctNotice" hidden></div>
+        <div id="ctMain">
+          <div class="card">
+            <div class="card-head">
+              <h3 id="ctTitle" style="margin:0">Instalados</h3>
+              <label class="btn needs-offline">Enviar .jar<input type="file" id="ctFile" accept=".jar" hidden></label>
+            </div>
+            <div id="ctList"></div>
+            <div class="ok-msg" id="ctOk"></div>
+            <div class="error" id="ctErr"></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <h3 style="margin-top:0">Buscar no Modrinth</h3>
+            <form class="cmd-row" id="ctForm">
+              <input type="text" id="ctQuery" placeholder="Nome (deixe vazio para ver os mais baixados)" maxlength="100" autocomplete="off">
+              <button class="btn btn-primary" type="submit">Buscar</button>
+            </form>
+            <div class="hint" id="ctFilterHint" style="margin-top:8px"></div>
+            <div id="ctResults"></div>
+            <button class="btn" id="ctMore" hidden style="margin-top:12px">Carregar mais</button>
+          </div>
+        </div>
       </div>
 
       <!-- Aba: Opções -->
@@ -142,7 +193,8 @@
       $("title").textContent = server.name;
       $("subtitle").textContent = server.subtitle;
       $("addr").textContent = server.address;
-      $("software").textContent = `Java ${server.version}`;
+      $("software").textContent = `${server.softwareLabel} ${server.version}`;
+      $("contentBtn").textContent = server.contentKind === "plugins" ? "Plugins" : "Mods";
       $("plan").textContent = server.plan === "vps" ? `VPS (${server.vps.provider})` : "Grátis";
 
       $("banner").textContent = server.plan === "vps"
@@ -166,6 +218,19 @@
       else $("autoclose").textContent = rt.idleLeft === null ? "Pausado (há jogadores)" : fmtTime(rt.idleLeft);
 
       $("cmd").disabled = $("cmdSend").disabled = rt.state !== "online";
+
+      // Trocar software, mods e plugins só com o servidor desligado.
+      const busy = rt.state !== "offline";
+      document.body.classList.toggle("is-running", busy);
+      $("swSave").disabled = busy;
+      $("swNotice").hidden = !busy;
+      $("swNotice").textContent = busy ? "Desligue o servidor para trocar o software, a versão ou a memória." : "";
+      if (ct.supported) {
+        $("ctNotice").hidden = !busy;
+        $("ctNotice").textContent = busy
+          ? "Desligue o servidor para instalar, remover ou ativar/desativar. As mudanças só valem quando ele iniciar."
+          : "";
+      }
 
       if (!optionsFilled) {
         $("optName").value = server.name;
@@ -276,11 +341,225 @@
     document.querySelectorAll(".side button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-        ["server", "console", "options"].forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
+        ["server", "console", "software", "content", "options"].forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
         const box = $("console");
         box.scrollTop = box.scrollHeight;
+        if (btn.dataset.tab === "software") openSoftware();
+        if (btn.dataset.tab === "content") loadContent();
       });
     });
+
+    // ---------- Aba Software ----------
+    let meta = null;
+    let swSeq = 0;
+    const running = () => server.runtime.state !== "offline";
+
+    async function openSoftware() {
+      if (meta) return;
+      try {
+        meta = await api("GET", "/meta");
+      } catch (e) {
+        $("swErr").textContent = e.message;
+        return;
+      }
+      $("swCards").replaceChildren(...meta.software.map((s) => h("label", { class: "plan" },
+        h("input", { type: "radio", name: "sw", value: s.id, checked: s.id === server.software, onchange: () => loadSwVersions(s.id, null) }),
+        h("h3", {}, s.label),
+        h("div", { class: "kind" }, s.kind === "mods" ? "Aceita mods" : s.kind === "plugins" ? "Aceita plugins" : "Sem mods nem plugins"),
+        h("p", { class: "plan-desc" }, s.desc))));
+      const opts = meta.ramOptions.includes(server.ramMb) ? meta.ramOptions : [...meta.ramOptions, server.ramMb].sort((a, b) => a - b);
+      $("swRam").replaceChildren(...opts.map((m) => h("option", { value: m, selected: m === server.ramMb }, `${m / 1024} GB`)));
+      $("ramHint").textContent = `Seu PC tem ${(meta.systemRamMb / 1024).toFixed(1)} GB. Oferecemos até 75% dele para o Windows não travar. Mods pesados pedem mais memória.`;
+      if (server.plan === "vps") {
+        $("swRam").closest(".field").hidden = true;  // na VPS a memória é calculada lá
+      }
+      await loadSwVersions(server.software, server.version);
+    }
+
+    async function loadSwVersions(sw, keep) {
+      const seq = ++swSeq;
+      $("swErr").textContent = "";
+      $("swVersion").disabled = true;
+      $("swVersion").replaceChildren(h("option", {}, "Carregando versões…"));
+      try {
+        const r = await api("GET", `/software/${encodeURIComponent(sw)}/versions`);
+        if (seq !== swSeq) return;  // o usuário já escolheu outro software
+        const vps = server.plan === "vps";  // na VPS o Java é instalado por SSH, então tudo é permitido
+        const ok = (v) => vps || v.available;
+        $("swVersion").replaceChildren(...r.versions.map((v) =>
+          h("option", { value: v.version, disabled: !ok(v) }, v.version + (ok(v) ? "" : ` (precisa de Java ${v.java})`))));
+        const pick = r.versions.find((v) => v.version === (keep || server.version) && ok(v)) || r.versions.find(ok);
+        if (pick) $("swVersion").value = pick.version;
+        $("swHint").textContent = !vps && r.missingJava.length
+          ? `Versões desativadas precisam de um Java que não está instalado. Para liberar, rode no terminal: ${r.missingJava.map((n) => `winget install EclipseAdoptium.Temurin.${n}.JDK`).join("  ou  ")}`
+          : "";
+        $("swVersion").disabled = false;
+      } catch (e) {
+        if (seq === swSeq) $("swErr").textContent = e.message;
+      }
+    }
+
+    async function saveSoftware(confirmed) {
+      $("swErr").textContent = $("swOk").textContent = "";
+      const body = {
+        software: document.querySelector('input[name="sw"]:checked').value,
+        version: $("swVersion").value,
+        ramMb: Number($("swRam").value),
+      };
+      if (confirmed) body.confirm = true;
+      $("swSave").disabled = true;
+      try {
+        server = await api("POST", `${base}/software`, body);
+        $("swOk").textContent = "Aplicado!" + (server.backup ? ` Um backup do mundo foi salvo em data/backups (${server.backup}).` : "");
+        if (server.warnContent) {
+          $("swErr").textContent = "Atenção: há mods ou plugins instalados que podem não funcionar nesta versão ou neste software. Confira na aba de Mods/Plugins e, se der erro ao iniciar, remova o que for incompatível.";
+        }
+        ct.supported = null;  // a lista de mods/plugins depende do software: recarrega ao abrir
+      } catch (e) {
+        if (e.status === 409 && e.data && e.data.needConfirm) {
+          if (confirm(`${e.message} Um backup do mundo será salvo antes. Continuar mesmo assim?`)) return saveSoftware(true);
+        } else {
+          $("swErr").textContent = e.message;
+        }
+      }
+      poll();
+    }
+    $("swSave").addEventListener("click", () => saveSoftware(false));
+
+    // ---------- Aba Mods / Plugins ----------
+    const ct = { supported: null, offset: 0, query: "", busy: false };
+
+    async function loadContent() {
+      $("ctErr").textContent = $("ctOk").textContent = "";
+      let data;
+      try {
+        data = await api("GET", `${base}/content`);
+      } catch (e) {
+        $("ctErr").textContent = e.message;
+        return;
+      }
+      ct.supported = data.supported;
+      const label = data.kind === "plugins" ? "Plugins" : "Mods";
+      $("ctTitle").textContent = `${label} instalados`;
+      $("ctMain").hidden = !data.supported;
+      $("ctNotice").hidden = data.supported;
+      if (!data.supported) {
+        $("ctNotice").textContent = server.plan !== "free"
+          ? "Mods e plugins na VPS ainda não estão disponíveis. Use o plano Grátis."
+          : "O Vanilla não aceita mods nem plugins. Na aba Software, escolha Paper ou Purpur (plugins) ou Fabric (mods).";
+        return;
+      }
+      $("ctFilterHint").textContent = `Só aparecem itens compatíveis com ${server.softwareLabel} ${server.version}.`;
+      renderContentList(data.items, label);
+      render();
+      searchContent(true);
+    }
+
+    async function loadContentList() {
+      try {
+        const data = await api("GET", `${base}/content`);
+        renderContentList(data.items, data.kind === "plugins" ? "plugin" : "mod");
+      } catch (e) {
+        $("ctErr").textContent = e.message;
+      }
+    }
+
+    function renderContentList(items, label) {
+      const box = $("ctList");
+      if (!items.length) {
+        box.replaceChildren(h("p", { class: "muted" }, "Nada instalado ainda. Busque abaixo ou envie um arquivo .jar seu."));
+        return;
+      }
+      box.replaceChildren(...items.map((it) => h("div", { class: "row" + (it.enabled ? "" : " off") },
+        h("div", { class: "row-main" },
+          h("strong", {}, it.title || it.name),
+          h("small", {}, [it.title ? it.name : null, it.version ? "v" + it.version : null, fmtSize(it.size)].filter(Boolean).join(" · "))),
+        h("button", { class: "btn needs-offline", onclick: () => contentAction("toggle", it.name) }, it.enabled ? "Ativado" : "Desativado"),
+        h("button", { class: "btn btn-danger needs-offline", onclick: () => { if (confirm(`Remover ${it.name}?`)) contentAction("delete", it.name); } }, "Remover"))));
+    }
+
+    async function contentAction(action, name) {
+      if (running()) { $("ctErr").textContent = "Desligue o servidor primeiro."; return; }
+      $("ctErr").textContent = "";
+      try { await api("POST", `${base}/content/${action}`, { name }); } catch (e) { $("ctErr").textContent = e.message; }
+      loadContentList();
+    }
+
+    $("ctFile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      if (running()) { $("ctErr").textContent = "Desligue o servidor primeiro."; return; }
+      $("ctErr").textContent = "";
+      $("ctOk").textContent = `Enviando ${file.name}…`;
+      try {
+        await apiUpload(`${base}/content/upload?name=${encodeURIComponent(file.name)}`, file);
+        $("ctOk").textContent = `${file.name} enviado.`;
+      } catch (e) {
+        $("ctOk").textContent = "";
+        $("ctErr").textContent = e.message;
+      }
+      loadContentList();
+    });
+
+    async function searchContent(reset) {
+      if (ct.busy) return;
+      ct.busy = true;
+      const box = $("ctResults");
+      if (reset) { ct.offset = 0; box.replaceChildren(h("p", { class: "muted" }, "Buscando…")); }
+      try {
+        const r = await api("GET", `${base}/content/search?q=${encodeURIComponent(ct.query)}&offset=${ct.offset}`);
+        if (reset) box.replaceChildren();
+        if (reset && !r.hits.length) box.append(h("p", { class: "muted" }, "Nada encontrado para esta versão."));
+        r.hits.forEach((hit) => box.append(resultRow(hit)));
+        ct.offset += r.hits.length;
+        $("ctMore").hidden = ct.offset >= r.total;
+      } catch (e) {
+        box.replaceChildren(h("p", { class: "error" }, e.message));
+      } finally {
+        ct.busy = false;
+      }
+    }
+
+    function resultRow(hit) {
+      const icon = hit.icon && hit.icon.startsWith("https://cdn.modrinth.com/")
+        ? h("img", { class: "icon", src: hit.icon, alt: "", loading: "lazy", referrerPolicy: "no-referrer" })
+        : h("div", { class: "icon" });
+      const btn = h("button", { class: "btn btn-primary needs-offline" }, "Instalar");
+      btn.addEventListener("click", () => installProject(hit, btn));
+      return h("div", { class: "row" }, icon,
+        h("div", { class: "row-main" },
+          h("strong", {}, hit.title),
+          h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString("pt-BR")} downloads`),
+          h("span", { class: "desc" }, hit.description)),
+        btn);
+    }
+
+    async function installProject(hit, btn) {
+      if (running()) { $("ctErr").textContent = "Desligue o servidor primeiro."; return; }
+      btn.disabled = true;
+      btn.textContent = "Instalando…";
+      $("ctErr").textContent = $("ctOk").textContent = "";
+      try {
+        const r = await api("POST", `${base}/content/install`, { project: hit.id });
+        $("ctOk").textContent = [r.installed.length && "Instalado: " + r.installed.join(", "),
+                                 r.skipped.length && "Já estava instalado: " + r.skipped.join(", ")].filter(Boolean).join(". ");
+        if (r.warnings.length) $("ctErr").textContent = r.warnings.join(" ");
+        btn.textContent = r.installed.length ? "Instalado ✓" : "Já instalado";
+      } catch (e) {
+        $("ctErr").textContent = e.message;
+        btn.disabled = false;
+        btn.textContent = "Instalar";
+      }
+      loadContentList();
+    }
+
+    $("ctForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      ct.query = $("ctQuery").value.trim();
+      searchContent(true);
+    });
+    $("ctMore").addEventListener("click", () => searchContent(false));
 
     $("save").addEventListener("click", async () => {
       $("optErr").textContent = "";

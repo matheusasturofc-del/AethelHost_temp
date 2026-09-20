@@ -7,7 +7,6 @@ Usa só a biblioteca padrão do Python (nada para instalar).
 Rodar:  python backend/server.py   ->   http://127.0.0.1:8080
 """
 import glob
-import hashlib
 import json
 import mimetypes
 import os
@@ -16,19 +15,24 @@ import shlex
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 import traceback
-import urllib.request
+import urllib.error
 import uuid
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-SERVERS_DIR = DATA / "servers"
-JARS_DIR = DATA / "jars"
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
+
+import content  # noqa: E402
+from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
+from software import (SOFTWARE, ensure_jar, mc_releases, prefetch_java, ram_options,  # noqa: E402
+                      required_java, software_versions, spec_for, system_ram_mb, vkey)
+
 DB_FILE = DATA / "servers.json"
 
 HOST = "127.0.0.1"  # só este PC acessa a API
@@ -36,18 +40,9 @@ PORT = 8080
 DOMAIN = "blockhost.net"  # nome provisório
 FIRST_MC_PORT = 25565
 MAX_PLAYERS = 20
+DEFAULT_RAM_MB = 1024
 IDLE_LIMIT = 5 * 3600  # plano grátis fecha após 5h sem jogadores
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-
-VERSIONS = [
-    "1.21.4", "1.21.1", "1.20.6", "1.20.4", "1.20.1",
-    "1.19.4", "1.18.2", "1.16.5", "1.12.2", "1.8.9",
-]
-MOJANG_HOSTS = {
-    "launchermeta.mojang.com", "piston-meta.mojang.com",
-    "piston-data.mojang.com", "launcher.mojang.com",
-}
-MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
 IP_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$")
 HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$")
@@ -57,10 +52,11 @@ LEAVE_RE = re.compile(r"\]: (\w{1,16}) left the game$")
 
 
 class ApiError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, extra=None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.extra = extra or {}
 
 
 # ---------------------------------------------------------------- Java
@@ -114,16 +110,6 @@ def find_javas():
     return found
 
 
-def required_java(version):
-    parts = tuple(int(p) for p in version.split("."))
-    parts += (0,) * (3 - len(parts))
-    if parts >= (1, 20, 5):
-        return 21
-    if parts >= (1, 18, 0):
-        return 17
-    return 8
-
-
 def pick_java(need):
     """O menor Java instalado que atende à versão exigida."""
     for major, exe in find_javas():
@@ -132,61 +118,21 @@ def pick_java(need):
     return None
 
 
-# ---------------------------------------------------------------- Mojang
-
-def fetch(url, timeout=30):
-    u = urlparse(url)
-    if u.scheme != "https" or u.hostname not in MOJANG_HOSTS:
-        raise RuntimeError(f"Endereço não permitido: {url}")
-    req = urllib.request.Request(url, headers={"User-Agent": "BlockHost/0.1"})
-    return urllib.request.urlopen(req, timeout=timeout)
-
-
-def jar_info(version):
-    """Endereço, tamanho e SHA1 do server.jar oficial da versão, direto da Mojang."""
-    with fetch(MANIFEST_URL) as r:
-        manifest = json.load(r)
-    entry = next((v for v in manifest["versions"] if v["id"] == version), None)
-    if not entry:
-        raise RuntimeError(f"Versão {version} não encontrada na Mojang.")
-    with fetch(entry["url"]) as r:
-        info = json.load(r)["downloads"]["server"]
-    if urlparse(info["url"]).hostname not in MOJANG_HOSTS or not re.fullmatch(r"[0-9a-f]{40}", info["sha1"]):
-        raise RuntimeError("A Mojang devolveu dados inesperados para o download.")
-    return info
-
-
-def ensure_jar(version, log):
-    """Devolve o server.jar oficial da versão, baixando da Mojang se ainda não tiver."""
-    jar = JARS_DIR / f"{version}.jar"
-    if jar.exists():
-        return jar
-    log(f"Buscando a versão {version} na Mojang…")
-    info = jar_info(version)
-    log(f"Baixando o server.jar ({info['size'] // 1_000_000} MB). Só acontece na primeira vez.")
-    JARS_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = jar.with_suffix(".part")
-    sha = hashlib.sha1()
-    with fetch(info["url"], timeout=60) as r, open(tmp, "wb") as f:
-        while chunk := r.read(1 << 16):
-            f.write(chunk)
-            sha.update(chunk)
-    if sha.hexdigest() != info["sha1"]:
-        tmp.unlink(missing_ok=True)
-        raise RuntimeError("O arquivo baixado está corrompido (SHA1 não confere).")
-    os.replace(tmp, jar)
-    log("Download concluído e verificado.")
-    return jar
-
-
 # ---------------------------------------------------------------- Banco (arquivo JSON)
 
 DB_LOCK = threading.RLock()
 
 
+def _normalize(server):
+    """Servidores criados antes de existir Software/RAM ganham os valores padrão."""
+    server.setdefault("software", "vanilla")
+    server.setdefault("ramMb", DEFAULT_RAM_MB)
+    return server
+
+
 def db_load():
     try:
-        return json.loads(DB_FILE.read_text(encoding="utf-8"))
+        return [_normalize(s) for s in json.loads(DB_FILE.read_text(encoding="utf-8"))]
     except FileNotFoundError:
         return []
     except json.JSONDecodeError:
@@ -280,6 +226,8 @@ class Runtime:
             self.state = "starting"
             self.plan = server["plan"]
             self.players.clear()
+        if self.lines:
+            self.log("──────── Nova execução ────────", "sep")
         threading.Thread(target=self._run, args=(server,), daemon=True).start()
 
     def _run(self, server):
@@ -288,7 +236,7 @@ class Runtime:
             java = pick_java(need)
             if not java:
                 raise RuntimeError(f"Este PC não tem Java {need} ou superior instalado.")
-            jar = ensure_jar(server["version"], self.log)
+            jar = ensure_jar(server["software"], server["version"], self.log)
             sdir = SERVERS_DIR / server["id"]
             sdir.mkdir(parents=True, exist_ok=True)
             if not port_free(server["port"]):
@@ -299,9 +247,12 @@ class Runtime:
                 "motd": server["subtitle"] or server["name"],
                 "max-players": MAX_PLAYERS,
             })
-            self.log(f"Iniciando com Java {java[0]}…")
+            ram = server["ramMb"]
+            self.log(f"Iniciando {SOFTWARE[server['software']]['label']} {server['version']} com Java {java[0]} e {ram} MB de RAM…")
             self.proc = subprocess.Popen(
-                [java[1], "-Xms512M", "-Xmx1G", "-jar", str(jar), "nogui"],
+                [java[1], f"-Xms{min(512, ram)}M", f"-Xmx{ram}M",
+                 "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",  # acentos no console
+                 "-jar", str(jar), "nogui"],
                 cwd=sdir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1, creationflags=NO_WINDOW,
             )
@@ -526,15 +477,15 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-if [ ! -f server.jar ]; then
-  say "Baixando o server.jar da Mojang..."
-  curl -fsSL --retry 3 -o server.jar.part "$JAR_URL"
-  if ! echo "$JAR_SHA1  server.jar.part" | sha1sum -c - >/dev/null 2>&1; then
-    rm -f server.jar.part
-    echo "ERRO: o server.jar baixado está corrompido (SHA1 não confere)."
+if [ ! -f "$JAR_NAME" ]; then
+  say "Baixando $JAR_NAME..."
+  curl -fsSL --retry 3 -o "$JAR_NAME.part" "$JAR_URL"
+  if [ -n "$JAR_HASH" ] && ! echo "$JAR_HASH  $JAR_NAME.part" | "${JAR_ALGO}sum" -c - >/dev/null 2>&1; then
+    rm -f "$JAR_NAME.part"
+    echo "ERRO: o arquivo baixado está corrompido (o hash não confere)."
     exit 1
   fi
-  mv server.jar.part server.jar
+  mv "$JAR_NAME.part" "$JAR_NAME"
 fi
 
 echo "eula=true" > eula.txt
@@ -570,7 +521,7 @@ XMX=$((MEM * 6 / 10))
 if [ "$XMX" -gt 1024 ]; then XMX=1024; fi
 rm -f logs/latest.log
 say "Iniciando o servidor (Java $(java_major), ${XMX} MB)..."
-tmux new-session -d -s "$SESSION" -c "$DIR" "exec java -Xms128M -Xmx${XMX}M -jar server.jar nogui"
+tmux new-session -d -s "$SESSION" -c "$DIR" "exec java -Xms128M -Xmx${XMX}M -jar '$JAR_NAME' nogui"
 echo "BH_STARTED"
 '''
 
@@ -581,7 +532,9 @@ def remote_setup_script(server, need, jar):
     head = (
         "set -e\n"
         f"ID={q(server['id'])}\nNEED={need}\nPORT={server['port']}\nMAXP={MAX_PLAYERS}\n"
-        f"JAR_URL={q(jar['url'])}\nJAR_SHA1={q(jar['sha1'])}\nMOTD={q(motd)}\n"
+        f"JAR_URL={q(jar['url'])}\nJAR_NAME={q(jar['name'])}\n"
+        f"JAR_ALGO={q(jar['hash'][0] if jar['hash'] else '')}\nJAR_HASH={q(jar['hash'][1] if jar['hash'] else '')}\n"
+        f"MOTD={q(motd)}\n"
     )
     return head + JAVA_MAJOR_SH + SETUP_BODY
 
@@ -608,7 +561,9 @@ class RemoteRuntime(Runtime):
         try:
             need = required_java(server["version"])
             self.log(f"Conectando à VPS {self.vps['host']}…")
-            jar = jar_info(server["version"])
+            jar = spec_for(server["software"], server["version"])
+            if jar.get("note"):
+                self.log(jar["note"])
             code = ssh_stream(self.vps, remote_setup_script(server, need, jar), self._setup_line)
             if code != 0:
                 raise RuntimeError("A preparação da VPS falhou. Veja as mensagens acima.")
@@ -754,6 +709,8 @@ def view(server):
         "publicName": f"{server['ip']}.{DOMAIN}",
         "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
         "maxPlayers": MAX_PLAYERS,
+        "softwareLabel": SOFTWARE[server["software"]]["label"],
+        "contentKind": content.kind_of(server),
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
     }
 
@@ -767,11 +724,30 @@ def clean_text(body, key, minimum, maximum, label):
 
 
 def api_meta(query, body):
-    versions = [
-        {"version": v, "java": required_java(v), "available": pick_java(required_java(v)) is not None}
-        for v in VERSIONS
-    ]
-    return 200, {"domain": DOMAIN, "versions": versions, "maxPlayers": MAX_PLAYERS}
+    return 200, {
+        "domain": DOMAIN,
+        "maxPlayers": MAX_PLAYERS,
+        "software": [{"id": k, "label": v["label"], "kind": v["kind"], "desc": v["desc"]} for k, v in SOFTWARE.items()],
+        "ramOptions": ram_options(),
+        "systemRamMb": system_ram_mb(),
+    }
+
+
+def api_software_versions(query, body, sw):
+    """Versões que o software suporta, e quais este PC consegue rodar com o Java instalado."""
+    if sw not in SOFTWARE:
+        raise ApiError(404, "Software desconhecido.")
+    prefetch_java(mc_releases())
+    versions = []
+    for v in software_versions(sw):
+        need = required_java(v)
+        versions.append({"version": v, "java": need, "available": pick_java(need) is not None})
+    missing = sorted({v["java"] for v in versions if not v["available"]})
+    return 200, {"versions": versions, "missingJava": missing}
+
+
+def valid_version(sw, version):
+    return isinstance(version, str) and version in software_versions(sw)
 
 
 def api_ip_check(query, body):
@@ -790,12 +766,15 @@ def api_create(query, body):
     subtitle = clean_text(body, "subtitle", 0, 60, "Subtítulo")
     ip = str(body.get("ip", ""))
     version, plan = body.get("version"), body.get("plan")
+    software = body.get("software", "vanilla")
     if not IP_RE.match(ip):
         raise ApiError(400, "Endereço inválido: use de 3 a 24 caracteres (letras minúsculas, números e hífen).")
     if body.get("eula") is not True:
         raise ApiError(400, "É preciso aceitar o EULA do Minecraft.")
-    if version not in VERSIONS:
-        raise ApiError(400, "Versão inválida.")
+    if software not in SOFTWARE:
+        raise ApiError(400, "Software inválido.")
+    if not valid_version(software, version):
+        raise ApiError(400, f"O {SOFTWARE[software]['label']} não tem a versão {version}.")
     if plan not in ("free", "vps"):
         raise ApiError(400, "Plano inválido.")
 
@@ -826,7 +805,8 @@ def api_create(query, body):
             port += 1
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
-            "edition": "java", "version": version, "plan": plan, "port": port, "eula": True,
+            "edition": "java", "software": software, "version": version, "ramMb": DEFAULT_RAM_MB,
+            "plan": plan, "port": port, "eula": True,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         if vps:
@@ -851,6 +831,120 @@ def api_patch(query, body, sid):
         server.update(name=name, subtitle=subtitle)
         db_save(servers)
     return 200, view(server)
+
+
+def _require_offline(sid, what):
+    rt = RUNTIMES.get(sid)
+    if rt and rt.state != "offline":
+        raise ApiError(409, f"Desligue o servidor antes de {what}.")
+
+
+def backup_world(sid, tag):
+    """Guarda um .zip dos mundos (world, world_nether, world_the_end) em data/backups/. None se não há mundo."""
+    folder = SERVERS_DIR / sid
+    worlds = [p for p in folder.glob("world*") if p.is_dir()]
+    if not worlds:
+        return None
+    dest_dir = BACKUPS_DIR / sid
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    stamp, n = time.strftime("%Y%m%d-%H%M%S"), 1
+    name = f"{stamp}-{tag}.zip"
+    while (dest_dir / name).exists():  # duas trocas no mesmo segundo não podem sobrescrever o backup
+        n += 1
+        name = f"{stamp}-{tag}-{n}.zip"
+    with zipfile.ZipFile(dest_dir / name, "w", zipfile.ZIP_DEFLATED) as z:
+        for w in worlds:
+            for f in w.rglob("*"):
+                if f.is_file():
+                    z.write(f, f.relative_to(folder))
+    return name
+
+
+def api_software_set(query, body, sid):
+    """Troca software, versão e/ou RAM. Só com o servidor desligado; guarda um backup do mundo antes."""
+    with DB_LOCK:
+        servers = db_load()
+        server = next((s for s in servers if s["id"] == sid), None)
+        if not server:
+            raise ApiError(404, "Servidor não encontrado.")
+        _require_offline(sid, "mudar o software")
+        sw = body.get("software", server["software"])
+        version = body.get("version", server["version"])
+        ram = body.get("ramMb", server["ramMb"])
+        if sw not in SOFTWARE:
+            raise ApiError(400, "Software inválido.")
+        if not valid_version(sw, version):
+            raise ApiError(400, f"O {SOFTWARE[sw]['label']} não tem a versão {version}.")
+        if not isinstance(ram, int) or (ram not in ram_options() and ram != server["ramMb"]):
+            raise ApiError(400, "Quantidade de RAM inválida para este PC.")
+
+        changed = (sw, version) != (server["software"], server["version"])
+        backup = None
+        if changed and server["plan"] == "free":
+            need = required_java(version)
+            if not pick_java(need):
+                raise ApiError(400, f"A versão {version} precisa do Java {need}, que não está instalado neste PC.")
+            world_exists = any(p.is_dir() for p in (SERVERS_DIR / sid).glob("world*"))
+            if world_exists and vkey(version) < vkey(server["version"]) and body.get("confirm") is not True:
+                raise ApiError(409, "Voltar para uma versão mais antiga pode corromper o mundo.",
+                               {"needConfirm": True})
+            backup = backup_world(sid, "antes-de-mudar-software")
+        had_content = changed and any(
+            f.name.endswith((".jar", ".jar.disabled"))
+            for kind in ("mods", "plugins") for f in (SERVERS_DIR / sid / kind).glob("*") if f.is_file()
+        )
+        server.update(software=sw, version=version, ramMb=ram)
+        db_save(servers)
+    return 200, {**view(server), "backup": backup, "warnContent": had_content}
+
+
+def _content_server(sid, mutate=False):
+    server = find_server(sid)
+    if server["plan"] != "free":
+        raise ApiError(501, "Mods e plugins na VPS ainda não estão disponíveis. Use o plano Grátis.")
+    if not content.kind_of(server):
+        raise ApiError(400, "O Vanilla não aceita mods nem plugins. Em Software, escolha Paper, Purpur ou Fabric.")
+    if mutate:
+        _require_offline(sid, "mexer em mods e plugins")
+    return server
+
+
+def api_content_list(query, body, sid):
+    server = find_server(sid)
+    kind = content.kind_of(server)
+    if server["plan"] != "free" or not kind:
+        return 200, {"kind": kind, "items": [], "supported": False}
+    return 200, {"kind": kind, "items": content.list_items(server), "supported": True}
+
+
+def api_content_search(query, body, sid):
+    server = _content_server(sid)
+    try:
+        offset = max(0, int(query.get("offset", ["0"])[0]))
+    except ValueError:
+        offset = 0
+    return 200, content.search(server, query.get("q", [""])[0][:100], offset)
+
+
+def api_content_install(query, body, sid):
+    server = _content_server(sid, mutate=True)
+    return 200, content.install(server, str(body.get("project", "")))
+
+
+def api_content_upload(query, data, sid):
+    server = _content_server(sid, mutate=True)
+    name = content.save_upload(server, query.get("name", [""])[0], data)
+    return 200, {"name": name}
+
+
+def api_content_toggle(query, body, sid):
+    content.toggle(_content_server(sid, mutate=True), str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_content_delete(query, body, sid):
+    content.delete(_content_server(sid, mutate=True), str(body.get("name", "")))
+    return 200, {"ok": True}
 
 
 def api_delete(query, body, sid):
@@ -932,7 +1026,17 @@ ROUTES = [
     ("GET", rf"^/api/servers/{ID}/console$", api_console),
     ("GET", r"^/api/vps/key$", api_vps_key),
     ("POST", rf"^/api/servers/{ID}/vps/check$", api_vps_check),
+    ("GET", r"^/api/software/([a-z]{1,20})/versions$", api_software_versions),
+    ("POST", rf"^/api/servers/{ID}/software$", api_software_set),
+    ("GET", rf"^/api/servers/{ID}/content$", api_content_list),
+    ("GET", rf"^/api/servers/{ID}/content/search$", api_content_search),
+    ("POST", rf"^/api/servers/{ID}/content/install$", api_content_install),
+    ("POST", rf"^/api/servers/{ID}/content/upload$", api_content_upload),
+    ("POST", rf"^/api/servers/{ID}/content/toggle$", api_content_toggle),
+    ("POST", rf"^/api/servers/{ID}/content/delete$", api_content_delete),
 ]
+RAW_UPLOAD = {api_content_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
+MAX_UPLOAD = 64 * 1024 * 1024
 
 # Só estes arquivos do site são entregues (a pasta data/ e o .git nunca saem daqui).
 STATIC_RE = re.compile(r"^(?:[a-z]+\.html|css/[\w.-]+\.css|js/[\w.-]+\.js)$")
@@ -973,34 +1077,57 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 raise ApiError(405, "Método não permitido.")
         except ApiError as e:
+            self._json(e.status, {"error": e.message, **e.extra})
+        except content.ContentError as e:
             self._json(e.status, {"error": e.message})
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                self._json(404, {"error": "Não encontrei isso no serviço externo (Modrinth, Paper, Fabric…)."})
+            else:
+                self._json(502, {"error": f"O serviço externo respondeu com erro {e.code}."})
+        except (urllib.error.URLError, TimeoutError) as e:
+            self._json(502, {"error": f"Não consegui acessar o serviço externo: {getattr(e, 'reason', e)}"})
+        except RuntimeError as e:  # falhas previstas nos downloads (hash errado, endereço barrado…)
+            self._json(502, {"error": str(e)})
         except Exception:
             traceback.print_exc()
             self._json(500, {"error": "Erro interno do servidor."})
 
     def _api(self, method, parsed):
+        route = None
+        for m, pattern, fn in ROUTES:
+            match = re.match(pattern, parsed.path)
+            if m == method and match:
+                route = (fn, match.groups())
+                break
+        if not route:
+            raise ApiError(404, "Rota não encontrada.")
+        fn, groups = route
+
         body = {}
         if method != "GET":
             origin = self.headers.get("Origin")
             if origin and origin not in ORIGINS:
                 raise ApiError(403, "Origem não permitida.")
-            if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
-                raise ApiError(415, "Envie JSON (Content-Type: application/json).")
+            raw = fn in RAW_UPLOAD
+            expected = "application/octet-stream" if raw else "application/json"
+            if self.headers.get("Content-Type", "").split(";")[0].strip() != expected:
+                raise ApiError(415, f"Envie o conteúdo como {expected}.")
             length = int(self.headers.get("Content-Length") or 0)
-            if length > 65536:
+            if length > (MAX_UPLOAD if raw else 65536):
                 raise ApiError(413, "Requisição grande demais.")
-            try:
-                body = json.loads(self.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
-                raise ApiError(400, "JSON inválido.")
-            if not isinstance(body, dict):
-                raise ApiError(400, "JSON inválido.")
-        for m, pattern, fn in ROUTES:
-            match = re.match(pattern, parsed.path)
-            if m == method and match:
-                status, data = fn(parse_qs(parsed.query), body, *match.groups())
-                return self._json(status, data)
-        raise ApiError(404, "Rota não encontrada.")
+            payload = self.rfile.read(length)
+            if raw:
+                body = payload
+            else:
+                try:
+                    body = json.loads(payload or b"{}")
+                except json.JSONDecodeError:
+                    raise ApiError(400, "JSON inválido.")
+                if not isinstance(body, dict):
+                    raise ApiError(400, "JSON inválido.")
+        status, data = fn(parse_qs(parsed.query), body, *groups)
+        self._json(status, data)
 
     def _static(self, path):
         rel = unquote(path).lstrip("/") or "index.html"
