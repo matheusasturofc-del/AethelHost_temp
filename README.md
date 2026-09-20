@@ -103,7 +103,7 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 ## Idioma
 
-O botão **PT | EN** no topo troca a interface entre português e inglês e lembra a escolha. O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
+O idioma padrão é o **inglês**. O botão **PT | EN** no topo troca a interface entre inglês e português e lembra a escolha no navegador (quem já tem uma escolha guardada, mesmo que automática, continua com ela). O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
 
 ## Listas de escolha
 

@@ -151,7 +151,7 @@ def _need_mail():
 
 
 def _lang(body):
-    return "en" if body.get("lang") == "en" else "pt"
+    return "pt" if body.get("lang") == "pt" else "en"  # sem escolha, inglês (o padrão do site)
 
 
 def find_password_user(email):

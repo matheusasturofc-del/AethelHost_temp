@@ -9,10 +9,12 @@ const I18N = (() => {
   const SKIP_TEXT = "script, style, textarea, code, .mc-line, .mc-text, .mc-name, .console .t";
   const SKIP_ATTR = ".mc-line, .mc-text, .mc-name";  // o placeholder de um campo pode ser traduzido
 
-  let lang = "pt";
+  // Quem entra pela primeira vez vê em inglês; depois vale a escolha do botão PT | EN, que fica guardada no navegador.
+  let lang = "en";
   try {
-    lang = localStorage.getItem(STORE_KEY) || ((navigator.language || "pt").toLowerCase().startsWith("en") ? "en" : "pt");
-  } catch { /* sem armazenamento: usa o idioma do navegador */ }
+    const saved = localStorage.getItem(STORE_KEY);
+    if (saved === "pt" || saved === "en") lang = saved;
+  } catch { /* sem armazenamento: fica em inglês */ }
 
   const nodes = new Map();  // nó de texto -> { orig, out }
   const attrs = new Map();  // elemento -> { atributo: { orig, out } }
