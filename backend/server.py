@@ -31,9 +31,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
 
 import content  # noqa: E402
+import manage  # noqa: E402
 from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
-from software import (SOFTWARE, ensure_jar, mc_releases, prefetch_java, ram_options,  # noqa: E402
-                      required_java, software_versions, spec_for, system_ram_mb, vkey)
+from props import COLOR_CODE_RE, motd_to_properties, prop_escape, set_properties  # noqa: E402
+from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_java, prepare_launch,  # noqa: E402
+                      ram_options, required_java, software_versions, spec_for, system_ram_mb, vkey)
 
 DB_FILE = DATA / "servers.json"
 
@@ -167,39 +169,6 @@ def port_free(port):
             return False
 
 
-def prop_escape(value):
-    s = str(value).replace("\\", "\\\\").replace("\r", " ").replace("\n", " ")
-    b = s.encode("utf-16-le")
-    units = [int.from_bytes(b[i:i + 2], "little") for i in range(0, len(b), 2)]
-    return "".join(chr(u) if u < 128 else f"\\u{u:04x}" for u in units)
-
-
-COLOR_CODE_RE = re.compile(r"&([0-9a-fk-or])")  # só minúsculas: "R&D" continua sendo texto normal
-
-
-def motd_to_properties(text):
-    """'&aOlá\\n&lLinha 2' -> valor pronto para o server.properties (§ e quebra de linha já escapados)."""
-    lines = text.replace("\r", "").split("\n")[:2]
-    return "\\n".join(prop_escape(COLOR_CODE_RE.sub("§\\1", line)) for line in lines)
-
-
-def set_properties(path, values, raw=()):
-    """Grava chaves no server.properties. As chaves em `raw` já vêm escapadas."""
-    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
-    out, done = [], set()
-
-    def fmt(k, v):
-        return f"{k}={v if k in raw else prop_escape(v)}"
-
-    for line in lines:
-        key = line.split("=", 1)[0].strip()
-        if key in values and not line.lstrip().startswith("#"):
-            out.append(fmt(key, values[key]))
-            done.add(key)
-        else:
-            out.append(line)
-    out += [fmt(k, v) for k, v in values.items() if k not in done]
-    path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------- Ícone do servidor
@@ -235,10 +204,12 @@ def icon_version(sid):
 
 
 class Raw:
-    """Resposta que não é JSON (ex.: a imagem do ícone)."""
+    """Resposta que não é JSON: uma imagem (body) ou um arquivo grande enviado aos poucos (path)."""
 
-    def __init__(self, body, ctype, cache="no-store"):
+    def __init__(self, body=b"", ctype="application/octet-stream", cache="no-store", path=None, filename=None,
+                 delete_after=False):
         self.body, self.ctype, self.cache = body, ctype, cache
+        self.path, self.filename, self.delete_after = path, filename, delete_after
 
 
 class Runtime:
@@ -303,12 +274,13 @@ class Runtime:
                 "motd": motd_to_properties(server["subtitle"] or server["name"]),
                 "max-players": MAX_PLAYERS,
             }, raw=("motd",))
+            launch = prepare_launch(server["software"], server["version"], jar, sdir, java[1], self.log)
             ram = server["ramMb"]
             self.log(f"Iniciando {SOFTWARE[server['software']]['label']} {server['version']} com Java {java[0]} e {ram} MB de RAM…")
             self.proc = subprocess.Popen(
                 [java[1], f"-Xms{min(512, ram)}M", f"-Xmx{ram}M",
                  "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8",  # acentos no console
-                 "-jar", str(jar), "nogui"],
+                 *launch],
                 cwd=sdir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=1, creationflags=NO_WINDOW,
             )
@@ -619,6 +591,8 @@ class RemoteRuntime(Runtime):
         try:
             need = required_java(server["version"])
             self.log(f"Conectando à VPS {self.vps['host']}…")
+            if server["software"] in INSTALLERS:
+                raise RuntimeError(f"{SOFTWARE[server['software']]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
             jar = spec_for(server["software"], server["version"])
             if jar.get("note"):
                 self.log(jar["note"])
@@ -849,6 +823,8 @@ def api_create(query, body):
         raise ApiError(400, f"O {SOFTWARE[software]['label']} não tem a versão {version}.")
     if plan not in ("free", "vps"):
         raise ApiError(400, "Plano inválido.")
+    if plan == "vps" and software in INSTALLERS:
+        raise ApiError(400, f"{SOFTWARE[software]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
 
     vps = None
     if plan == "free":
@@ -911,27 +887,6 @@ def _require_offline(sid, what):
         raise ApiError(409, f"Desligue o servidor antes de {what}.")
 
 
-def backup_world(sid, tag):
-    """Guarda um .zip dos mundos (world, world_nether, world_the_end) em data/backups/. None se não há mundo."""
-    folder = SERVERS_DIR / sid
-    worlds = [p for p in folder.glob("world*") if p.is_dir()]
-    if not worlds:
-        return None
-    dest_dir = BACKUPS_DIR / sid
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp, n = time.strftime("%Y%m%d-%H%M%S"), 1
-    name = f"{stamp}-{tag}.zip"
-    while (dest_dir / name).exists():  # duas trocas no mesmo segundo não podem sobrescrever o backup
-        n += 1
-        name = f"{stamp}-{tag}-{n}.zip"
-    with zipfile.ZipFile(dest_dir / name, "w", zipfile.ZIP_DEFLATED) as z:
-        for w in worlds:
-            for f in w.rglob("*"):
-                if f.is_file():
-                    z.write(f, f.relative_to(folder))
-    return name
-
-
 def api_software_set(query, body, sid):
     """Troca software, versão e/ou RAM. Só com o servidor desligado; guarda um backup do mundo antes."""
     with DB_LOCK:
@@ -949,6 +904,8 @@ def api_software_set(query, body, sid):
             raise ApiError(400, f"O {SOFTWARE[sw]['label']} não tem a versão {version}.")
         if not isinstance(ram, int) or (ram not in ram_options() and ram != server["ramMb"]):
             raise ApiError(400, "Quantidade de RAM inválida para este PC.")
+        if server["plan"] == "vps" and sw in INSTALLERS:
+            raise ApiError(400, f"{SOFTWARE[sw]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
 
         changed = (sw, version) != (server["software"], server["version"])
         backup = None
@@ -956,11 +913,10 @@ def api_software_set(query, body, sid):
             need = required_java(version)
             if not pick_java(need):
                 raise ApiError(400, f"A versão {version} precisa do Java {need}, que não está instalado neste PC.")
-            world_exists = any(p.is_dir() for p in (SERVERS_DIR / sid).glob("world*"))
-            if world_exists and vkey(version) < vkey(server["version"]) and body.get("confirm") is not True:
+            if manage.world_names(sid) and vkey(version) < vkey(server["version"]) and body.get("confirm") is not True:
                 raise ApiError(409, "Voltar para uma versão mais antiga pode corromper o mundo.",
                                {"needConfirm": True})
-            backup = backup_world(sid, "antes-de-mudar-software")
+            backup = manage.create_backup(sid, "antes-de-mudar-software")
         had_content = changed and any(
             f.name.endswith((".jar", ".jar.disabled"))
             for kind in ("mods", "plugins") for f in (SERVERS_DIR / sid / kind).glob("*") if f.is_file()
@@ -1105,6 +1061,199 @@ def api_vps_check(query, body, sid):
     return 200, {"info": info, "needJava": required_java(server["version"])}
 
 
+# ---------------------------------------------------------------- Jogadores, arquivos, mundos e backups
+
+def _manage_server(sid):
+    server = find_server(sid)
+    if server["plan"] != "free":
+        raise ApiError(501, "Esta aba ainda não está disponível na VPS. Use o plano Grátis.")
+    return server
+
+
+def _state(sid):
+    rt = RUNTIMES.get(sid)
+    return rt.state if rt else "offline"
+
+
+def _first(query, key):
+    return query.get(key, [""])[0]
+
+
+def api_players(query, body, sid):
+    if find_server(sid)["plan"] != "free":
+        return 200, {"supported": False}
+    rt = RUNTIMES.get(sid)
+    snap = rt.snapshot() if rt else {"state": "offline", "players": []}
+    return 200, {"supported": True, "state": snap["state"], "online": snap["players"], **manage.get_players(sid)}
+
+
+def api_players_action(query, body, sid):
+    _manage_server(sid)
+    action = str(body.get("action", ""))
+    name, reason = manage.check_player_action(action, body.get("name"), body.get("reason"))
+    state = _state(sid)
+    if state == "online":  # o próprio servidor resolve o nome e aplica na hora
+        RUNTIMES[sid].command(manage.player_command(action, name, reason))
+        return 200, {"mode": "command"}
+    if state != "offline":
+        raise ApiError(409, "Espere o servidor terminar de iniciar ou de parar.")
+    if action == "kick":
+        raise ApiError(409, "Só dá para expulsar quem está online: ligue o servidor.")
+    manage.offline_change(sid, action, name, reason)
+    return 200, {"mode": "file"}
+
+
+def api_files_list(query, body, sid):
+    if find_server(sid)["plan"] != "free":
+        return 200, {"supported": False}
+    return 200, {"supported": True, **manage.list_dir(sid, _first(query, "path"))}
+
+
+def api_files_read(query, body, sid):
+    _manage_server(sid)
+    return 200, manage.read_text(sid, _first(query, "path"))
+
+
+def api_files_write(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "editar arquivos")
+    manage.write_text(sid, str(body.get("path", "")), body.get("content", ""))
+    return 200, {"ok": True}
+
+
+def api_files_upload(query, data, sid):
+    _manage_server(sid)
+    _require_offline(sid, "enviar arquivos")
+    manage.save_upload(sid, _first(query, "dir"), _first(query, "name"), data)
+    return 200, {"ok": True}
+
+
+def api_files_mkdir(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "criar pastas")
+    manage.make_dir(sid, str(body.get("path", "")), str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_files_delete(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "apagar arquivos")
+    manage.delete_path(sid, str(body.get("path", "")))
+    return 200, {"ok": True}
+
+
+def api_files_rename(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "renomear arquivos")
+    manage.rename_path(sid, str(body.get("path", "")), str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_files_download(query, body, sid):
+    _manage_server(sid)
+    target = manage.safe_path(sid, _first(query, "path"))
+    if target.is_dir():
+        label = target.name or "servidor"
+        return 200, Raw(path=manage.tmp_zip([(target, label)], label), ctype="application/zip",
+                        filename=label + ".zip", delete_after=True)
+    return 200, Raw(path=target, filename=target.name)
+
+
+def api_worlds(query, body, sid):
+    if find_server(sid)["plan"] != "free":
+        return 200, {"supported": False}
+    return 200, {"supported": True, "worlds": manage.list_worlds(sid)}
+
+
+def api_world_use(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "trocar de mundo")
+    manage.use_world(sid, str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_world_create(query, body, sid):
+    server = _manage_server(sid)
+    _require_offline(sid, "criar um mundo")
+    manage.create_world(sid, str(body.get("name", "")), body.get("seed", ""), str(body.get("type", "normal")),
+                        vkey(server["version"]))
+    return 200, {"ok": True}
+
+
+def api_world_delete(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "apagar um mundo")
+    manage.delete_world(sid, str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_world_download(query, body, sid):
+    _manage_server(sid)
+    name = _first(query, "name")
+    return 200, Raw(path=manage.world_zip(sid, name), ctype="application/zip", filename=f"{name}.zip", delete_after=True)
+
+
+def api_world_upload(query, zip_path, sid):
+    _manage_server(sid)
+    _require_offline(sid, "enviar um mundo")
+    manage.upload_world(sid, _first(query, "name"), zip_path)
+    return 200, {"ok": True}
+
+
+def api_backups(query, body, sid):
+    if find_server(sid)["plan"] != "free":
+        return 200, {"supported": False}
+    return 200, {"supported": True, "backups": manage.list_backups(sid), "state": _state(sid)}
+
+
+def api_backup_create(query, body, sid):
+    _manage_server(sid)
+    state = _state(sid)
+    if state in ("starting", "stopping"):
+        raise ApiError(409, "Espere o servidor terminar de iniciar ou de parar.")
+    if state == "online":
+        # Com o servidor ligado: manda salvar tudo e parar de gravar, copia, e volta a gravar.
+        rt = RUNTIMES[sid]
+        _, mark = rt.read(0)
+        rt.command("save-off")
+        rt.command("save-all flush")
+        try:
+            deadline = time.time() + 45
+            while not any("Saved the game" in ln["text"] for ln in rt.read(mark)[0]):
+                if time.time() > deadline:
+                    raise ApiError(504, "O servidor demorou para salvar o mundo. Tente de novo.")
+                time.sleep(0.5)
+            name = manage.create_backup(sid, "manual")
+        finally:
+            try:
+                rt.command("save-on")
+            except ApiError:
+                pass
+    else:
+        name = manage.create_backup(sid, "manual")
+    if not name:
+        raise ApiError(400, "Ainda não há mundo para guardar: ligue o servidor uma vez.")
+    return 200, {"name": name}
+
+
+def api_backup_restore(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "restaurar um backup")
+    return 200, manage.restore_backup(sid, str(body.get("name", "")))
+
+
+def api_backup_delete(query, body, sid):
+    _manage_server(sid)
+    manage.delete_backup(sid, str(body.get("name", "")))
+    return 200, {"ok": True}
+
+
+def api_backup_download(query, body, sid):
+    _manage_server(sid)
+    f = manage.backup_path(sid, _first(query, "name"))
+    return 200, Raw(path=f, ctype="application/zip", filename=f.name)
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
     ("GET", r"^/api/meta$", api_meta),
@@ -1131,9 +1280,32 @@ ROUTES = [
     ("GET", rf"^/api/servers/{ID}/icon$", api_icon_get),
     ("POST", rf"^/api/servers/{ID}/icon$", api_icon_set),
     ("POST", rf"^/api/servers/{ID}/icon/reset$", api_icon_reset),
+    ("GET", rf"^/api/servers/{ID}/players$", api_players),
+    ("POST", rf"^/api/servers/{ID}/players/action$", api_players_action),
+    ("GET", rf"^/api/servers/{ID}/files$", api_files_list),
+    ("GET", rf"^/api/servers/{ID}/files/read$", api_files_read),
+    ("POST", rf"^/api/servers/{ID}/files/write$", api_files_write),
+    ("POST", rf"^/api/servers/{ID}/files/upload$", api_files_upload),
+    ("POST", rf"^/api/servers/{ID}/files/mkdir$", api_files_mkdir),
+    ("POST", rf"^/api/servers/{ID}/files/delete$", api_files_delete),
+    ("POST", rf"^/api/servers/{ID}/files/rename$", api_files_rename),
+    ("GET", rf"^/api/servers/{ID}/files/download$", api_files_download),
+    ("GET", rf"^/api/servers/{ID}/worlds$", api_worlds),
+    ("POST", rf"^/api/servers/{ID}/worlds/use$", api_world_use),
+    ("POST", rf"^/api/servers/{ID}/worlds/create$", api_world_create),
+    ("POST", rf"^/api/servers/{ID}/worlds/delete$", api_world_delete),
+    ("GET", rf"^/api/servers/{ID}/worlds/download$", api_world_download),
+    ("POST", rf"^/api/servers/{ID}/worlds/upload$", api_world_upload),
+    ("GET", rf"^/api/servers/{ID}/backups$", api_backups),
+    ("POST", rf"^/api/servers/{ID}/backups/create$", api_backup_create),
+    ("POST", rf"^/api/servers/{ID}/backups/restore$", api_backup_restore),
+    ("POST", rf"^/api/servers/{ID}/backups/delete$", api_backup_delete),
+    ("GET", rf"^/api/servers/{ID}/backups/download$", api_backup_download),
 ]
-RAW_UPLOAD = {api_content_upload, api_icon_set}  # recebem o arquivo cru (octet-stream) em vez de JSON
+RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
+STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024
+MAX_STREAM = 2 * 1024 * 1024 * 1024
 
 # Só estes arquivos do site são entregues (a pasta data/ e o .git nunca saem daqui).
 STATIC_RE = re.compile(r"^(?:[a-z]+\.html|css/[\w.-]+\.css|js/[\w.-]+\.js|assets/[\w.-]+\.(?:svg|png))$")
@@ -1160,6 +1332,40 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, status, data):
         self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+    def _send_file(self, status, raw):
+        """Envia um arquivo do disco aos poucos (mundos e backups podem ter centenas de MB)."""
+        path = Path(raw.path)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", raw.ctype)
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            if raw.filename:
+                self.send_header("Content-Disposition", 'attachment; filename="%s"' % re.sub(r"[^A-Za-z0-9._-]", "_", raw.filename))
+            self.end_headers()
+            with open(path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile, 1 << 20)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            if raw.delete_after:
+                path.unlink(missing_ok=True)
+
+    def _save_stream(self, length):
+        """Grava o corpo da requisição direto em um arquivo temporário."""
+        manage.TMP_DIR.mkdir(parents=True, exist_ok=True)
+        temp = manage.TMP_DIR / f"{uuid.uuid4().hex}.upload"
+        left = length
+        with open(temp, "wb") as f:
+            while left > 0:
+                chunk = self.rfile.read(min(1 << 20, left))
+                if not chunk:
+                    break
+                f.write(chunk)
+                left -= len(chunk)
+        return temp
 
     def _handle(self, method):
         try:
@@ -1202,30 +1408,42 @@ class Handler(BaseHTTPRequestHandler):
         fn, groups = route
 
         body = {}
+        temp = None
         if method != "GET":
             origin = self.headers.get("Origin")
             if origin and origin not in ORIGINS:
                 raise ApiError(403, "Origem não permitida.")
-            raw = fn in RAW_UPLOAD
+            stream = fn in STREAM_UPLOAD
+            raw = stream or fn in RAW_UPLOAD
             expected = "application/octet-stream" if raw else "application/json"
             if self.headers.get("Content-Type", "").split(";")[0].strip() != expected:
                 raise ApiError(415, f"Envie o conteúdo como {expected}.")
             length = int(self.headers.get("Content-Length") or 0)
-            if length > (MAX_UPLOAD if raw else 65536):
+            if length > (MAX_STREAM if stream else MAX_UPLOAD if raw else 65536):
                 raise ApiError(413, "Requisição grande demais.")
-            payload = self.rfile.read(length)
-            if raw:
-                body = payload
+            if stream:
+                temp = body = self._save_stream(length)
             else:
-                try:
-                    body = json.loads(payload or b"{}")
-                except json.JSONDecodeError:
-                    raise ApiError(400, "JSON inválido.")
-                if not isinstance(body, dict):
-                    raise ApiError(400, "JSON inválido.")
-        status, data = fn(parse_qs(parsed.query), body, *groups)
+                payload = self.rfile.read(length)
+                if raw:
+                    body = payload
+                else:
+                    try:
+                        body = json.loads(payload or b"{}")
+                    except json.JSONDecodeError:
+                        raise ApiError(400, "JSON inválido.")
+                    if not isinstance(body, dict):
+                        raise ApiError(400, "JSON inválido.")
+        try:
+            status, data = fn(parse_qs(parsed.query), body, *groups)
+        finally:
+            if temp:
+                temp.unlink(missing_ok=True)
         if isinstance(data, Raw):
-            self._send(status, data.body, data.ctype, data.cache)
+            if data.path:
+                self._send_file(status, data)
+            else:
+                self._send(status, data.body, data.ctype, data.cache)
         else:
             self._json(status, data)
 
@@ -1247,6 +1465,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     DATA.mkdir(exist_ok=True)
+    manage.cleanup_tmp()
     threading.Thread(target=monitor, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"BlockHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")

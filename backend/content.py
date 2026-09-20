@@ -133,7 +133,8 @@ def save_upload(server, filename, data):
 # ---------------------------------------------------------------- Modrinth
 
 def loaders_for(server):
-    return {"fabric": ["fabric"], "paper": ["paper", "spigot", "bukkit"],
+    return {"fabric": ["fabric"], "quilt": ["quilt", "fabric"], "forge": ["forge"], "neoforge": ["neoforge"],
+            "paper": ["paper", "spigot", "bukkit"],
             "purpur": ["purpur", "paper", "spigot", "bukkit"]}.get(server.get("software", ""), [])
 
 

@@ -12,6 +12,10 @@ ALLOWED_HOSTS = {
     "api.purpurmc.org",
     "meta.fabricmc.net",
     "api.modrinth.com", "cdn.modrinth.com",
+    "api.mojang.com",  # descobre o UUID de um jogador pelo nome
+    "meta.quiltmc.org", "maven.quiltmc.org",
+    "files.minecraftforge.net", "maven.minecraftforge.net",
+    "maven.neoforged.net",
 }
 USER_AGENT = "BlockHost/0.2 (projeto pessoal)"
 
@@ -39,6 +43,11 @@ def open_url(url, timeout=30):
 def get_json(url, timeout=30):
     with open_url(url, timeout) as r:
         return json.load(r)
+
+
+def get_text(url, timeout=30, limit=4096):
+    with open_url(url, timeout) as r:
+        return r.read(limit).decode("utf-8", "replace")
 
 
 def download(url, dest, hash=None, max_bytes=300_000_000, timeout=60):
