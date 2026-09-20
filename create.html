@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Criar servidor — BlockHost</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-head"><h1>Criar servidor</h1></div>
+
+    <div class="narrow">
+      <div class="error" id="formErr" style="margin-bottom:12px"></div>
+
+      <div class="stepper">
+        <div class="step active" id="st1">1. Informações</div>
+        <div class="step" id="st2">2. Plano</div>
+        <div class="step" id="st3" hidden>3. Sua VPS</div>
+      </div>
+
+      <!-- Passo 1: informações -->
+      <section class="card" id="step1">
+        <div class="field">
+          <label for="name">Nome do servidor</label>
+          <input type="text" id="name" maxlength="30" placeholder="Meu servidor survival" autocomplete="off">
+          <div class="error" id="nameErr"></div>
+        </div>
+
+        <div class="field">
+          <label for="subtitle">Subtítulo</label>
+          <input type="text" id="subtitle" maxlength="60" placeholder="Uma frase curta sobre o servidor" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="ip">Endereço (IP)</label>
+          <div class="input-suffix">
+            <input type="text" id="ip" maxlength="24" placeholder="meu-servidor" autocomplete="off">
+            <span>.blockhost.net</span>
+          </div>
+          <div class="hint">Use letras minúsculas, números e hífen. É o nome do seu servidor no site.</div>
+          <div class="error" id="ipErr"></div>
+        </div>
+
+        <div class="field">
+          <label>Edição</label>
+          <div class="segmented">
+            <div class="seg active">Java</div>
+            <div class="seg off" title="Em breve">Bedrock (em breve)</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="version">Versão</label>
+          <select id="version"><option>Carregando…</option></select>
+          <div class="hint" id="versionHint"></div>
+        </div>
+
+        <div class="field">
+          <label style="font-weight:400">
+            <input type="checkbox" id="eula">
+            Li e aceito o <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener" style="color:var(--accent)">EULA do Minecraft</a>.
+          </label>
+          <div class="error" id="eulaErr"></div>
+        </div>
+
+        <div class="actions">
+          <a class="btn" href="servers.html">Cancelar</a>
+          <button class="btn btn-primary" type="button" id="next1">Próximo</button>
+        </div>
+      </section>
+
+      <!-- Passo 2: plano -->
+      <section class="card" id="step2" hidden>
+        <p style="margin-top:0;color:var(--muted)">Onde o seu servidor vai ficar armazenado?</p>
+        <div class="plans">
+          <label class="plan">
+            <input type="radio" name="plan" value="free" checked>
+            <h3>Grátis</h3>
+            <div class="price">R$ 0</div>
+            <ul>
+              <li>Acesso a tudo</li>
+              <li>Roda neste PC</li>
+              <li>Fecha após 5h de inatividade</li>
+            </ul>
+          </label>
+          <label class="plan">
+            <input type="radio" name="plan" value="vps">
+            <h3>VPS</h3>
+            <div class="price">Sua própria máquina</div>
+            <ul>
+              <li>Conecte Oracle, Hetzner, etc.</li>
+              <li>Sem fechar por inatividade</li>
+              <li>Em breve: por enquanto só salva os dados</li>
+            </ul>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn" type="button" id="back2">Voltar</button>
+          <button class="btn btn-primary" type="button" id="next2">Criar servidor</button>
+        </div>
+      </section>
+
+      <!-- Passo 3: VPS -->
+      <section class="card" id="step3" hidden>
+        <div class="notice">
+          Por segurança, não pedimos senha nem chave privada aqui. Quando a conexão com a VPS existir, vamos gerar
+          uma chave SSH para você autorizar na sua VPS.
+        </div>
+
+        <div class="field">
+          <label for="provider">Provedor</label>
+          <select id="provider">
+            <option>Oracle Cloud</option>
+            <option>Hetzner</option>
+            <option>DigitalOcean</option>
+            <option>AWS (Lightsail / EC2)</option>
+            <option>Google Cloud</option>
+            <option>Outro</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="host">IP ou domínio da VPS</label>
+          <input type="text" id="host" placeholder="203.0.113.10" autocomplete="off">
+          <div class="error" id="hostErr"></div>
+        </div>
+
+        <div class="field">
+          <label for="port">Porta SSH</label>
+          <input type="number" id="port" value="22" min="1" max="65535">
+          <div class="error" id="portErr"></div>
+        </div>
+
+        <div class="field">
+          <label for="user">Usuário SSH</label>
+          <input type="text" id="user" placeholder="ubuntu" autocomplete="off">
+          <div class="error" id="userErr"></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="button" id="back3">Voltar</button>
+          <button class="btn btn-primary" type="button" id="finish">Criar servidor</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let ipEdited = false;
+    let ipSeq = 0;
+
+    const currentPlan = () => document.querySelector('input[name="plan"]:checked').value;
+
+    // ---- Versões (o backend diz quais este PC consegue rodar) ----
+    async function init() {
+      try {
+        const meta = await api("GET", "/meta");
+        $("version").innerHTML = meta.versions.map((v) =>
+          `<option value="${v.version}" ${v.available ? "" : "disabled"}>${v.version}${v.available ? "" : ` (precisa de Java ${v.java})`}</option>`
+        ).join("");
+        const first = meta.versions.find((v) => v.available);
+        if (first) $("version").value = first.version;
+        if (meta.versions.some((v) => !v.available)) {
+          $("versionHint").textContent = "As versões desativadas precisam de um Java que não está instalado neste PC.";
+        }
+      } catch (e) {
+        $("formErr").textContent = e.message;
+        $("next1").disabled = true;
+      }
+    }
+
+    function showStep(n) {
+      $("formErr").textContent = "";
+      [1, 2, 3].forEach((i) => {
+        $("step" + i).hidden = i !== n;
+        $("st" + i).classList.toggle("active", i === n);
+        $("st" + i).classList.toggle("done", i < n);
+      });
+      $("st3").hidden = currentPlan() !== "vps";
+      $("next2").textContent = currentPlan() === "vps" ? "Próximo" : "Criar servidor";
+    }
+
+    // ---- Passo 1 ----
+    $("name").addEventListener("input", () => {
+      if (!ipEdited) $("ip").value = slugify($("name").value);
+      checkIp();
+    });
+    $("ip").addEventListener("input", () => {
+      ipEdited = true;
+      $("ip").value = $("ip").value.toLowerCase();
+      checkIp();
+    });
+
+    // Confere o formato aqui e a disponibilidade no backend.
+    async function checkIp() {
+      const ip = $("ip").value;
+      const seq = ++ipSeq;
+      if (!ip) { $("ipErr").textContent = ""; return false; }
+      if (!/^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/.test(ip)) {
+        $("ipErr").textContent = "Use de 3 a 24 caracteres: letras minúsculas, números e hífen (sem começar ou terminar com hífen).";
+        return false;
+      }
+      try {
+        const r = await api("GET", "/ip-check?ip=" + encodeURIComponent(ip));
+        if (seq === ipSeq) $("ipErr").textContent = r.available ? "" : "Este endereço já está em uso. Escolha outro.";
+        return r.available;
+      } catch (e) {
+        if (seq === ipSeq) $("ipErr").textContent = e.message;
+        return false;
+      }
+    }
+
+    async function validateStep1() {
+      const nameOk = $("name").value.trim().length >= 3;
+      $("nameErr").textContent = nameOk ? "" : "Dê um nome com pelo menos 3 caracteres.";
+      const ipOk = await checkIp();
+      if (!$("ip").value) $("ipErr").textContent = "Escolha um endereço para o servidor.";
+      const eulaOk = $("eula").checked;
+      $("eulaErr").textContent = eulaOk ? "" : "Para criar o servidor é preciso aceitar o EULA.";
+      return nameOk && ipOk && eulaOk && !!$("version").value;
+    }
+
+    $("next1").addEventListener("click", async () => { if (await validateStep1()) showStep(2); });
+
+    // ---- Passo 2 ----
+    $("back2").addEventListener("click", () => showStep(1));
+    document.querySelectorAll('input[name="plan"]').forEach((r) =>
+      r.addEventListener("change", () => showStep(2))
+    );
+    $("next2").addEventListener("click", () => {
+      if (currentPlan() === "vps") showStep(3);
+      else createServer();
+    });
+
+    // ---- Passo 3 ----
+    $("back3").addEventListener("click", () => showStep(2));
+
+    function validateStep3() {
+      const host = $("host").value.trim();
+      const port = Number($("port").value);
+      const user = $("user").value.trim();
+      const hostOk = /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(host);
+      const portOk = Number.isInteger(port) && port >= 1 && port <= 65535;
+      const userOk = /^[a-z_][a-z0-9_-]*$/i.test(user);
+      $("hostErr").textContent = hostOk ? "" : "Informe o IP ou domínio da sua VPS.";
+      $("portErr").textContent = portOk ? "" : "Porta inválida (1 a 65535).";
+      $("userErr").textContent = userOk ? "" : "Informe o usuário SSH (ex.: ubuntu).";
+      return hostOk && portOk && userOk;
+    }
+
+    $("finish").addEventListener("click", () => { if (validateStep3()) createServer(); });
+
+    // ---- Criar ----
+    async function createServer() {
+      if (!(await validateStep1())) { showStep(1); return; }
+      const body = {
+        name: $("name").value.trim(),
+        subtitle: $("subtitle").value.trim(),
+        ip: $("ip").value,
+        version: $("version").value,
+        plan: currentPlan(),
+        eula: $("eula").checked,
+      };
+      if (body.plan === "vps") {
+        body.vps = {
+          provider: $("provider").value,
+          host: $("host").value.trim(),
+          port: Number($("port").value),
+          user: $("user").value.trim(),
+        };
+      }
+      $("next2").disabled = $("finish").disabled = true;
+      try {
+        const server = await api("POST", "/servers", body);
+        location.href = "panel.html?id=" + encodeURIComponent(server.id);
+      } catch (e) {
+        $("formErr").textContent = e.message;
+        $("next2").disabled = $("finish").disabled = false;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Mundos, jars e lista de servidores ficam só no seu PC
+data/
+__pycache__/
+*.pyc

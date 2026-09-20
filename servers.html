@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Servidores — BlockHost</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-head">
+      <h1>Seus servidores</h1>
+      <a class="btn btn-primary" href="create.html">+ Criar servidor</a>
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script>
+    const list = document.getElementById("list");
+
+    function render(servers) {
+      if (servers.length === 0) {
+        list.innerHTML = `
+          <div class="empty">
+            <h2>Nenhum servidor ainda</h2>
+            <p>Crie o primeiro e comece a jogar.</p>
+            <a class="btn btn-primary" href="create.html">Criar servidor</a>
+          </div>`;
+        return;
+      }
+      list.innerHTML = `<div class="server-grid">` + servers.map((s) => `
+        <a class="server-card" href="panel.html?id=${encodeURIComponent(s.id)}">
+          <h3>${esc(s.name)}</h3>
+          <p class="sub">${esc(s.subtitle) || "&nbsp;"}</p>
+          <div class="addr">${esc(s.publicName)}</div>
+          <div class="card-foot">
+            <span class="status ${esc(s.runtime.state)}">${STATUS_LABEL[s.runtime.state]}</span>
+            <span><span class="badge">Java ${esc(s.version)}</span> <span class="badge">${s.plan === "vps" ? "VPS" : "Grátis"}</span></span>
+          </div>
+        </a>`).join("") + `</div>`;
+    }
+
+    async function load() {
+      try {
+        render(await api("GET", "/servers"));
+      } catch (e) {
+        list.innerHTML = `<div class="empty"><h2>Backend fora do ar</h2><p>${esc(e.message)}</p></div>`;
+      }
+    }
+
+    load();
+    setInterval(load, 3000);
+  </script>
+</body>
+</html>

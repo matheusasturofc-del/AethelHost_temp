@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel — BlockHost</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container panel">
+    <aside class="side">
+      <a class="back" href="servers.html">← Servidores</a>
+      <button class="active" data-tab="server">Servidor</button>
+      <button data-tab="console">Console</button>
+      <button data-tab="options">Opções</button>
+      <button disabled title="Em breve">Jogadores</button>
+      <button disabled title="Em breve">Software</button>
+      <button disabled title="Em breve">Arquivos</button>
+      <button disabled title="Em breve">Mundos</button>
+      <button disabled title="Em breve">Backups</button>
+    </aside>
+
+    <section>
+      <div class="panel-head">
+        <h1 id="title"></h1>
+        <p id="subtitle"></p>
+      </div>
+      <div class="demo-banner" id="banner"></div>
+
+      <!-- Aba: Servidor -->
+      <div id="tab-server">
+        <div class="card status-card">
+          <div class="status offline" id="status">Offline</div>
+          <div class="addr"><span id="addr"></span> <button class="btn" id="copy" style="padding:2px 10px;font-size:13px">Copiar</button></div>
+          <button class="btn btn-primary btn-lg" id="power">Iniciar</button>
+          <div class="error" id="msg" style="margin-top:14px"></div>
+        </div>
+        <div class="info-grid">
+          <div class="info"><small>Jogadores</small><strong id="players">0 / 20</strong><small id="playerNames"></small></div>
+          <div class="info"><small>Software</small><strong id="software"></strong></div>
+          <div class="info"><small>Plano</small><strong id="plan"></strong></div>
+          <div class="info"><small>Fecha por inatividade</small><strong id="autoclose">—</strong></div>
+        </div>
+      </div>
+
+      <!-- Aba: Console -->
+      <div id="tab-console" hidden>
+        <div class="console" id="console"></div>
+        <form class="cmd-row" id="cmdForm">
+          <input type="text" id="cmd" placeholder="Digite um comando (ex.: say olá)" autocomplete="off" maxlength="200">
+          <button class="btn btn-primary" type="submit" id="cmdSend">Enviar</button>
+        </form>
+      </div>
+
+      <!-- Aba: Opções -->
+      <div id="tab-options" hidden>
+        <div class="card">
+          <div class="field">
+            <label for="optName">Nome do servidor</label>
+            <input type="text" id="optName" maxlength="30">
+          </div>
+          <div class="field">
+            <label for="optSub">Subtítulo</label>
+            <input type="text" id="optSub" maxlength="60">
+          </div>
+          <div class="error" id="optErr" style="margin-bottom:12px"></div>
+          <button class="btn btn-primary" id="save">Salvar</button>
+
+          <div class="danger-zone">
+            <p style="color:var(--muted);margin-top:0">Excluir remove o servidor, o mundo e todos os arquivos dele deste PC. Não dá para desfazer.</p>
+            <button class="btn btn-danger" id="delete">Excluir servidor</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const id = new URLSearchParams(location.search).get("id");
+    const base = "/servers/" + encodeURIComponent(id || "x");
+
+    let server = null;
+    let nextLine = 0;
+    let polling = false;
+    let optionsFilled = false;
+
+    // ---------- Console ----------
+    function appendLines(lines) {
+      if (!lines.length) return;
+      const box = $("console");
+      const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+      for (const l of lines) {
+        const row = document.createElement("div");
+        if (l.kind) row.className = l.kind;
+        const t = document.createElement("span");
+        t.className = "t";
+        t.textContent = `[${l.t}] `;
+        row.append(t, document.createTextNode(l.text));
+        box.append(row);
+        if (l.kind === "error") $("msg").textContent = l.text;
+      }
+      while (box.children.length > 1000) box.firstChild.remove();
+      if (stick) box.scrollTop = box.scrollHeight;
+    }
+
+    // ---------- Desenho da tela ----------
+    function fmtTime(sec) {
+      const h = String(Math.floor(sec / 3600)).padStart(2, "0");
+      const m = String(Math.floor(sec / 60) % 60).padStart(2, "0");
+      const s = String(sec % 60).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+
+    function render() {
+      const rt = server.runtime;
+      document.title = `${server.name} — BlockHost`;
+      $("title").textContent = server.name;
+      $("subtitle").textContent = server.subtitle;
+      $("addr").textContent = server.address;
+      $("software").textContent = `Java ${server.version}`;
+      $("plan").textContent = server.plan === "vps" ? `VPS (${server.vps.provider})` : "Grátis";
+
+      $("banner").textContent = server.plan === "vps"
+        ? "Plano VPS: a conexão com a VPS ainda não foi implementada, então este servidor não pode ser ligado por enquanto."
+        : `Rodando neste PC. Para jogar daqui, use ${server.address}. Para amigos entrarem de fora, será preciso liberar a porta ${server.port} no roteador.`;
+
+      const st = $("status");
+      st.textContent = STATUS_LABEL[rt.state];
+      st.className = "status " + rt.state;
+
+      const power = $("power");
+      power.disabled = rt.state === "stopping";
+      power.textContent = rt.state === "offline" ? "Iniciar" : rt.state === "stopping" ? "Parando…" : "Parar";
+      power.className = "btn btn-lg " + (rt.state === "offline" ? "btn-primary" : "btn-danger");
+
+      $("players").textContent = `${rt.players.length} / ${server.maxPlayers}`;
+      $("playerNames").textContent = rt.players.join(", ");
+
+      if (server.plan === "vps") $("autoclose").textContent = "Desativado";
+      else if (rt.state !== "online") $("autoclose").textContent = "—";
+      else $("autoclose").textContent = rt.idleLeft === null ? "Pausado (há jogadores)" : fmtTime(rt.idleLeft);
+
+      $("cmd").disabled = $("cmdSend").disabled = rt.state !== "online";
+
+      if (!optionsFilled) {
+        $("optName").value = server.name;
+        $("optSub").value = server.subtitle;
+        optionsFilled = true;
+      }
+    }
+
+    // ---------- Atualização a cada segundo ----------
+    async function poll() {
+      if (polling) return;
+      polling = true;
+      try {
+        server = await api("GET", base);
+        const c = await api("GET", `${base}/console?since=${nextLine}`);
+        nextLine = c.next;
+        appendLines(c.lines);
+        render();
+      } catch (e) {
+        if (e.status === 404) location.replace("servers.html");
+        else if (!server) $("title").textContent = e.message;
+        else $("msg").textContent = e.message;
+      } finally {
+        polling = false;
+      }
+    }
+
+    // ---------- Ações ----------
+    $("power").addEventListener("click", async () => {
+      $("msg").textContent = "";
+      try {
+        await api("POST", `${base}/${server.runtime.state === "offline" ? "start" : "stop"}`);
+      } catch (e) {
+        $("msg").textContent = e.message;
+      }
+      poll();
+    });
+
+    $("cmdForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const command = $("cmd").value.trim();
+      if (!command) return;
+      $("cmd").value = "";
+      try { await api("POST", `${base}/command`, { command }); } catch (e) { $("msg").textContent = e.message; }
+      poll();
+    });
+
+    $("copy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(server.address);
+        $("copy").textContent = "Copiado!";
+      } catch {
+        $("copy").textContent = "Não foi possível copiar";
+      }
+      setTimeout(() => ($("copy").textContent = "Copiar"), 1500);
+    });
+
+    document.querySelectorAll(".side button[data-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
+        ["server", "console", "options"].forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
+        const box = $("console");
+        box.scrollTop = box.scrollHeight;
+      });
+    });
+
+    $("save").addEventListener("click", async () => {
+      $("optErr").textContent = "";
+      try {
+        await api("PATCH", base, { name: $("optName").value, subtitle: $("optSub").value });
+        $("save").textContent = "Salvo!";
+        setTimeout(() => ($("save").textContent = "Salvar"), 1500);
+        poll();
+      } catch (e) {
+        $("optErr").textContent = e.message;
+      }
+    });
+
+    $("delete").addEventListener("click", async () => {
+      if (!confirm(`Excluir "${server.name}"? O mundo e os arquivos do servidor serão apagados deste PC.`)) return;
+      try {
+        await api("DELETE", base);
+        location.href = "servers.html";
+      } catch (e) {
+        $("optErr").textContent = e.message;
+      }
+    });
+
+    poll();
+    setInterval(poll, 1000);
+  </script>
+</body>
+</html>
