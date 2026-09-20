@@ -184,6 +184,20 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 .console .error { color: var(--danger); }
 .console .cmd { color: var(--accent); }
 .cmd-row { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Cartão de conexão com a VPS */
+.steps { margin: 0 0 16px; padding-left: 20px; color: var(--muted); font-size: 14px; }
+.steps li { margin-bottom: 6px; }
+.steps b, code { color: var(--text); }
+code { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; font-size: 13px; }
+.keybox {
+  width: 100%; resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: 12px/1.5 ui-monospace, Consolas, monospace; word-break: break-all;
+}
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.vps-result { margin-top: 12px; font-size: 14px; color: var(--muted); }
+.vps-result.ok { color: var(--ok); }
+.vps-result.bad { color: var(--danger); }
 .info small.names, .info #playerNames { margin-top: 2px; word-break: break-word; }
 
 .danger-zone { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }

@@ -12,6 +12,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -141,12 +142,8 @@ def fetch(url, timeout=30):
     return urllib.request.urlopen(req, timeout=timeout)
 
 
-def ensure_jar(version, log):
-    """Devolve o server.jar oficial da versão, baixando da Mojang se ainda não tiver."""
-    jar = JARS_DIR / f"{version}.jar"
-    if jar.exists():
-        return jar
-    log(f"Buscando a versão {version} na Mojang…")
+def jar_info(version):
+    """Endereço, tamanho e SHA1 do server.jar oficial da versão, direto da Mojang."""
     with fetch(MANIFEST_URL) as r:
         manifest = json.load(r)
     entry = next((v for v in manifest["versions"] if v["id"] == version), None)
@@ -154,6 +151,18 @@ def ensure_jar(version, log):
         raise RuntimeError(f"Versão {version} não encontrada na Mojang.")
     with fetch(entry["url"]) as r:
         info = json.load(r)["downloads"]["server"]
+    if urlparse(info["url"]).hostname not in MOJANG_HOSTS or not re.fullmatch(r"[0-9a-f]{40}", info["sha1"]):
+        raise RuntimeError("A Mojang devolveu dados inesperados para o download.")
+    return info
+
+
+def ensure_jar(version, log):
+    """Devolve o server.jar oficial da versão, baixando da Mojang se ainda não tiver."""
+    jar = JARS_DIR / f"{version}.jar"
+    if jar.exists():
+        return jar
+    log(f"Buscando a versão {version} na Mojang…")
+    info = jar_info(version)
     log(f"Baixando o server.jar ({info['size'] // 1_000_000} MB). Só acontece na primeira vez.")
     JARS_DIR.mkdir(parents=True, exist_ok=True)
     tmp = jar.with_suffix(".part")
@@ -303,21 +312,24 @@ class Runtime:
             return
         self._watch()
 
+    def _parse(self, line):
+        """Guarda a linha no console e atualiza estado e jogadores a partir dela."""
+        self.log(line)
+        with self.lock:
+            if self.state == "starting" and re.search(r"\bDone \(", line):
+                self.state = "online"
+                self.idle_since = time.time()
+            if m := JOIN_RE.search(line):
+                self.players.add(m.group(1))
+                self.idle_since = None
+            elif m := LEAVE_RE.search(line):
+                self.players.discard(m.group(1))
+                if not self.players:
+                    self.idle_since = time.time()
+
     def _watch(self):
         for raw in self.proc.stdout:
-            line = raw.rstrip()
-            self.log(line)
-            with self.lock:
-                if self.state == "starting" and re.search(r"\bDone \(", line):
-                    self.state = "online"
-                    self.idle_since = time.time()
-                if m := JOIN_RE.search(line):
-                    self.players.add(m.group(1))
-                    self.idle_since = None
-                elif m := LEAVE_RE.search(line):
-                    self.players.discard(m.group(1))
-                    if not self.players:
-                        self.idle_since = time.time()
+            self._parse(raw.rstrip())
         code = self.proc.wait()
         self.log(f"Servidor encerrado (código {code}).")
         with self.lock:
@@ -359,13 +371,351 @@ class Runtime:
             self.proc.stdin.flush()
 
 
+# ---------------------------------------------------------------- VPS (SSH)
+
+KEY_FILE = DATA / "keys" / "blockhost_ed25519"
+KNOWN_HOSTS = DATA / "keys" / "known_hosts"
+
+
+def ensure_key():
+    """Chave SSH do BlockHost. A privada nunca sai deste PC: você só copia a pública."""
+    pub = Path(str(KEY_FILE) + ".pub")
+    if not KEY_FILE.exists() or not pub.exists():
+        KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        KEY_FILE.unlink(missing_ok=True)
+        pub.unlink(missing_ok=True)
+        try:
+            r = subprocess.run(
+                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "blockhost", "-f", str(KEY_FILE)],
+                capture_output=True, timeout=30, creationflags=NO_WINDOW,
+            )
+        except FileNotFoundError:
+            raise ApiError(500, "O ssh-keygen não foi encontrado neste PC.")
+        if r.returncode != 0:
+            raise ApiError(500, "Não consegui gerar a chave SSH: " + r.stderr.decode("utf-8", "replace").strip()[:200])
+        if os.name == "nt":  # o ssh do Windows recusa chave que outros usuários possam ler
+            subprocess.run(
+                ["icacls", str(KEY_FILE), "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '')}:F"],
+                capture_output=True, creationflags=NO_WINDOW,
+            )
+    return pub.read_text(encoding="utf-8").strip()
+
+
+def ssh_error(text):
+    t, low = text.strip(), text.lower()
+    if "permission denied" in low:
+        return ("A VPS recusou a chave SSH. Adicione a chave pública do BlockHost ao arquivo "
+                "~/.ssh/authorized_keys do usuário informado.")
+    if "host key verification failed" in low or "identification has changed" in low:
+        return "A identidade da VPS mudou (VPS reinstalada?). Se foi você, apague a linha dela em data/keys/known_hosts."
+    if "timed out" in low or "no route to host" in low:
+        return "Não consegui alcançar a VPS. Confira o IP, a porta SSH e o firewall do provedor."
+    if "connection refused" in low:
+        return "A VPS recusou a conexão. O SSH está rodando nessa porta?"
+    if "could not resolve" in low:
+        return "Não encontrei esse endereço. Confira o IP ou domínio da VPS."
+    return "Falha na conexão SSH: " + (t.splitlines()[-1] if t else "sem detalhes")
+
+
+def ssh_cmd(vps, remote):
+    return [
+        "ssh", "-i", str(KEY_FILE), "-p", str(vps["port"]),
+        "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+        "-o", "StrictHostKeyChecking=accept-new",  # confia na 1ª conexão e avisa se a VPS mudar depois
+        "-o", f"UserKnownHostsFile={KNOWN_HOSTS.as_posix()}",
+        "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
+        f"{vps['user']}@{vps['host']}", remote,
+    ]
+
+
+def ssh_script(vps, script, timeout=60):
+    """Roda um script bash na VPS. Devolve (código, saída); RuntimeError se não conseguir conectar."""
+    ensure_key()
+    try:
+        r = subprocess.run(
+            ssh_cmd(vps, "bash -s"), input=script.encode("utf-8"), capture_output=True,
+            timeout=timeout, creationflags=NO_WINDOW,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("A VPS demorou demais para responder.")
+    except FileNotFoundError:
+        raise RuntimeError("O cliente SSH (ssh.exe) não foi encontrado neste PC.")
+    if r.returncode == 255:  # 255 é o código do próprio ssh quando não conecta
+        raise RuntimeError(ssh_error(r.stderr.decode("utf-8", "replace")))
+    return r.returncode, r.stdout.decode("utf-8", "replace")
+
+
+def ssh_stream(vps, script, on_line, limit=1200):
+    """Como ssh_script, mas entrega cada linha assim que chega (para instalações demoradas)."""
+    ensure_key()
+    try:
+        p = subprocess.Popen(
+            ssh_cmd(vps, "bash -s"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, creationflags=NO_WINDOW,
+        )
+    except FileNotFoundError:
+        raise RuntimeError("O cliente SSH (ssh.exe) não foi encontrado neste PC.")
+    watchdog = threading.Timer(limit, p.kill)  # não deixa uma instalação travada para sempre
+    watchdog.start()
+    try:
+        p.stdin.write(script.encode("utf-8"))
+        p.stdin.close()
+        last = []
+        for raw in p.stdout:
+            line = raw.decode("utf-8", "replace").rstrip()
+            last = (last + [line])[-5:]
+            on_line(line)
+        code = p.wait()
+    finally:
+        watchdog.cancel()
+    if code == 255:
+        raise RuntimeError(ssh_error("\n".join(last)))
+    return code
+
+
+JAVA_MAJOR_SH = r'''java_major() {
+  command -v java >/dev/null 2>&1 || { echo 0; return; }
+  v=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+)(\.([0-9]+))?.*/\1 \3/')
+  set -- $v
+  if [ "$1" = 1 ]; then echo "${2:-0}"; else echo "${1:-0}"; fi
+}
+'''
+
+CHECK_SCRIPT = JAVA_MAJOR_SH + r'''
+. /etc/os-release 2>/dev/null
+echo "OS=${PRETTY_NAME:-desconhecido}"
+echo "ARCH=$(uname -m)"
+echo "MEM=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)"
+echo "JAVA=$(java_major)"
+if [ "$(id -u)" = 0 ] || sudo -n true 2>/dev/null; then echo "SUDO=yes"; else echo "SUDO=no"; fi
+if command -v tmux >/dev/null 2>&1; then echo "TMUX=yes"; else echo "TMUX=no"; fi
+'''
+
+SETUP_BODY = r'''
+say() { echo "[VPS] $*"; }
+DIR="$HOME/blockhost/$ID"
+SESSION="bh-$ID"
+if [ "$(id -u)" = 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+
+if ! command -v tmux >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || [ "$(java_major)" -lt "$NEED" ]; then
+  if [ -n "$SUDO" ] && ! $SUDO true 2>/dev/null; then
+    echo "ERRO: faltam programas na VPS (Java $NEED, tmux, curl) e o usuário não tem sudo sem senha para instalá-los."
+    exit 1
+  fi
+  say "Instalando Java $NEED, tmux e curl (pode levar alguns minutos)..."
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    $SUDO apt-get update -q
+    $SUDO apt-get install -y -q tmux curl "openjdk-$NEED-jre-headless"
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y -q tmux curl "java-$NEED-openjdk-headless"
+  else
+    echo "ERRO: esta VPS não usa apt nem dnf. Instale Java $NEED, tmux e curl manualmente."
+    exit 1
+  fi
+fi
+if [ "$(java_major)" -lt "$NEED" ]; then
+  echo "ERRO: o Java $NEED não ficou disponível nesta VPS."
+  exit 1
+fi
+
+mkdir -p "$DIR/logs"
+cd "$DIR"
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "BH_ALREADY_RUNNING"
+  exit 0
+fi
+
+if [ ! -f server.jar ]; then
+  say "Baixando o server.jar da Mojang..."
+  curl -fsSL --retry 3 -o server.jar.part "$JAR_URL"
+  if ! echo "$JAR_SHA1  server.jar.part" | sha1sum -c - >/dev/null 2>&1; then
+    rm -f server.jar.part
+    echo "ERRO: o server.jar baixado está corrompido (SHA1 não confere)."
+    exit 1
+  fi
+  mv server.jar.part server.jar
+fi
+
+echo "eula=true" > eula.txt
+setprop() {
+  f=server.properties; touch "$f"
+  if grep -q "^$1=" "$f"; then
+    K="$1" V="$2" awk 'BEGIN{FS="="} $1==ENVIRON["K"]{print ENVIRON["K"] "=" ENVIRON["V"]; next} {print}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  else
+    printf '%s=%s\n' "$1" "$2" >> "$f"
+  fi
+}
+setprop server-port "$PORT"
+setprop motd "$MOTD"
+setprop max-players "$MAXP"
+
+open_port() {
+  if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active"; then
+    $SUDO ufw allow "$PORT/tcp" >/dev/null 2>&1 && say "Firewall (ufw): porta $PORT liberada." || say "Não consegui liberar a porta no ufw."
+  fi
+  if command -v iptables >/dev/null 2>&1 && $SUDO iptables -S INPUT 2>/dev/null | grep -q REJECT; then
+    if ! $SUDO iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+      $SUDO iptables -I INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null \
+        && say "Firewall (iptables): porta $PORT liberada até a VPS reiniciar." \
+        || say "Não consegui liberar a porta no iptables."
+    fi
+  fi
+  say "Lembre: o painel do provedor (ex.: Oracle Cloud) também precisa liberar a porta $PORT/TCP."
+}
+open_port || true
+
+MEM=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)
+XMX=$((MEM * 6 / 10))
+if [ "$XMX" -gt 1024 ]; then XMX=1024; fi
+rm -f logs/latest.log
+say "Iniciando o servidor (Java $(java_major), ${XMX} MB)..."
+tmux new-session -d -s "$SESSION" -c "$DIR" "exec java -Xms128M -Xmx${XMX}M -jar server.jar nogui"
+echo "BH_STARTED"
+'''
+
+
+def remote_setup_script(server, need, jar):
+    q = shlex.quote
+    motd = prop_escape(server["subtitle"] or server["name"])
+    head = (
+        "set -e\n"
+        f"ID={q(server['id'])}\nNEED={need}\nPORT={server['port']}\nMAXP={MAX_PLAYERS}\n"
+        f"JAR_URL={q(jar['url'])}\nJAR_SHA1={q(jar['sha1'])}\nMOTD={q(motd)}\n"
+    )
+    return head + JAVA_MAJOR_SH + SETUP_BODY
+
+
+class RemoteRuntime(Runtime):
+    """Servidor que roda numa VPS: SSH + tmux para controlar, `tail -F` do log para o console."""
+
+    def __init__(self, sid):
+        super().__init__(sid)
+        self.vps = None
+        self.session_up = False  # a sessão tmux já foi criada na VPS
+        self.gone = False  # a sessão tmux acabou
+        self._adopted = False
+
+    def _setup_line(self, line):
+        if line == "BH_ALREADY_RUNNING":
+            self._adopted = True
+        elif line != "BH_STARTED":
+            self.log(line)
+
+    def _run(self, server):
+        self.vps = server["vps"]
+        self.session_up = self.gone = self._adopted = False
+        try:
+            need = required_java(server["version"])
+            self.log(f"Conectando à VPS {self.vps['host']}…")
+            jar = jar_info(server["version"])
+            code = ssh_stream(self.vps, remote_setup_script(server, need, jar), self._setup_line)
+            if code != 0:
+                raise RuntimeError("A preparação da VPS falhou. Veja as mensagens acima.")
+        except Exception as e:
+            self.log(f"Erro: {e}", "error")
+            with self.lock:
+                self.state = "offline"
+            return
+        if self._adopted:
+            self.log("O servidor já estava rodando na VPS. Reconectado ao console.")
+        self.session_up = True
+        self._tail("500" if self._adopted else "+1")
+
+    def _tail(self, start_at):
+        threading.Thread(target=self._poll_session, daemon=True).start()
+        while not self.gone:
+            cmd = f'tail -n {start_at} -F "$HOME/blockhost/{self.sid}/logs/latest.log" 2>&1'
+            self.proc = subprocess.Popen(
+                ssh_cmd(self.vps, cmd), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, creationflags=NO_WINDOW,
+            )
+            for raw in self.proc.stdout:
+                line = raw.decode("utf-8", "replace").rstrip()
+                if not line.startswith("tail: "):  # avisos do tail enquanto o log ainda não existe
+                    self._parse(line)
+            self.proc.wait()
+            if self.gone:
+                break
+            self.log("Conexão com a VPS interrompida. Tentando reconectar…", "warn")
+            start_at = "0"
+            time.sleep(5)
+        self.log("Servidor encerrado.")
+        with self.lock:
+            self.state = "offline"
+            self.players.clear()
+            self.idle_since = None
+            self.proc = None
+            self.session_up = False
+
+    def _poll_session(self):
+        script = f'tmux has-session -t "bh-{self.sid}" 2>/dev/null && echo yes || echo no'
+        while not self.gone:
+            time.sleep(5)
+            try:
+                _, out = ssh_script(self.vps, script, 25)
+            except RuntimeError:
+                continue  # sem rede agora, tenta de novo
+            if "yes" not in out:
+                time.sleep(1)  # deixa chegarem as últimas linhas do log
+                self.gone = True
+                if self.proc:
+                    self.proc.terminate()
+                return
+
+    def stop(self):
+        with self.lock:
+            if self.state not in ("starting", "online") or not self.session_up:
+                raise ApiError(409, "Ainda não dá para parar: espere terminar de preparar a VPS.")
+            self.state = "stopping"
+        self.log("Parando o servidor…")
+        threading.Thread(target=self._stop_remote, daemon=True).start()
+
+    def _stop_remote(self):
+        sid = self.sid
+        try:
+            ssh_script(self.vps, f'tmux send-keys -t "bh-{sid}" -l stop; tmux send-keys -t "bh-{sid}" Enter', 30)
+            deadline = time.time() + 90
+            while not self.gone and time.time() < deadline:
+                time.sleep(1)
+            if not self.gone:
+                self.log("O servidor demorou para parar; forçando o encerramento.", "warn")
+                ssh_script(self.vps, f'tmux kill-session -t "bh-{sid}"', 30)
+        except RuntimeError as e:
+            self.log(f"Erro ao parar: {e}", "error")
+            with self.lock:
+                if self.state == "stopping":
+                    self.state = "online"  # dá para tentar de novo
+
+    def command(self, text):
+        text = text.replace("\r", " ").replace("\n", " ").strip()[:200]
+        with self.lock:
+            if not text:
+                raise ApiError(400, "Comando vazio.")
+            if self.state != "online" or not self.session_up:
+                raise ApiError(409, "O servidor precisa estar online para receber comandos.")
+        self.log(f"> {text}", "cmd")
+        sid = self.sid
+        try:
+            ssh_script(
+                self.vps,
+                f'tmux send-keys -t "bh-{sid}" -l -- {shlex.quote(text)}; tmux send-keys -t "bh-{sid}" Enter', 20,
+            )
+        except RuntimeError as e:
+            raise ApiError(502, str(e))
+
+
 RUNTIMES = {}
 RUNTIMES_LOCK = threading.Lock()
 
 
-def runtime(sid):
+def runtime(server):
     with RUNTIMES_LOCK:
-        return RUNTIMES.setdefault(sid, Runtime(sid))
+        rt = RUNTIMES.get(server["id"])
+        if rt is None:
+            rt = (RemoteRuntime if server["plan"] == "vps" else Runtime)(server["id"])
+            RUNTIMES[server["id"]] = rt
+        return rt
 
 
 def monitor():
@@ -383,13 +733,15 @@ def monitor():
 
 
 def shutdown_all():
-    for rt in list(RUNTIMES.values()):
+    """Desliga os servidores deste PC. Os da VPS continuam rodando lá, no tmux."""
+    local = [rt for rt in RUNTIMES.values() if not isinstance(rt, RemoteRuntime)]
+    for rt in local:
         try:
             rt.stop()
         except ApiError:
             pass
     deadline = time.time() + 60
-    while time.time() < deadline and any(rt.state != "offline" for rt in RUNTIMES.values()):
+    while time.time() < deadline and any(rt.state != "offline" for rt in local):
         time.sleep(0.5)
 
 
@@ -400,7 +752,7 @@ def view(server):
     return {
         **server,
         "publicName": f"{server['ip']}.{DOMAIN}",
-        "address": f"localhost:{server['port']}",
+        "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
         "maxPlayers": MAX_PLAYERS,
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
     }
@@ -464,9 +816,13 @@ def api_create(query, body):
         servers = db_load()
         if any(s["ip"] == ip for s in servers):
             raise ApiError(409, "Este endereço já está em uso. Escolha outro.")
-        used = {s["port"] for s in servers}
+        # Neste PC a porta também precisa estar livre; na VPS basta não repetir a de outro servidor da mesma VPS.
+        if plan == "vps":
+            used = {s["port"] for s in servers if s["plan"] == "vps" and s["vps"]["host"] == vps["host"]}
+        else:
+            used = {s["port"] for s in servers if s["plan"] == "free"}
         port = FIRST_MC_PORT
-        while port in used or not port_free(port):
+        while port in used or (plan == "free" and not port_free(port)):
             port += 1
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
@@ -515,35 +871,50 @@ def api_delete(query, body, sid):
 
 def api_start(query, body, sid):
     server = find_server(sid)
-    if server["plan"] == "vps":
-        raise ApiError(501, "A conexão com a VPS ainda não foi implementada.")
-    need = required_java(server["version"])
-    if not pick_java(need):
-        raise ApiError(400, f"Este PC não tem Java {need} instalado (a versão {server['version']} precisa dele).")
-    runtime(sid).start(server)
+    if server["plan"] == "free":  # na VPS, quem instala o Java é o próprio script de preparação
+        need = required_java(server["version"])
+        if not pick_java(need):
+            raise ApiError(400, f"Este PC não tem Java {need} instalado (a versão {server['version']} precisa dele).")
+    runtime(server).start(server)
     return 202, view(server)
 
 
 def api_stop(query, body, sid):
-    find_server(sid)
-    runtime(sid).stop()
-    return 202, view(find_server(sid))
+    server = find_server(sid)
+    runtime(server).stop()
+    return 202, view(server)
 
 
 def api_command(query, body, sid):
-    find_server(sid)
-    runtime(sid).command(str(body.get("command", "")))
+    server = find_server(sid)
+    runtime(server).command(str(body.get("command", "")))
     return 200, {"ok": True}
 
 
 def api_console(query, body, sid):
-    find_server(sid)
+    server = find_server(sid)
     try:
         since = max(0, int(query.get("since", ["0"])[0]))
     except ValueError:
         since = 0
-    lines, nxt = runtime(sid).read(since)
+    lines, nxt = runtime(server).read(since)
     return 200, {"lines": lines, "next": nxt}
+
+
+def api_vps_key(query, body):
+    return 200, {"publicKey": ensure_key()}
+
+
+def api_vps_check(query, body, sid):
+    server = find_server(sid)
+    if server["plan"] != "vps":
+        raise ApiError(400, "Este servidor não usa VPS.")
+    try:
+        _, out = ssh_script(server["vps"], CHECK_SCRIPT, 40)
+    except RuntimeError as e:
+        raise ApiError(502, str(e))
+    info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    return 200, {"info": info, "needJava": required_java(server["version"])}
 
 
 ID = r"([a-z0-9]{1,32})"
@@ -559,6 +930,8 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/stop$", api_stop),
     ("POST", rf"^/api/servers/{ID}/command$", api_command),
     ("GET", rf"^/api/servers/{ID}/console$", api_console),
+    ("GET", r"^/api/vps/key$", api_vps_key),
+    ("POST", rf"^/api/servers/{ID}/vps/check$", api_vps_check),
 ]
 
 # Só estes arquivos do site são entregues (a pasta data/ e o .git nunca saem daqui).
