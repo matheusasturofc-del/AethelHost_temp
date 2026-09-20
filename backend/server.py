@@ -32,8 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar confi
 
 import content  # noqa: E402
 import manage  # noqa: E402
+import options  # noqa: E402
 from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
-from props import COLOR_CODE_RE, motd_to_properties, prop_escape, set_properties  # noqa: E402
+from props import COLOR_CODE_RE, motd_to_properties, prop_escape, read_properties, set_properties  # noqa: E402
 from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_java, prepare_launch,  # noqa: E402
                       ram_options, required_java, software_versions, spec_for, system_ram_mb, vkey)
 
@@ -222,6 +223,7 @@ class Runtime:
         self.proc = None
         self.players = set()
         self.idle_since = None
+        self.gamerules = {}  # regras definidas no painel: aplicadas toda vez que o servidor liga
         self.lines = []
         self.base = 0  # índice absoluto da primeira linha guardada
         self.lock = threading.RLock()
@@ -251,6 +253,7 @@ class Runtime:
                 raise ApiError(409, "O servidor já está ligado ou iniciando.")
             self.state = "starting"
             self.plan = server["plan"]
+            self.gamerules = dict(server.get("gamerules") or {})
             self.players.clear()
         if self.lines:
             self.log("──────── Nova execução ────────", "sep")
@@ -269,11 +272,10 @@ class Runtime:
                 raise RuntimeError(f"A porta {server['port']} já está em uso neste PC.")
             (sdir / "eula.txt").write_text("eula=true\n", encoding="utf-8")  # aceito na criação
             (sdir / "server-icon.png").write_bytes(icon_bytes(server["id"]))  # a capa que o Minecraft mostra na lista
-            set_properties(sdir / "server.properties", {
-                "server-port": server["port"],
-                "motd": motd_to_properties(server["subtitle"] or server["name"]),
-                "max-players": MAX_PLAYERS,
-            }, raw=("motd",))
+            values = {"server-port": server["port"], "motd": motd_to_properties(server["subtitle"] or server["name"])}
+            if "max-players" not in read_properties(sdir / "server.properties"):  # depois disso quem manda é a aba Opções
+                values["max-players"] = MAX_PLAYERS
+            set_properties(sdir / "server.properties", values, raw=("motd",))
             launch = prepare_launch(server["software"], server["version"], jar, sdir, java[1], self.log)
             ram = server["ramMb"]
             self.log(f"Iniciando {SOFTWARE[server['software']]['label']} {server['version']} com Java {java[0]} e {ram} MB de RAM…")
@@ -298,6 +300,8 @@ class Runtime:
             if self.state == "starting" and re.search(r"\bDone \(", line):
                 self.state = "online"
                 self.idle_since = time.time()
+                if self.gamerules:
+                    threading.Thread(target=self._apply_gamerules, daemon=True).start()
             if m := JOIN_RE.search(line):
                 self.players.add(m.group(1))
                 self.idle_since = None
@@ -338,16 +342,28 @@ class Runtime:
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def command(self, text):
+    def command(self, text, echo=True):
         text = text.replace("\r", " ").replace("\n", " ").strip()[:200]
         with self.lock:
             if not text:
                 raise ApiError(400, "Comando vazio.")
             if self.state != "online" or not self.proc:
                 raise ApiError(409, "O servidor precisa estar online para receber comandos.")
-            self.log(f"> {text}", "cmd")
+            if echo:
+                self.log(f"> {text}", "cmd")
             self.proc.stdin.write(text + "\n")
             self.proc.stdin.flush()
+
+    def _apply_gamerules(self):
+        """As gamerules escolhidas no painel valem de novo a cada início (o mundo guarda o último valor)."""
+        time.sleep(1.5)  # deixa o servidor terminar de aceitar comandos
+        for name, value in self.gamerules.items():
+            try:
+                self.command(f"gamerule {name} {value}", echo=False)
+            except ApiError:
+                return
+            time.sleep(0.05)
+        self.log(f"Regras do jogo aplicadas ({len(self.gamerules)}).")
 
 
 # ---------------------------------------------------------------- VPS (SSH)
@@ -674,7 +690,7 @@ class RemoteRuntime(Runtime):
                 if self.state == "stopping":
                     self.state = "online"  # dá para tentar de novo
 
-    def command(self, text):
+    def command(self, text, echo=True):
         text = text.replace("\r", " ").replace("\n", " ").strip()[:200]
         with self.lock:
             if not text:
@@ -734,13 +750,23 @@ def shutdown_all():
 
 # ---------------------------------------------------------------- API
 
+def _max_players(server):
+    """As vagas do servidor: o que está no server.properties (editável na aba Opções)."""
+    if server["plan"] == "free":
+        try:
+            return int(read_properties(SERVERS_DIR / server["id"] / "server.properties")["max-players"])
+        except (KeyError, ValueError):
+            pass
+    return MAX_PLAYERS
+
+
 def view(server):
     rt = RUNTIMES.get(server["id"])
     return {
         **server,
         "publicName": f"{server['ip']}.{DOMAIN}",
         "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
-        "maxPlayers": MAX_PLAYERS,
+        "maxPlayers": _max_players(server),
         "softwareLabel": SOFTWARE[server["software"]]["label"],
         "contentKind": content.kind_of(server),
         "iconVersion": icon_version(server["id"]),
@@ -1254,6 +1280,39 @@ def api_backup_download(query, body, sid):
     return 200, Raw(path=f, ctype="application/zip", filename=f.name)
 
 
+def api_settings(query, body, sid):
+    server = find_server(sid)
+    if server["plan"] != "free":
+        return 200, {"supported": False}
+    return 200, {"supported": True, "state": _state(sid), **options.get_settings(server)}
+
+
+def api_settings_properties(query, body, sid):
+    _manage_server(sid)
+    _require_offline(sid, "editar as configurações do jogo")
+    options.set_property_changes(sid, body.get("changes"))
+    return 200, {"ok": True}
+
+
+def api_settings_gamerules(query, body, sid):
+    """Guarda as regras no painel (valem a cada início) e, com o servidor ligado, aplica na hora."""
+    with DB_LOCK:
+        servers = db_load()
+        server = next((s for s in servers if s["id"] == sid), None)
+        if not server:
+            raise ApiError(404, "Servidor não encontrado.")
+        if server["plan"] != "free":
+            raise ApiError(501, "Esta aba ainda não está disponível na VPS. Use o plano Grátis.")
+        clean = options.check_rule_changes(server, body.get("changes"))
+        server["gamerules"] = {**(server.get("gamerules") or {}), **clean}
+        db_save(servers)
+    rt = RUNTIMES.get(sid)
+    if rt and rt.state == "online":
+        for name, value in clean.items():
+            rt.command(f"gamerule {name} {value}", echo=False)
+    return 200, {"ok": True, "applied": bool(rt and rt.state == "online")}
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
     ("GET", r"^/api/meta$", api_meta),
@@ -1301,6 +1360,9 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/backups/restore$", api_backup_restore),
     ("POST", rf"^/api/servers/{ID}/backups/delete$", api_backup_delete),
     ("GET", rf"^/api/servers/{ID}/backups/download$", api_backup_download),
+    ("GET", rf"^/api/servers/{ID}/settings$", api_settings),
+    ("POST", rf"^/api/servers/{ID}/settings/properties$", api_settings_properties),
+    ("POST", rf"^/api/servers/{ID}/settings/gamerules$", api_settings_gamerules),
 ]
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória

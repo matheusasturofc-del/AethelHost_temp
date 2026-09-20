@@ -1,0 +1,692 @@
+{
+ "1.21.4": {
+  "announceAdvancements": {
+   "type": "bool",
+   "default": "true",
+   "label": "Announce advancements"
+  },
+  "blockExplosionDropDecay": {
+   "type": "bool",
+   "default": "true",
+   "label": "In block interaction explosions, some blocks won't drop their loot"
+  },
+  "commandBlockOutput": {
+   "type": "bool",
+   "default": "true",
+   "label": "Broadcast command block output"
+  },
+  "commandModificationBlockLimit": {
+   "type": "int",
+   "default": "32768",
+   "label": "Command modification block limit"
+  },
+  "disableElytraMovementCheck": {
+   "type": "bool",
+   "default": "false",
+   "label": "Disable elytra movement check"
+  },
+  "disablePlayerMovementCheck": {
+   "type": "bool",
+   "default": "false",
+   "label": "Disable player movement check"
+  },
+  "disableRaids": {
+   "type": "bool",
+   "default": "false",
+   "label": "Disable raids"
+  },
+  "doDaylightCycle": {
+   "type": "bool",
+   "default": "true",
+   "label": "Advance time of day"
+  },
+  "doEntityDrops": {
+   "type": "bool",
+   "default": "true",
+   "label": "Drop entity equipment"
+  },
+  "doFireTick": {
+   "type": "bool",
+   "default": "true",
+   "label": "Update fire"
+  },
+  "doImmediateRespawn": {
+   "type": "bool",
+   "default": "false",
+   "label": "Respawn immediately"
+  },
+  "doInsomnia": {
+   "type": "bool",
+   "default": "true",
+   "label": "Spawn phantoms"
+  },
+  "doLimitedCrafting": {
+   "type": "bool",
+   "default": "false",
+   "label": "Require recipe for crafting"
+  },
+  "doMobLoot": {
+   "type": "bool",
+   "default": "true",
+   "label": "Drop mob loot"
+  },
+  "doMobSpawning": {
+   "type": "bool",
+   "default": "true",
+   "label": "Spawn mobs"
+  },
+  "doPatrolSpawning": {
+   "type": "bool",
+   "default": "true",
+   "label": "Spawn pillager patrols"
+  },
+  "doTileDrops": {
+   "type": "bool",
+   "default": "true",
+   "label": "Drop blocks"
+  },
+  "doTraderSpawning": {
+   "type": "bool",
+   "default": "true",
+   "label": "Spawn Wandering Traders"
+  },
+  "doVinesSpread": {
+   "type": "bool",
+   "default": "true",
+   "label": "Vines spread"
+  },
+  "doWardenSpawning": {
+   "type": "bool",
+   "default": "true",
+   "label": "Spawn Wardens"
+  },
+  "doWeatherCycle": {
+   "type": "bool",
+   "default": "true",
+   "label": "Update weather"
+  },
+  "drowningDamage": {
+   "type": "bool",
+   "default": "true",
+   "label": "Deal drowning damage"
+  },
+  "enderPearlsVanishOnDeath": {
+   "type": "bool",
+   "default": "true",
+   "label": "Thrown Ender Pearls vanish on death"
+  },
+  "fallDamage": {
+   "type": "bool",
+   "default": "true",
+   "label": "Deal fall damage"
+  },
+  "fireDamage": {
+   "type": "bool",
+   "default": "true",
+   "label": "Deal fire damage"
+  },
+  "forgiveDeadPlayers": {
+   "type": "bool",
+   "default": "true",
+   "label": "Forgive dead players"
+  },
+  "freezeDamage": {
+   "type": "bool",
+   "default": "true",
+   "label": "Deal freeze damage"
+  },
+  "globalSoundEvents": {
+   "type": "bool",
+   "default": "true",
+   "label": "Global sound events"
+  },
+  "keepInventory": {
+   "type": "bool",
+   "default": "false",
+   "label": "Keep inventory after death"
+  },
+  "lavaSourceConversion": {
+   "type": "bool",
+   "default": "false",
+   "label": "Lava converts to source"
+  },
+  "logAdminCommands": {
+   "type": "bool",
+   "default": "true",
+   "label": "Broadcast admin commands"
+  },
+  "maxCommandChainLength": {
+   "type": "int",
+   "default": "65536",
+   "label": "Command chain size limit"
+  },
+  "maxCommandForkCount": {
+   "type": "int",
+   "default": "65536",
+   "label": "Command context limit"
+  },
+  "maxEntityCramming": {
+   "type": "int",
+   "default": "24",
+   "label": "Entity cramming threshold"
+  },
+  "mobExplosionDropDecay": {
+   "type": "bool",
+   "default": "true",
+   "label": "In mob explosions, some blocks won't drop their loot"
+  },
+  "mobGriefing": {
+   "type": "bool",
+   "default": "true",
+   "label": "Allow destructive mob actions"
+  },
+  "naturalRegeneration": {
+   "type": "bool",
+   "default": "true",
+   "label": "Regenerate health"
+  },
+  "playersNetherPortalCreativeDelay": {
+   "type": "int",
+   "default": "0",
+   "label": "Player's Nether portal delay in creative mode"
+  },
+  "playersNetherPortalDefaultDelay": {
+   "type": "int",
+   "default": "80",
+   "label": "Player's Nether portal delay in non-creative mode"
+  },
+  "playersSleepingPercentage": {
+   "type": "int",
+   "default": "100",
+   "label": "Sleep percentage"
+  },
+  "projectilesCanBreakBlocks": {
+   "type": "bool",
+   "default": "true",
+   "label": "Projectiles can break blocks"
+  },
+  "randomTickSpeed": {
+   "type": "int",
+   "default": "3",
+   "label": "Random tick speed rate"
+  },
+  "reducedDebugInfo": {
+   "type": "bool",
+   "default": "false",
+   "label": "Reduce debug info"
+  },
+  "sendCommandFeedback": {
+   "type": "bool",
+   "default": "true",
+   "label": "Send command feedback"
+  },
+  "showDeathMessages": {
+   "type": "bool",
+   "default": "true",
+   "label": "Show death messages"
+  },
+  "snowAccumulationHeight": {
+   "type": "int",
+   "default": "1",
+   "label": "Snow accumulation height"
+  },
+  "spawnChunkRadius": {
+   "type": "int",
+   "default": "2",
+   "label": "Spawn chunk radius"
+  },
+  "spawnRadius": {
+   "type": "int",
+   "default": "10",
+   "label": "Respawn location radius"
+  },
+  "spectatorsGenerateChunks": {
+   "type": "bool",
+   "default": "true",
+   "label": "Allow spectators to generate terrain"
+  },
+  "tntExplosionDropDecay": {
+   "type": "bool",
+   "default": "false",
+   "label": "In TNT explosions, some blocks won't drop their loot"
+  },
+  "universalAnger": {
+   "type": "bool",
+   "default": "false",
+   "label": "Universal anger"
+  },
+  "waterSourceConversion": {
+   "type": "bool",
+   "default": "true",
+   "label": "Water converts to source"
+  }
+ },
+ "26.3": {
+  "advance_time": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "advance_weather": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "allow_entering_nether_using_portals": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "block_drops": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "block_explosion_drop_decay": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "command_block_output": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "command_blocks_work": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "drowning_damage": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "elytra_movement_check": {
+   "type": "bool",
+   "default": "true",
+   "label": "Do elytra movement check"
+  },
+  "ender_pearls_vanish_on_death": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "entity_drops": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "fall_damage": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "fire_damage": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "fire_spread_radius_around_player": {
+   "type": "int",
+   "default": "128",
+   "label": "Fire spread radius"
+  },
+  "forgive_dead_players": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "freeze_damage": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "global_sound_events": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "immediate_respawn": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "keep_inventory": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "lava_source_conversion": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "limited_crafting": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "locator_bar": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "log_admin_commands": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "max_block_modifications": {
+   "type": "int",
+   "default": "32768",
+   "label": ""
+  },
+  "max_command_forks": {
+   "type": "int",
+   "default": "65536",
+   "label": ""
+  },
+  "max_command_sequence_length": {
+   "type": "int",
+   "default": "65536",
+   "label": ""
+  },
+  "max_entity_cramming": {
+   "type": "int",
+   "default": "24",
+   "label": ""
+  },
+  "max_snow_accumulation_height": {
+   "type": "int",
+   "default": "1",
+   "label": ""
+  },
+  "mob_drops": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "mob_explosion_drop_decay": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "mob_griefing": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "natural_health_regeneration": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "player_movement_check": {
+   "type": "bool",
+   "default": "true",
+   "label": "Do player movement check"
+  },
+  "players_nether_portal_creative_delay": {
+   "type": "int",
+   "default": "0",
+   "label": ""
+  },
+  "players_nether_portal_default_delay": {
+   "type": "int",
+   "default": "80",
+   "label": ""
+  },
+  "players_sleeping_percentage": {
+   "type": "int",
+   "default": "100",
+   "label": ""
+  },
+  "projectiles_can_break_blocks": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "pvp": {
+   "type": "bool",
+   "default": "true",
+   "label": "Enable pvp"
+  },
+  "raids": {
+   "type": "bool",
+   "default": "true",
+   "label": "Do raids"
+  },
+  "random_tick_speed": {
+   "type": "int",
+   "default": "3",
+   "label": ""
+  },
+  "reduced_debug_info": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "respawn_radius": {
+   "type": "int",
+   "default": "10",
+   "label": ""
+  },
+  "send_command_feedback": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "show_advancement_messages": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "show_death_messages": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_mobs": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_monsters": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_patrols": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_phantoms": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_wandering_traders": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawn_wardens": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spawner_blocks_work": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spectators_generate_chunks": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "spread_vines": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "tnt_explodes": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  },
+  "tnt_explosion_drop_decay": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "universal_anger": {
+   "type": "bool",
+   "default": "false",
+   "label": ""
+  },
+  "water_source_conversion": {
+   "type": "bool",
+   "default": "true",
+   "label": ""
+  }
+ },
+ "properties": {
+  "1.21.4": {
+   "accepts-transfers": "false",
+   "allow-flight": "false",
+   "allow-nether": "true",
+   "broadcast-console-to-ops": "true",
+   "broadcast-rcon-to-ops": "true",
+   "bug-report-link": "",
+   "difficulty": "easy",
+   "enable-command-block": "false",
+   "enable-jmx-monitoring": "false",
+   "enable-query": "false",
+   "enable-rcon": "false",
+   "enable-status": "true",
+   "enforce-secure-profile": "true",
+   "enforce-whitelist": "false",
+   "entity-broadcast-range-percentage": "100",
+   "force-gamemode": "false",
+   "function-permission-level": "2",
+   "gamemode": "survival",
+   "generate-structures": "true",
+   "generator-settings": "{}",
+   "hardcore": "false",
+   "hide-online-players": "false",
+   "initial-disabled-packs": "",
+   "initial-enabled-packs": "vanilla",
+   "level-name": "world",
+   "level-seed": "",
+   "level-type": "minecraft\\:normal",
+   "log-ips": "true",
+   "max-chained-neighbor-updates": "1000000",
+   "max-players": "20",
+   "max-tick-time": "60000",
+   "max-world-size": "29999984",
+   "motd": "gr-1.21.4",
+   "network-compression-threshold": "256",
+   "online-mode": "true",
+   "op-permission-level": "4",
+   "pause-when-empty-seconds": "60",
+   "player-idle-timeout": "0",
+   "prevent-proxy-connections": "false",
+   "pvp": "true",
+   "query.port": "25565",
+   "rate-limit": "0",
+   "rcon.password": "",
+   "rcon.port": "25575",
+   "region-file-compression": "deflate",
+   "require-resource-pack": "false",
+   "resource-pack": "",
+   "resource-pack-id": "",
+   "resource-pack-prompt": "",
+   "resource-pack-sha1": "",
+   "server-ip": "",
+   "server-port": "25567",
+   "simulation-distance": "10",
+   "spawn-monsters": "true",
+   "spawn-protection": "16",
+   "sync-chunk-writes": "true",
+   "text-filtering-config": "",
+   "text-filtering-version": "0",
+   "use-native-transport": "true",
+   "view-distance": "10",
+   "white-list": "false"
+  },
+  "26.3": {
+   "accepts-transfers": "false",
+   "allow-flight": "false",
+   "broadcast-console-to-ops": "true",
+   "broadcast-rcon-to-ops": "true",
+   "bug-report-link": "",
+   "chat-spam-threshold-seconds": "10",
+   "command-spam-threshold-seconds": "10",
+   "difficulty": "easy",
+   "enable-code-of-conduct": "false",
+   "enable-jmx-monitoring": "false",
+   "enable-query": "false",
+   "enable-rcon": "false",
+   "enable-status": "true",
+   "enforce-secure-profile": "true",
+   "enforce-whitelist": "false",
+   "entity-broadcast-range-percentage": "100",
+   "force-gamemode": "false",
+   "function-permission-level": "2",
+   "gamemode": "survival",
+   "generate-structures": "true",
+   "generator-settings": "{}",
+   "hardcore": "false",
+   "hide-online-players": "false",
+   "initial-disabled-packs": "",
+   "initial-enabled-packs": "vanilla",
+   "level-name": "world",
+   "level-seed": "",
+   "level-type": "minecraft\\:normal",
+   "log-ips": "true",
+   "management-server-allowed-origins": "",
+   "management-server-enabled": "false",
+   "management-server-host": "localhost",
+   "management-server-port": "0",
+   "management-server-secret": "bLqNfY4WiyXGG3Xtgnrjw59xBWnQDQGNYUtttIzc",
+   "management-server-tls-enabled": "true",
+   "management-server-tls-keystore": "",
+   "management-server-tls-keystore-password": "",
+   "max-chained-neighbor-updates": "1000000",
+   "max-players": "20",
+   "max-tick-time": "60000",
+   "max-world-size": "29999984",
+   "motd": "gr-26.3",
+   "network-compression-threshold": "256",
+   "online-mode": "true",
+   "op-permission-level": "4",
+   "pause-when-empty-seconds": "60",
+   "player-idle-timeout": "0",
+   "prevent-proxy-connections": "false",
+   "query.port": "25565",
+   "rate-limit": "0",
+   "rcon.password": "",
+   "rcon.port": "25575",
+   "region-file-compression": "deflate",
+   "require-resource-pack": "false",
+   "resource-pack": "",
+   "resource-pack-id": "",
+   "resource-pack-prompt": "",
+   "resource-pack-sha1": "",
+   "server-ip": "",
+   "server-port": "25567",
+   "simulation-distance": "10",
+   "spawn-protection": "16",
+   "status-heartbeat-interval": "0",
+   "sync-chunk-writes": "true",
+   "text-filtering-config": "",
+   "text-filtering-version": "0",
+   "use-native-transport": "true",
+   "view-distance": "10",
+   "white-list": "true"
+  }
+ }
+}

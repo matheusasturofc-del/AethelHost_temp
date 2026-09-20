@@ -21,14 +21,14 @@
     <aside class="side">
       <a class="back" href="servers.html">← Servidores</a>
       <button class="active" data-tab="server">Servidor</button>
+      <button data-tab="options">Opções</button>
       <button data-tab="console">Console</button>
       <button data-tab="players">Jogadores</button>
       <button data-tab="software">Software</button>
       <button data-tab="content" id="contentBtn">Mods</button>
-      <button data-tab="files">Arquivos</button>
       <button data-tab="worlds">Mundos</button>
+      <button data-tab="files">Arquivos</button>
       <button data-tab="backups">Backups</button>
-      <button data-tab="options">Opções</button>
     </aside>
 
     <section>
@@ -250,6 +250,7 @@
       <!-- Aba: Opções -->
       <div id="tab-options" hidden>
         <div class="card">
+          <h3 style="margin-top:0">Geral</h3>
           <div class="field">
             <label for="optName">Nome do servidor</label>
             <input type="text" id="optName" maxlength="30">
@@ -275,7 +276,39 @@
             </div>
           </div>
 
-          <div class="danger-zone">
+        </div>
+
+        <div class="notice" id="opNotice" hidden></div>
+        <div id="opSections">
+          <div class="opt-head">
+            <h3>Configurações do jogo</h3>
+            <span class="badge" id="opPropsCount"></span>
+            <input type="text" id="opSearch" class="opt-search" placeholder="Buscar configuração ou regra…" autocomplete="off">
+          </div>
+          <div class="notice" id="opRunNote" hidden>Desligue o servidor para editar as configurações do jogo. As regras do jogo (mais abaixo) podem ser mudadas com ele ligado.</div>
+          <div class="notice warn" id="opWlHint" hidden>A whitelist está ligada: só entra quem estiver na lista (aba Jogadores). Servidores novos da versão 26 já vêm assim.</div>
+          <div class="opt-grid" id="opProps"></div>
+
+          <div class="opt-head" style="margin-top:32px">
+            <h3>Regras do jogo (gamerules)</h3>
+            <span class="badge" id="opRulesCount"></span>
+          </div>
+          <p class="muted small">As regras que você mudar aqui são aplicadas toda vez que o servidor liga, e na hora se ele já estiver ligado.</p>
+          <div class="opt-grid compact" id="opRules"></div>
+        </div>
+        <div class="ok-msg" id="opOk"></div>
+        <div class="error" id="opErr"></div>
+
+        <div class="savebar" id="opBar" hidden>
+          <span id="opCount"></span>
+          <div class="btn-row" style="margin:0">
+            <button class="btn" type="button" id="opDiscard">Descartar</button>
+            <button class="btn btn-primary" type="button" id="opSave">Salvar alterações</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:32px">
+          <div class="danger-zone" style="margin-top:0;padding-top:0;border-top:0">
             <p style="color:var(--muted);margin-top:0">Excluir remove o servidor da sua lista. No plano grátis, apaga também o mundo e os arquivos dele deste PC. Não dá para desfazer.</p>
             <button class="btn btn-danger" id="delete">Excluir servidor</button>
           </div>
@@ -346,6 +379,9 @@
       $("addr").textContent = server.address;
       $("software").textContent = `${server.softwareLabel} ${server.version}`;
       $("contentBtn").textContent = server.contentKind === "plugins" ? "Plugins" : "Mods";
+      // O Vanilla não aceita mods nem plugins: a aba nem aparece.
+      $("contentBtn").hidden = !server.contentKind;
+      if (!server.contentKind && !$("tab-content").hidden) document.querySelector("[data-tab=server]").click();
       $("plan").textContent = server.plan === "vps" ? `VPS (${server.vps.provider})` : "Grátis";
 
       $("banner").textContent = server.plan === "vps"
@@ -504,7 +540,7 @@
 
     // Carrega os dados da aba que acabou de abrir (e recarrega quando o idioma muda, para datas e textos novos).
     function openTabData(tab) {
-      const open = { players: openPlayers, software: openSoftware, content: loadContent, files: openFiles, worlds: openWorlds, backups: openBackups }[tab];
+      const open = { options: openOptions, players: openPlayers, software: openSoftware, content: loadContent, files: openFiles, worlds: openWorlds, backups: openBackups }[tab];
       if (open) open();
     }
     window.addEventListener("langchange", () => {
@@ -784,6 +820,8 @@
   <script src="js/tab-files.js"></script>
   <script src="js/tab-worlds.js"></script>
   <script src="js/tab-backups.js"></script>
+  <script src="js/options-labels.js"></script>
+  <script src="js/tab-options.js"></script>
   <script src="js/i18n-en.js"></script>
   <script src="js/i18n.js"></script>
 </body>

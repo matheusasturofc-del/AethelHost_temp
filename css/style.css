@@ -228,6 +228,47 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 .console .sep { color: var(--muted); margin: 6px 0; }
 .cmd-row { display: flex; gap: 8px; margin-top: 12px; }
 
+/* Aba Opções: cada opção é uma linha com o controle e, embaixo, a chave=valor do Minecraft */
+.opt-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 24px 0 12px; }
+.opt-head h3 { margin: 0; }
+.opt-search { flex: 1; min-width: 200px; max-width: 360px; margin-left: auto; padding: 8px 14px; }
+.notice.warn { border-left-color: var(--warn); }
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.opt-grid.compact { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
+.opt { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.opt[hidden] { display: none; }
+.opt.dirty { border-color: var(--accent); }
+.opt-main { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; min-height: 52px; }
+.opt.compact .opt-main { padding: 7px 10px; min-height: 44px; }
+.opt-label { font-weight: 700; line-height: 1.25; }
+.opt.compact .opt-label { font-size: 13.5px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.opt-key { background: var(--bg); color: var(--muted); font: 11.5px/1.4 ui-monospace, Consolas, monospace; padding: 4px 14px; border-radius: 0 0 9px 9px;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt.compact .opt-key { padding: 3px 10px; font-size: 11px; }
+.opt .cs, .opt .cs-btn { min-width: 150px; }
+.opt .cs-btn { padding: 7px 12px; }
+.opt-text { width: 55%; min-width: 120px; padding: 7px 10px; }
+.num { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: hidden; flex: none; }
+.num input { width: 84px; border: 0; border-radius: 0; background: transparent; text-align: center; padding: 6px 4px; -moz-appearance: textfield; appearance: textfield; }
+.num input::-webkit-outer-spin-button, .num input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.opt.compact .num input { width: 64px; padding: 4px 2px; }
+.num-btn { width: 30px; border: 0; background: var(--surface-2); color: var(--text); font: 700 16px/1 system-ui; cursor: pointer; }
+.num-btn:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
+.num-btn:disabled, .num input:disabled { opacity: 0.5; cursor: not-allowed; }
+.tgl { display: inline-flex; cursor: pointer; flex: none; }
+.tgl.off { cursor: not-allowed; opacity: 0.55; }
+.tgl input { display: none; }
+.tgl-box { width: 52px; height: 28px; border-radius: 7px; border: 1px solid var(--danger); background: rgba(248, 113, 113, 0.14); position: relative; transition: background 0.15s, border-color 0.15s; }
+.opt.compact .tgl-box { width: 44px; height: 24px; }
+.tgl-box::before { content: "✕"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-start; padding-left: 9px; font-size: 13px; font-weight: 800; color: var(--danger); }
+.tgl-box::after { content: ""; position: absolute; top: 3px; right: 3px; width: 20px; height: calc(100% - 8px); border-radius: 4px; background: var(--danger); transition: transform 0.15s; transform: none; opacity: 0.85; }
+.tgl input:checked + .tgl-box { border-color: var(--accent); background: rgba(74, 222, 128, 0.16); }
+.tgl input:checked + .tgl-box::before { content: "✓"; color: var(--accent); justify-content: flex-end; padding: 0 9px 0 0; }
+.tgl input:checked + .tgl-box::after { background: var(--accent); right: auto; left: 3px; }
+.savebar { position: sticky; bottom: 14px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+           margin-top: 16px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.savebar[hidden] { display: none; }
+
 /* Abas Jogadores, Arquivos, Mundos e Backups */
 .small { font-size: 13px; margin: 0 0 12px; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }

@@ -55,11 +55,13 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 ## Painel
 
+- **Opções**: as configurações do `server.properties` (vagas, modo de jogo, dificuldade, whitelist, PvP, distâncias, pacote de recursos…) e **todas as gamerules**, cada uma numa linha com o controle e a chave `chave=valor` embaixo, com busca e uma barra para salvar ou descartar. Além de nome, subtítulo e ícone. As propriedades só mudam com o servidor desligado; as gamerules podem mudar com ele ligado e são reaplicadas a cada início. As listas vêm de servidores reais (`tools/gen_gamerules.py` gera `backend/gamerules.json`), com os nomes antigos (até a 1.21.x, `keepInventory`) e os novos (a partir da 26.1, `keep_inventory`).
 - **Jogadores**: quem está online (expulsar, tornar operador, banir), lista de permitidos (whitelist), operadores e banidos. Com o servidor ligado usa comandos; desligado, grava nos arquivos do Minecraft e consulta a Mojang para achar o UUID.
 - **Arquivos**: navegar pela pasta do servidor, editar arquivos de texto, enviar, baixar (pastas viram .zip), renomear e apagar.
 - **Mundos**: escolher o mundo em uso, criar (nome, tipo e semente), baixar, enviar um .zip seu e apagar.
 - **Backups**: criar (com o servidor ligado ele salva antes de copiar), restaurar, baixar e apagar. O BlockHost também guarda um backup antes de trocar de software, restaurar ou apagar um mundo.
-- Mudanças em arquivos, mundos e mods só com o servidor desligado.
+- Mudanças em arquivos, mundos, mods e propriedades só com o servidor desligado.
+- As abas ficam nesta ordem: Servidor, Opções, Console, Jogadores, Software, Mods/Plugins (não aparece no Vanilla), Mundos, Arquivos e Backups.
 
 ## Idioma
 
