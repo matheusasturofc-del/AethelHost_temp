@@ -4,12 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Criar servidor — BlockHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="container">
-      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
       <nav class="topnav">
         <a href="servers.html">Servidores</a>
       </nav>
@@ -37,8 +38,21 @@
         </div>
 
         <div class="field">
-          <label for="subtitle">Subtítulo</label>
-          <input type="text" id="subtitle" maxlength="60" placeholder="Uma frase curta sobre o servidor" autocomplete="off">
+          <label>Subtítulo (aparece na lista de servidores do Minecraft)</label>
+          <div id="motdEditor"></div>
+        </div>
+
+        <div class="field">
+          <label>Ícone (capa)</label>
+          <div class="icon-picker">
+            <img id="iconPreview" src="assets/default-icon.png" alt="Ícone do servidor">
+            <div>
+              <label class="btn">Escolher imagem<input type="file" id="iconFile" accept="image/*" hidden></label>
+              <button type="button" class="btn" id="iconReset">Usar o padrão</button>
+              <div class="hint">Qualquer imagem: ela vira 64×64 (corte no centro). PNG com fundo transparente funciona.</div>
+              <div class="error" id="iconErr"></div>
+            </div>
+          </div>
         </div>
 
         <div class="field">
@@ -162,10 +176,42 @@
   </main>
 
   <script src="js/store.js"></script>
+  <script src="js/look.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     let ipEdited = false;
     let ipSeq = 0;
+
+    // ---- Subtítulo com cores e ícone ----
+    const motd = mountMotdEditor($("motdEditor"), { value: "&aBem-vindo ao meu servidor!" });
+    let iconBlob = null;
+    let iconObjectUrl = null;
+
+    function showIcon(url) {
+      $("iconPreview").src = url;
+      motd.setIcon(url);
+    }
+
+    $("iconFile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      $("iconErr").textContent = "";
+      try {
+        iconBlob = await iconBlobFromFile(file);
+        if (iconObjectUrl) URL.revokeObjectURL(iconObjectUrl);
+        iconObjectUrl = URL.createObjectURL(iconBlob);
+        showIcon(iconObjectUrl);
+      } catch (e) {
+        $("iconErr").textContent = e.message;
+      }
+    });
+
+    $("iconReset").addEventListener("click", () => {
+      iconBlob = null;
+      $("iconErr").textContent = "";
+      showIcon("assets/default-icon.png");
+    });
 
     const currentPlan = () => document.querySelector('input[name="plan"]:checked').value;
 
@@ -224,6 +270,7 @@
     // ---- Passo 1 ----
     $("name").addEventListener("input", () => {
       if (!ipEdited) $("ip").value = slugify($("name").value);
+      motd.setName($("name").value.trim());
       checkIp();
     });
     $("ip").addEventListener("input", () => {
@@ -296,7 +343,7 @@
       if (!(await validateStep1())) { showStep(1); return; }
       const body = {
         name: $("name").value.trim(),
-        subtitle: $("subtitle").value.trim(),
+        subtitle: motd.value,
         ip: $("ip").value,
         software: $("software").value,
         version: $("version").value,
@@ -314,6 +361,9 @@
       $("next2").disabled = $("finish").disabled = true;
       try {
         const server = await api("POST", "/servers", body);
+        if (iconBlob) {  // se a capa falhar, o servidor já existe: dá para trocar depois no painel
+          try { await apiUpload(`/servers/${server.id}/icon`, iconBlob); } catch {}
+        }
         location.href = "panel.html?id=" + encodeURIComponent(server.id);
       } catch (e) {
         $("formErr").textContent = e.message;

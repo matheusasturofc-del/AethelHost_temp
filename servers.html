@@ -4,12 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Servidores — BlockHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="container">
-      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
       <nav class="topnav">
         <a href="servers.html">Servidores</a>
       </nav>
@@ -25,6 +26,7 @@
   </main>
 
   <script src="js/store.js"></script>
+  <script src="js/look.js"></script>
   <script>
     const list = document.getElementById("list");
 
@@ -38,16 +40,15 @@
           </div>`;
         return;
       }
-      list.innerHTML = `<div class="server-grid">` + servers.map((s) => `
-        <a class="server-card" href="panel.html?id=${encodeURIComponent(s.id)}">
-          <h3>${esc(s.name)}</h3>
-          <p class="sub">${esc(s.subtitle) || "&nbsp;"}</p>
-          <div class="addr">${esc(s.publicName)}</div>
-          <div class="card-foot">
-            <span class="status ${esc(s.runtime.state)}">${STATUS_LABEL[s.runtime.state]}</span>
-            <span><span class="badge">${esc(s.softwareLabel)} ${esc(s.version)}</span> <span class="badge">${s.plan === "vps" ? "VPS" : "Grátis"}</span></span>
-          </div>
-        </a>`).join("") + `</div>`;
+      list.replaceChildren(h("div", { class: "server-grid" }, servers.map((s) =>
+        h("a", { class: "server-card", href: `panel.html?id=${encodeURIComponent(s.id)}` },
+          h("div", { class: "card-top" },
+            h("img", { class: "card-icon", src: iconUrl(s), alt: "" }),
+            h("div", { class: "card-title" }, h("h3", {}, s.name), h("div", { class: "sub" }, mcNodes(s.subtitle, { trim: true })))),
+          h("div", { class: "addr" }, s.publicName),
+          h("div", { class: "card-foot" },
+            h("span", { class: "status " + s.runtime.state }, STATUS_LABEL[s.runtime.state]),
+            h("span", {}, h("span", { class: "badge" }, `${s.softwareLabel} ${s.version}`), " ", h("span", { class: "badge" }, s.plan === "vps" ? "VPS" : "Grátis")))))));
     }
 
     async function load() {

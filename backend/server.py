@@ -6,6 +6,7 @@ Usa só a biblioteca padrão do Python (nada para instalar).
 
 Rodar:  python backend/server.py   ->   http://127.0.0.1:8080
 """
+import base64
 import glob
 import json
 import mimetypes
@@ -14,6 +15,7 @@ import re
 import shlex
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -172,18 +174,71 @@ def prop_escape(value):
     return "".join(chr(u) if u < 128 else f"\\u{u:04x}" for u in units)
 
 
-def set_properties(path, values):
+COLOR_CODE_RE = re.compile(r"&([0-9a-fk-or])")  # só minúsculas: "R&D" continua sendo texto normal
+
+
+def motd_to_properties(text):
+    """'&aOlá\\n&lLinha 2' -> valor pronto para o server.properties (§ e quebra de linha já escapados)."""
+    lines = text.replace("\r", "").split("\n")[:2]
+    return "\\n".join(prop_escape(COLOR_CODE_RE.sub("§\\1", line)) for line in lines)
+
+
+def set_properties(path, values, raw=()):
+    """Grava chaves no server.properties. As chaves em `raw` já vêm escapadas."""
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     out, done = [], set()
+
+    def fmt(k, v):
+        return f"{k}={v if k in raw else prop_escape(v)}"
+
     for line in lines:
         key = line.split("=", 1)[0].strip()
         if key in values and not line.lstrip().startswith("#"):
-            out.append(f"{key}={prop_escape(values[key])}")
+            out.append(fmt(key, values[key]))
             done.add(key)
         else:
             out.append(line)
-    out += [f"{k}={prop_escape(v)}" for k, v in values.items() if k not in done]
+    out += [fmt(k, v) for k, v in values.items() if k not in done]
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------- Ícone do servidor
+
+DEFAULT_ICON = ROOT / "assets" / "default-icon.png"
+MAX_ICON_BYTES = 256 * 1024
+
+
+def custom_icon(sid):
+    return SERVERS_DIR / sid / "blockhost-icon.png"  # a "capa" escolhida por você
+
+
+def icon_bytes(sid):
+    f = custom_icon(sid)
+    return f.read_bytes() if f.is_file() else DEFAULT_ICON.read_bytes()
+
+
+def check_icon(data):
+    """O Minecraft só aceita PNG de exatamente 64x64."""
+    if len(data) > MAX_ICON_BYTES:
+        raise ApiError(413, "A imagem é grande demais (máximo 256 KB depois de reduzida).")
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise ApiError(400, "O ícone precisa ser um arquivo PNG.")
+    width, height = struct.unpack(">II", data[16:24])
+    if (width, height) != (64, 64):
+        raise ApiError(400, f"O ícone precisa ter 64x64 pixels (esse tem {width}x{height}).")
+
+
+def icon_version(sid):
+    """Muda quando a capa muda: o navegador guarda a imagem em cache e só baixa de novo se isto mudar."""
+    f = custom_icon(sid)
+    return f.stat().st_mtime_ns // 1_000_000 if f.is_file() else 0
+
+
+class Raw:
+    """Resposta que não é JSON (ex.: a imagem do ícone)."""
+
+    def __init__(self, body, ctype, cache="no-store"):
+        self.body, self.ctype, self.cache = body, ctype, cache
 
 
 class Runtime:
@@ -242,11 +297,12 @@ class Runtime:
             if not port_free(server["port"]):
                 raise RuntimeError(f"A porta {server['port']} já está em uso neste PC.")
             (sdir / "eula.txt").write_text("eula=true\n", encoding="utf-8")  # aceito na criação
+            (sdir / "server-icon.png").write_bytes(icon_bytes(server["id"]))  # a capa que o Minecraft mostra na lista
             set_properties(sdir / "server.properties", {
                 "server-port": server["port"],
-                "motd": server["subtitle"] or server["name"],
+                "motd": motd_to_properties(server["subtitle"] or server["name"]),
                 "max-players": MAX_PLAYERS,
-            })
+            }, raw=("motd",))
             ram = server["ramMb"]
             self.log(f"Iniciando {SOFTWARE[server['software']]['label']} {server['version']} com Java {java[0]} e {ram} MB de RAM…")
             self.proc = subprocess.Popen(
@@ -489,6 +545,7 @@ if [ ! -f "$JAR_NAME" ]; then
 fi
 
 echo "eula=true" > eula.txt
+printf '%s' "$ICON_B64" | base64 -d > server-icon.png
 setprop() {
   f=server.properties; touch "$f"
   if grep -q "^$1=" "$f"; then
@@ -528,13 +585,14 @@ echo "BH_STARTED"
 
 def remote_setup_script(server, need, jar):
     q = shlex.quote
-    motd = prop_escape(server["subtitle"] or server["name"])
+    motd = motd_to_properties(server["subtitle"] or server["name"])
+    icon = base64.b64encode(icon_bytes(server["id"])).decode("ascii")
     head = (
         "set -e\n"
         f"ID={q(server['id'])}\nNEED={need}\nPORT={server['port']}\nMAXP={MAX_PLAYERS}\n"
         f"JAR_URL={q(jar['url'])}\nJAR_NAME={q(jar['name'])}\n"
         f"JAR_ALGO={q(jar['hash'][0] if jar['hash'] else '')}\nJAR_HASH={q(jar['hash'][1] if jar['hash'] else '')}\n"
-        f"MOTD={q(motd)}\n"
+        f"MOTD={q(motd)}\nICON_B64={q(icon)}\n"
     )
     return head + JAVA_MAJOR_SH + SETUP_BODY
 
@@ -711,8 +769,22 @@ def view(server):
         "maxPlayers": MAX_PLAYERS,
         "softwareLabel": SOFTWARE[server["software"]]["label"],
         "contentKind": content.kind_of(server),
+        "iconVersion": icon_version(server["id"]),
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
     }
+
+
+def clean_motd(body):
+    """Subtítulo = MOTD do Minecraft: até 2 linhas, com códigos de cor (&a, &l…). Espaços no começo ficam (alinhamento)."""
+    text = re.sub(r"[\x00-\x09\x0b-\x1f]", "", str(body.get("subtitle", "")).replace("\r", "")).rstrip()
+    lines = text.split("\n")
+    if len(lines) > 2:
+        raise ApiError(400, "O subtítulo aceita no máximo 2 linhas.")
+    if len(text) > 160:
+        raise ApiError(400, "O subtítulo é longo demais (máximo 160 caracteres, contando os códigos de cor).")
+    if any(len(COLOR_CODE_RE.sub("", line).strip()) > 60 for line in lines):
+        raise ApiError(400, "Cada linha do subtítulo aceita até 60 letras.")
+    return text
 
 
 def clean_text(body, key, minimum, maximum, label):
@@ -763,7 +835,7 @@ def api_list(query, body):
 
 def api_create(query, body):
     name = clean_text(body, "name", 3, 30, "Nome")
-    subtitle = clean_text(body, "subtitle", 0, 60, "Subtítulo")
+    subtitle = clean_motd(body)
     ip = str(body.get("ip", ""))
     version, plan = body.get("version"), body.get("plan")
     software = body.get("software", "vanilla")
@@ -822,7 +894,7 @@ def api_get(query, body, sid):
 
 def api_patch(query, body, sid):
     name = clean_text(body, "name", 3, 30, "Nome")
-    subtitle = clean_text(body, "subtitle", 0, 60, "Subtítulo")
+    subtitle = clean_motd(body)
     with DB_LOCK:
         servers = db_load()
         server = next((s for s in servers if s["id"] == sid), None)
@@ -947,6 +1019,28 @@ def api_content_delete(query, body, sid):
     return 200, {"ok": True}
 
 
+def api_icon_get(query, body, sid):
+    find_server(sid)
+    return 200, Raw(icon_bytes(sid), "image/png", "private, max-age=3600")
+
+
+def api_icon_set(query, data, sid):
+    find_server(sid)
+    check_icon(data)
+    f = custom_icon(sid)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_suffix(".part")
+    tmp.write_bytes(data)
+    os.replace(tmp, f)
+    return 200, {"ok": True, "iconVersion": icon_version(sid)}
+
+
+def api_icon_reset(query, body, sid):
+    find_server(sid)
+    custom_icon(sid).unlink(missing_ok=True)
+    return 200, {"ok": True, "iconVersion": 0}
+
+
 def api_delete(query, body, sid):
     with DB_LOCK:
         servers = db_load()
@@ -1034,12 +1128,15 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/content/upload$", api_content_upload),
     ("POST", rf"^/api/servers/{ID}/content/toggle$", api_content_toggle),
     ("POST", rf"^/api/servers/{ID}/content/delete$", api_content_delete),
+    ("GET", rf"^/api/servers/{ID}/icon$", api_icon_get),
+    ("POST", rf"^/api/servers/{ID}/icon$", api_icon_set),
+    ("POST", rf"^/api/servers/{ID}/icon/reset$", api_icon_reset),
 ]
-RAW_UPLOAD = {api_content_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
+RAW_UPLOAD = {api_content_upload, api_icon_set}  # recebem o arquivo cru (octet-stream) em vez de JSON
 MAX_UPLOAD = 64 * 1024 * 1024
 
 # Só estes arquivos do site são entregues (a pasta data/ e o .git nunca saem daqui).
-STATIC_RE = re.compile(r"^(?:[a-z]+\.html|css/[\w.-]+\.css|js/[\w.-]+\.js)$")
+STATIC_RE = re.compile(r"^(?:[a-z]+\.html|css/[\w.-]+\.css|js/[\w.-]+\.js|assets/[\w.-]+\.(?:svg|png))$")
 ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
 
@@ -1049,12 +1146,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # o polling do painel encheria o terminal
         pass
 
-    def _send(self, status, payload, ctype):
+    def _send(self, status, payload, ctype, cache="no-store"):
         try:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(payload)
@@ -1127,7 +1224,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body, dict):
                     raise ApiError(400, "JSON inválido.")
         status, data = fn(parse_qs(parsed.query), body, *groups)
-        self._json(status, data)
+        if isinstance(data, Raw):
+            self._send(status, data.body, data.ctype, data.cache)
+        else:
+            self._json(status, data)
 
     def _static(self, path):
         rel = unquote(path).lstrip("/") or "index.html"

@@ -4,12 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Painel — BlockHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="container">
-      <a class="brand" href="index.html">Block<span>Host</span></a>
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
       <nav class="topnav">
         <a href="servers.html">Servidores</a>
       </nav>
@@ -31,9 +32,12 @@
     </aside>
 
     <section>
-      <div class="panel-head">
-        <h1 id="title"></h1>
-        <p id="subtitle"></p>
+      <div class="panel-head panel-top">
+        <img class="hdr-icon" id="hdrIcon" alt="Ícone do servidor">
+        <div>
+          <h1 id="title"></h1>
+          <div class="sub-mc" id="subtitle"></div>
+        </div>
       </div>
       <div class="demo-banner" id="banner"></div>
 
@@ -134,11 +138,25 @@
             <input type="text" id="optName" maxlength="30">
           </div>
           <div class="field">
-            <label for="optSub">Subtítulo</label>
-            <input type="text" id="optSub" maxlength="60">
+            <label>Subtítulo (aparece na lista de servidores do Minecraft)</label>
+            <div id="optMotd"></div>
           </div>
           <div class="error" id="optErr" style="margin-bottom:12px"></div>
-          <button class="btn btn-primary" id="save">Salvar</button>
+          <button class="btn btn-primary" id="save">Salvar nome e subtítulo</button>
+
+          <div class="field" style="margin-top:28px">
+            <label>Ícone (capa)</label>
+            <div class="icon-picker">
+              <img id="optIcon" alt="Ícone do servidor">
+              <div>
+                <label class="btn">Escolher imagem<input type="file" id="iconFile" accept="image/*" hidden></label>
+                <button type="button" class="btn" id="iconReset">Usar o padrão do BlockHost</button>
+                <div class="hint">Qualquer imagem: ela vira 64×64 (corte no centro). PNG com fundo transparente funciona. Vale na próxima vez que o servidor ligar.</div>
+                <div class="ok-msg" id="iconOk"></div>
+                <div class="error" id="iconErr"></div>
+              </div>
+            </div>
+          </div>
 
           <div class="danger-zone">
             <p style="color:var(--muted);margin-top:0">Excluir remove o servidor da sua lista. No plano grátis, apaga também o mundo e os arquivos dele deste PC. Não dá para desfazer.</p>
@@ -150,6 +168,7 @@
   </main>
 
   <script src="js/store.js"></script>
+  <script src="js/look.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const id = new URLSearchParams(location.search).get("id");
@@ -159,6 +178,9 @@
     let nextLine = 0;
     let polling = false;
     let optionsFilled = false;
+    let optEditor = null;
+    let shownSubtitle = null;
+    let shownIcon = null;
 
     // ---------- Console ----------
     function appendLines(lines) {
@@ -191,7 +213,18 @@
       const rt = server.runtime;
       document.title = `${server.name} — BlockHost`;
       $("title").textContent = server.name;
-      $("subtitle").textContent = server.subtitle;
+      if (server.subtitle !== shownSubtitle) {  // só redesenha se mudou (senão o "ofuscado" pisca)
+        $("subtitle").replaceChildren(mcNodes(server.subtitle, { trim: true }));
+        shownSubtitle = server.subtitle;
+      }
+      if (server.iconVersion !== shownIcon) {
+        const url = iconUrl(server);
+        $("hdrIcon").src = url;
+        $("optIcon").src = url;
+        if (optEditor) optEditor.setIcon(url);
+        setFavicon(url, "image/png");  // a aba do navegador mostra a capa do servidor
+        shownIcon = server.iconVersion;
+      }
       $("addr").textContent = server.address;
       $("software").textContent = `${server.softwareLabel} ${server.version}`;
       $("contentBtn").textContent = server.contentKind === "plugins" ? "Plugins" : "Mods";
@@ -234,7 +267,8 @@
 
       if (!optionsFilled) {
         $("optName").value = server.name;
-        $("optSub").value = server.subtitle;
+        optEditor = mountMotdEditor($("optMotd"), { value: server.subtitle, iconUrl: iconUrl(server), name: server.name });
+        $("optName").addEventListener("input", () => optEditor.setName($("optName").value.trim()));
         if (server.plan === "vps") setupVpsCard();
         optionsFilled = true;
       }
@@ -564,13 +598,39 @@
     $("save").addEventListener("click", async () => {
       $("optErr").textContent = "";
       try {
-        await api("PATCH", base, { name: $("optName").value, subtitle: $("optSub").value });
+        await api("PATCH", base, { name: $("optName").value, subtitle: optEditor.value });
         $("save").textContent = "Salvo!";
-        setTimeout(() => ($("save").textContent = "Salvar"), 1500);
+        setTimeout(() => ($("save").textContent = "Salvar nome e subtítulo"), 1500);
         poll();
       } catch (e) {
         $("optErr").textContent = e.message;
       }
+    });
+
+    // ---------- Ícone (capa) ----------
+    $("iconFile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      $("iconErr").textContent = $("iconOk").textContent = "";
+      try {
+        await apiUpload(`${base}/icon`, await iconBlobFromFile(file));
+        $("iconOk").textContent = "Ícone trocado! Ele aparece no Minecraft na próxima vez que o servidor ligar.";
+      } catch (e) {
+        $("iconErr").textContent = e.message;
+      }
+      poll();
+    });
+
+    $("iconReset").addEventListener("click", async () => {
+      $("iconErr").textContent = $("iconOk").textContent = "";
+      try {
+        await api("POST", `${base}/icon/reset`);
+        $("iconOk").textContent = "Voltou para o ícone padrão do BlockHost.";
+      } catch (e) {
+        $("iconErr").textContent = e.message;
+      }
+      poll();
     });
 
     $("delete").addEventListener("click", async () => {

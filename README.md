@@ -41,6 +41,11 @@ Ao trocar de software ou de versão, o backend guarda um backup do mundo em `dat
 
 Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth só o que é compatível com o seu servidor, instala (as dependências obrigatórias vêm junto), envia um `.jar` seu, ativa/desativa ou remove. Tudo isso só com o servidor desligado.
 
+## Aparência: capa e subtítulo
+
+- **Ícone (capa)**: em Opções (ou ao criar o servidor) você escolhe qualquer imagem. O navegador a reduz para 64×64 (corte no centro, mantendo a transparência) e ela vira o `server-icon.png` do Minecraft, além de aparecer na lista, no cabeçalho do painel e na aba do navegador. Sem imagem, vale o ícone padrão do BlockHost (`assets/default-icon.png`, gerado por `python tools/make_icon.py`).
+- **Subtítulo com cores**: editor com as 16 cores, negrito, itálico, sublinhado, riscado, ofuscado, limpar e alinhamento (o alinhamento é aproximado). Usa os códigos `&a`, `&l`, `&r`… (só minúsculas) e aceita até 2 linhas. O preview imita a lista de servidores do Minecraft.
+
 ## Planos
 
 - **Grátis**: roda neste PC. Fecha sozinho após 5 horas sem jogadores.
