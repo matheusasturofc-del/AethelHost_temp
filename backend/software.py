@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+import urllib.error
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -236,8 +237,9 @@ def _quilt(version):
     installer = get_json("https://meta.quiltmc.org/v3/versions/installer")[0]
     if not TOKEN_RE.fullmatch(installer["version"]):
         raise RuntimeError("Resposta inesperada do Quilt.")
+    # Os hashes da API de metadados do Quilt não batem com o jar (conferido ao vivo); os do Maven, ao lado do arquivo, batem.
     return {"url": installer["url"], "name": f"quilt-installer-{installer['version']}.jar",
-            "hash": ("sha256", installer["hashes"]["sha256"]), "size": installer.get("file_size"), "installer": True}
+            "hash": _maven_installer(installer["url"]), "size": installer.get("file_size"), "installer": True}
 
 
 _promos = {"at": 0.0, "data": {}}
@@ -256,11 +258,19 @@ def forge_versions():
 
 
 def _maven_installer(url):
-    """Hash do instalador: os repositórios Maven publicam um .sha1 ao lado de cada arquivo."""
-    sha1 = get_text(url + ".sha1", limit=200).strip().split()[0]
-    if not re.fullmatch(r"[0-9a-f]{40}", sha1):
-        raise RuntimeError("Não consegui obter o hash oficial do instalador.")
-    return ("sha1", sha1)
+    """Hash do instalador: os repositórios Maven publicam um .sha256 e/ou .sha1 ao lado de cada arquivo."""
+    for algo, size in (("sha256", 64), ("sha1", 40)):
+        try:
+            value = get_text(f"{url}.{algo}", limit=200).strip().split()[0]
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            raise
+        except IndexError:
+            continue
+        if re.fullmatch(rf"[0-9a-f]{{{size}}}", value):
+            return (algo, value)
+    raise RuntimeError("Não consegui obter o hash oficial do instalador.")
 
 
 def _forge(version):
