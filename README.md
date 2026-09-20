@@ -12,9 +12,31 @@ Abra http://127.0.0.1:8080 no navegador. Ctrl+C no terminal desliga o backend e 
 
 **Antes de reiniciar o backend, desligue seus servidores pelo painel.** Se o backend for encerrado com um servidor ligado, o painel perde o controle dele.
 
+## Contas e login
+
+Para usar o painel é preciso entrar com uma conta: **Google, Microsoft, GitHub, Discord** ou qualquer serviço OpenID Connect ("Outro"). Não existe senha do BlockHost. Cada conta só vê e mexe nos próprios servidores (e tem a própria chave SSH para a VPS).
+
+**Configurar (uma vez).** Cada serviço pede que você registre um "aplicativo" no site dele e cole aqui o ID e a chave secreta. Na página `login.html`, enquanto não existe nenhuma conta, aparece a seção **Configurar os logins** com o passo a passo de cada serviço e o endereço de retorno para copiar:
+
+| Serviço | Onde criar | Endereço de retorno |
+|---|---|---|
+| Google | console.cloud.google.com → APIs e serviços → Credenciais → ID do cliente OAuth (Aplicativo da Web) | `http://127.0.0.1:8080/auth/callback/google` |
+| Microsoft | portal.azure.com → Microsoft Entra ID → Registros de aplicativo (contas de qualquer diretório e pessoais) | `http://127.0.0.1:8080/auth/callback/microsoft` |
+| GitHub | Settings → Developer settings → OAuth Apps | `http://127.0.0.1:8080/auth/callback/github` |
+| Discord | discord.com/developers/applications → OAuth2 | `http://127.0.0.1:8080/auth/callback/discord` |
+
+Use sempre `127.0.0.1` (não `localhost`): o BlockHost redireciona para ele, e o cookie de login é ligado a esse endereço. Se um dia o site for para a internet, use o endereço público (https) no registro e em `BASE_URL` (`backend/server.py`).
+
+- **A primeira conta que entrar é a administradora.** Ela herda servidores criados antes das contas existirem (e a chave SSH antiga) e é a única que pode mudar os logins depois.
+- Contas são separadas por serviço: a mesma pessoa entrando pelo Google e pela Microsoft tem duas contas.
+- Segurança: OAuth2 com PKCE e `state` amarrado ao navegador; a sessão dura 14 dias e só o hash dela fica em disco (`data/sessions.json`); o cookie é `HttpOnly` e `SameSite=Lax`. As chaves secretas ficam em `data/auth.json` e nunca voltam para o navegador.
+- Ainda **não há limites por conta** (quantidade de servidores, RAM). Tudo roda no seu PC.
+- Testes/scripts: `BLOCKHOST_DATA` (pasta de dados) e `BLOCKHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais. Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `BLOCKHOST_COOKIE`.
+
 ## Como funciona
 
-- `index.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.
+- `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.
+- `backend/auth.py`: contas, login OAuth e sessões.
 - `backend/server.py`: serve o site e a API, liga os servidores neste PC e controla a VPS por SSH.
 - `backend/software.py`: versões do Minecraft e download dos programas de servidor (Vanilla, Paper, Purpur, Fabric).
 - `backend/content.py`: mods e plugins (busca e instalação pelo Modrinth, envio de `.jar`).

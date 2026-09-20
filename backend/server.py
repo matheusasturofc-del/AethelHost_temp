@@ -26,11 +26,12 @@ import uuid
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
 
 import content  # noqa: E402
+import auth  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
 from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
@@ -41,7 +42,7 @@ from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_ja
 DB_FILE = DATA / "servers.json"
 
 HOST = "127.0.0.1"  # só este PC acessa a API
-PORT = 8080
+PORT = int(os.environ.get("BLOCKHOST_PORT") or 8080)  # outra porta só para testes
 DOMAIN = "blockhost.net"  # nome provisório
 FIRST_MC_PORT = 25565
 MAX_PLAYERS = 20
@@ -129,9 +130,10 @@ DB_LOCK = threading.RLock()
 
 
 def _normalize(server):
-    """Servidores criados antes de existir Software/RAM ganham os valores padrão."""
+    """Servidores criados antes de existir Software/RAM/dono ganham os valores padrão."""
     server.setdefault("software", "vanilla")
     server.setdefault("ramMb", DEFAULT_RAM_MB)
+    server.setdefault("owner", None)  # sem dono até a primeira conta ser criada; aí passam a ser dela
     return server
 
 
@@ -152,11 +154,28 @@ def db_save(servers):
     os.replace(tmp, DB_FILE)
 
 
-def find_server(sid):
-    server = next((s for s in db_load() if s["id"] == sid), None)
+CTX = threading.local()  # quem está fazendo o pedido (o Handler preenche)
+
+
+def current_user():
+    return getattr(CTX, "user", None)
+
+
+def _owned(server):
+    user = current_user()
+    return bool(user and server.get("owner") == user["id"])
+
+
+def _pick(servers, sid):
+    """O servidor `sid`, se ele for da conta logada. Para os outros, é como se não existisse."""
+    server = next((s for s in servers if s["id"] == sid and _owned(s)), None)
     if not server:
         raise ApiError(404, "Servidor não encontrado.")
     return server
+
+
+def find_server(sid):
+    return _pick(db_load(), sid)
 
 
 # ---------------------------------------------------------------- Processo do Minecraft
@@ -202,6 +221,13 @@ def icon_version(sid):
     """Muda quando a capa muda: o navegador guarda a imagem em cache e só baixa de novo se isto mudar."""
     f = custom_icon(sid)
     return f.stat().st_mtime_ns // 1_000_000 if f.is_file() else 0
+
+
+class Reply:
+    """Resposta JSON que também define cookies (login e logout)."""
+
+    def __init__(self, data, cookies=()):
+        self.data, self.cookies = data, list(cookies)
 
 
 class Raw:
@@ -368,20 +394,23 @@ class Runtime:
 
 # ---------------------------------------------------------------- VPS (SSH)
 
-KEY_FILE = DATA / "keys" / "blockhost_ed25519"
-KNOWN_HOSTS = DATA / "keys" / "known_hosts"
+def key_paths(owner):
+    """Cada conta tem a sua própria chave SSH: uma conta nunca consegue usar a VPS de outra."""
+    folder = DATA / "keys" / owner
+    return folder / "blockhost_ed25519", folder / "known_hosts"
 
 
-def ensure_key():
-    """Chave SSH do BlockHost. A privada nunca sai deste PC: você só copia a pública."""
-    pub = Path(str(KEY_FILE) + ".pub")
-    if not KEY_FILE.exists() or not pub.exists():
-        KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        KEY_FILE.unlink(missing_ok=True)
+def ensure_key(owner):
+    """Chave SSH da conta. A privada nunca sai deste PC: você só copia a pública."""
+    key_file, _ = key_paths(owner)
+    pub = Path(str(key_file) + ".pub")
+    if not key_file.exists() or not pub.exists():
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        key_file.unlink(missing_ok=True)
         pub.unlink(missing_ok=True)
         try:
             r = subprocess.run(
-                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "blockhost", "-f", str(KEY_FILE)],
+                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "blockhost", "-f", str(key_file)],
                 capture_output=True, timeout=30, creationflags=NO_WINDOW,
             )
         except FileNotFoundError:
@@ -390,7 +419,7 @@ def ensure_key():
             raise ApiError(500, "Não consegui gerar a chave SSH: " + r.stderr.decode("utf-8", "replace").strip()[:200])
         if os.name == "nt":  # o ssh do Windows recusa chave que outros usuários possam ler
             subprocess.run(
-                ["icacls", str(KEY_FILE), "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '')}:F"],
+                ["icacls", str(key_file), "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '')}:F"],
                 capture_output=True, creationflags=NO_WINDOW,
             )
     return pub.read_text(encoding="utf-8").strip()
@@ -413,11 +442,12 @@ def ssh_error(text):
 
 
 def ssh_cmd(vps, remote):
+    key_file, known_hosts = key_paths(vps["owner"])
     return [
-        "ssh", "-i", str(KEY_FILE), "-p", str(vps["port"]),
+        "ssh", "-i", str(key_file), "-p", str(vps["port"]),
         "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
         "-o", "StrictHostKeyChecking=accept-new",  # confia na 1ª conexão e avisa se a VPS mudar depois
-        "-o", f"UserKnownHostsFile={KNOWN_HOSTS.as_posix()}",
+        "-o", f"UserKnownHostsFile={known_hosts.as_posix()}",
         "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
         f"{vps['user']}@{vps['host']}", remote,
     ]
@@ -425,7 +455,7 @@ def ssh_cmd(vps, remote):
 
 def ssh_script(vps, script, timeout=60):
     """Roda um script bash na VPS. Devolve (código, saída); RuntimeError se não conseguir conectar."""
-    ensure_key()
+    ensure_key(vps["owner"])
     try:
         r = subprocess.run(
             ssh_cmd(vps, "bash -s"), input=script.encode("utf-8"), capture_output=True,
@@ -442,7 +472,7 @@ def ssh_script(vps, script, timeout=60):
 
 def ssh_stream(vps, script, on_line, limit=1200):
     """Como ssh_script, mas entrega cada linha assim que chega (para instalações demoradas)."""
-    ensure_key()
+    ensure_key(vps["owner"])
     try:
         p = subprocess.Popen(
             ssh_cmd(vps, "bash -s"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -602,7 +632,7 @@ class RemoteRuntime(Runtime):
             self.log(line)
 
     def _run(self, server):
-        self.vps = server["vps"]
+        self.vps = {**server["vps"], "owner": server["owner"]}  # o dono decide qual chave SSH é usada
         self.session_up = self.gone = self._adopted = False
         try:
             need = required_java(server["version"])
@@ -830,7 +860,7 @@ def api_ip_check(query, body):
 
 
 def api_list(query, body):
-    return 200, [view(s) for s in db_load()]
+    return 200, [view(s) for s in db_load() if _owned(s)]
 
 
 def api_create(query, body):
@@ -880,7 +910,7 @@ def api_create(query, body):
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
             "edition": "java", "software": software, "version": version, "ramMb": DEFAULT_RAM_MB,
-            "plan": plan, "port": port, "eula": True,
+            "plan": plan, "port": port, "eula": True, "owner": current_user()["id"],
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         if vps:
@@ -899,9 +929,7 @@ def api_patch(query, body, sid):
     subtitle = clean_motd(body)
     with DB_LOCK:
         servers = db_load()
-        server = next((s for s in servers if s["id"] == sid), None)
-        if not server:
-            raise ApiError(404, "Servidor não encontrado.")
+        server = _pick(servers, sid)
         server.update(name=name, subtitle=subtitle)
         db_save(servers)
     return 200, view(server)
@@ -917,9 +945,7 @@ def api_software_set(query, body, sid):
     """Troca software, versão e/ou RAM. Só com o servidor desligado; guarda um backup do mundo antes."""
     with DB_LOCK:
         servers = db_load()
-        server = next((s for s in servers if s["id"] == sid), None)
-        if not server:
-            raise ApiError(404, "Servidor não encontrado.")
+        server = _pick(servers, sid)
         _require_offline(sid, "mudar o software")
         sw = body.get("software", server["software"])
         version = body.get("version", server["version"])
@@ -1026,8 +1052,7 @@ def api_icon_reset(query, body, sid):
 def api_delete(query, body, sid):
     with DB_LOCK:
         servers = db_load()
-        if not any(s["id"] == sid for s in servers):
-            raise ApiError(404, "Servidor não encontrado.")
+        _pick(servers, sid)
         rt = RUNTIMES.get(sid)
         if rt and rt.state != "offline":
             raise ApiError(409, "Desligue o servidor antes de excluir.")
@@ -1072,7 +1097,7 @@ def api_console(query, body, sid):
 
 
 def api_vps_key(query, body):
-    return 200, {"publicKey": ensure_key()}
+    return 200, {"publicKey": ensure_key(current_user()["id"])}
 
 
 def api_vps_check(query, body, sid):
@@ -1080,7 +1105,7 @@ def api_vps_check(query, body, sid):
     if server["plan"] != "vps":
         raise ApiError(400, "Este servidor não usa VPS.")
     try:
-        _, out = ssh_script(server["vps"], CHECK_SCRIPT, 40)
+        _, out = ssh_script({**server["vps"], "owner": server["owner"]}, CHECK_SCRIPT, 40)
     except RuntimeError as e:
         raise ApiError(502, str(e))
     info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
@@ -1298,9 +1323,7 @@ def api_settings_gamerules(query, body, sid):
     """Guarda as regras no painel (valem a cada início) e, com o servidor ligado, aplica na hora."""
     with DB_LOCK:
         servers = db_load()
-        server = next((s for s in servers if s["id"] == sid), None)
-        if not server:
-            raise ApiError(404, "Servidor não encontrado.")
+        server = _pick(servers, sid)
         if server["plan"] != "free":
             raise ApiError(501, "Esta aba ainda não está disponível na VPS. Use o plano Grátis.")
         clean = options.check_rule_changes(server, body.get("changes"))
@@ -1313,8 +1336,72 @@ def api_settings_gamerules(query, body, sid):
     return 200, {"ok": True, "applied": bool(rt and rt.state == "online")}
 
 
+# ---------------------------------------------------------------- Contas
+
+BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
+PROTECTED_PAGES = {"servers.html", "create.html", "panel.html"}
+
+
+def _claim_legacy(user):
+    """A primeira conta fica com os servidores (e a chave SSH) que já existiam antes de haver contas."""
+    with DB_LOCK:
+        servers = db_load()
+        changed = False
+        for s in servers:
+            if s.get("owner") is None:
+                s["owner"] = user["id"]
+                changed = True
+        if changed:
+            db_save(servers)
+    old = DATA / "keys"
+    if (old / "blockhost_ed25519").exists():
+        dest = old / user["id"]
+        dest.mkdir(parents=True, exist_ok=True)
+        for name in ("blockhost_ed25519", "blockhost_ed25519.pub", "known_hosts"):
+            if (old / name).exists():
+                shutil.move(str(old / name), str(dest / name))
+
+
+auth.on_first_user = _claim_legacy
+
+
+def _require_setup():
+    if not auth.setup_allowed(current_user()):
+        raise ApiError(403, "Só o administrador pode configurar os logins.")
+
+
+def api_auth_providers(query, body):
+    return 200, {"providers": auth.list_providers(), "canSetup": auth.setup_allowed(current_user())}
+
+
+def api_auth_me(query, body):
+    user = current_user()
+    return 200, {"user": auth.public_user(user) if user else None}
+
+
+def api_auth_logout(query, body):
+    auth.logout(getattr(CTX, "cookie", None))
+    return 200, Reply({"ok": True}, [auth.CLEAR_SESSION])
+
+
+def api_auth_config(query, body):
+    _require_setup()
+    return 200, {"redirectBase": BASE_URL, "providers": auth.config_view(BASE_URL)}
+
+
+def api_auth_config_save(query, body):
+    _require_setup()
+    auth.save_provider(str(body.get("provider", "")), body)
+    return 200, {"providers": auth.list_providers()}
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("GET", r"^/api/auth/providers$", api_auth_providers),
+    ("GET", r"^/api/auth/me$", api_auth_me),
+    ("POST", r"^/api/auth/logout$", api_auth_logout),
+    ("GET", r"^/api/auth/config$", api_auth_config),
+    ("POST", r"^/api/auth/config$", api_auth_config_save),
     ("GET", r"^/api/meta$", api_meta),
     ("GET", r"^/api/ip-check$", api_ip_check),
     ("GET", r"^/api/servers$", api_list),
@@ -1364,6 +1451,7 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/settings/properties$", api_settings_properties),
     ("POST", rf"^/api/servers/{ID}/settings/gamerules$", api_settings_gamerules),
 ]
+PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024
@@ -1380,20 +1468,57 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):  # o polling do painel encheria o terminal
         pass
 
-    def _send(self, status, payload, ctype, cache="no-store"):
+    def _send(self, status, payload, ctype, cache="no-store", cookies=()):
         try:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", cache)
             self.send_header("X-Content-Type-Options", "nosniff")
+            for cookie in cookies:
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(payload)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _json(self, status, data):
-        self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+    def _json(self, status, data, cookies=()):
+        self._send(status, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", cookies=cookies)
+
+    def _redirect(self, location, cookies=()):
+        try:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", "0")
+            for cookie in cookies:
+                self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _auth_route(self, method, parsed):
+        """/auth/login/<provedor> leva ao provedor; /auth/callback/<provedor> é para onde ele devolve o login."""
+        if method != "GET":
+            raise ApiError(405, "Método não permitido.")
+        if self.headers.get("Host", "").lower() != f"127.0.0.1:{PORT}":
+            return self._redirect(BASE_URL + self.path)  # o login acontece sempre em 127.0.0.1
+        m = re.match(r"^/auth/(login|callback)/([a-z]{1,20})$", parsed.path)
+        if not m:
+            raise ApiError(404, "Página não encontrada.")
+        action, pid = m.groups()
+        query = parse_qs(parsed.query)
+        try:
+            if action == "login":
+                url, bind = auth.begin(pid, BASE_URL, _first(query, "next"))
+                return self._redirect(url, [auth.bind_cookie(bind)])
+            if _first(query, "error"):
+                raise auth.LoginFailed("denied")
+            _, token, next_url = auth.finish(pid, _first(query, "code"), _first(query, "state"),
+                                             auth.bind_from_cookie(self.headers.get("Cookie")), BASE_URL)
+            return self._redirect(BASE_URL + next_url, [auth.session_cookie(token), auth.CLEAR_BIND])
+        except auth.LoginFailed as e:
+            return self._redirect(f"{BASE_URL}/login.html?error={e.code}", [auth.CLEAR_BIND])
 
     def _send_file(self, status, raw):
         """Envia um arquivo do disco aos poucos (mundos e backups podem ter centenas de MB)."""
@@ -1430,15 +1555,19 @@ class Handler(BaseHTTPRequestHandler):
         return temp
 
     def _handle(self, method):
+        CTX.user, CTX.cookie = None, self.headers.get("Cookie")
         try:
             # Barra outros sites que tentem usar esta API pelo seu navegador.
             if self.headers.get("Host", "").lower() not in {o.split("//")[1] for o in ORIGINS}:
                 raise ApiError(403, "Host não permitido.")
+            CTX.user = auth.user_from_cookie(CTX.cookie)  # quem está logado (ou ninguém)
             parsed = urlparse(self.path)
-            if parsed.path.startswith("/api/"):
+            if parsed.path.startswith("/auth/"):
+                self._auth_route(method, parsed)
+            elif parsed.path.startswith("/api/"):
                 self._api(method, parsed)
             elif method == "GET":
-                self._static(parsed.path)
+                self._static(parsed.path, parsed.query)
             else:
                 raise ApiError(405, "Método não permitido.")
         except ApiError as e:
@@ -1468,6 +1597,8 @@ class Handler(BaseHTTPRequestHandler):
         if not route:
             raise ApiError(404, "Rota não encontrada.")
         fn, groups = route
+        if fn not in PUBLIC and not current_user():
+            raise ApiError(401, "Faça login para continuar.")
 
         body = {}
         temp = None
@@ -1506,14 +1637,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_file(status, data)
             else:
                 self._send(status, data.body, data.ctype, data.cache)
+        elif isinstance(data, Reply):
+            self._json(status, data.data, data.cookies)
         else:
             self._json(status, data)
 
-    def _static(self, path):
+    def _static(self, path, query=""):
         rel = unquote(path).lstrip("/") or "index.html"
         file = ROOT / rel
         if not STATIC_RE.match(rel) or not file.is_file():
             raise ApiError(404, "Página não encontrada.")
+        if rel in PROTECTED_PAGES and not current_user():  # sem conta, essas páginas mandam para o login
+            return self._redirect("/login.html?next=" + quote("/" + rel + ("?" + query if query else "")))
         ctype = mimetypes.guess_type(rel)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript"):
             ctype += "; charset=utf-8"

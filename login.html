@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar — BlockHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
+      <nav class="topnav">
+        <a href="index.html">Voltar ao início</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container login-wrap">
+    <section class="card login-card">
+      <img class="login-logo" src="assets/icon.svg" alt="">
+      <h1>Entrar no BlockHost</h1>
+      <p class="muted">Crie a sua conta ou entre com um destes serviços. Você não precisa criar nenhuma senha nova.</p>
+      <div class="error" id="lgError"></div>
+      <div class="login-list" id="lgProviders"></div>
+      <p class="muted small" id="lgHint" hidden></p>
+    </section>
+
+    <section class="card setup-card" id="lgSetup" hidden>
+      <h2 style="margin-top:0">Configurar os logins</h2>
+      <p class="muted">Para cada serviço você cria um "aplicativo" no site dele e cola aqui o ID e a chave secreta. Isso é feito uma vez só, e só o administrador (a primeira conta) pode mudar depois.</p>
+      <div id="lgConfig"></div>
+    </section>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const next = new URLSearchParams(location.search).get("next") || "";
+    const en = () => (document.documentElement.lang || "").startsWith("en");
+
+    // Mensagens do login (pt, en). Ficam aqui, e não no dicionário, porque o código do erro decide qual mostrar.
+    const ERRORS = {
+      not_configured: ["Esse login ainda não foi configurado.", "That login isn't set up yet."],
+      state: ["Não foi possível confirmar o login (o link expirou ou foi aberto em outro navegador). Tente de novo.", "Couldn't confirm the login (the link expired or was opened in another browser). Try again."],
+      denied: ["Você cancelou o login.", "You cancelled the login."],
+      provider_error: ["O serviço de login não respondeu direito. Tente de novo em instantes.", "The login service didn't respond properly. Try again in a moment."],
+      profile: ["O serviço não informou os dados da sua conta.", "The service didn't return your account details."],
+    };
+
+    // Passo a passo de cada serviço (pt, en). {URI} vira o endereço de retorno.
+    const HELP = {
+      google: [["Abra o Google Cloud Console (console.cloud.google.com) e crie um projeto.", "Open the Google Cloud Console (console.cloud.google.com) and create a project."],
+               ["Vá em \"APIs e serviços\" → \"Credenciais\" → \"Criar credenciais\" → \"ID do cliente OAuth\".", "Go to \"APIs & Services\" → \"Credentials\" → \"Create credentials\" → \"OAuth client ID\"."],
+               ["Tipo de aplicativo: \"Aplicativo da Web\". Em \"URIs de redirecionamento autorizados\" cole o endereço de retorno abaixo.", "Application type: \"Web application\". Under \"Authorized redirect URIs\" paste the redirect address below."],
+               ["Se pedir, configure a \"Tela de permissão OAuth\" (nome do app e o seu e-mail).", "If asked, set up the \"OAuth consent screen\" (app name and your email)."],
+               ["Copie o \"ID do cliente\" e a \"Chave secreta do cliente\" e cole abaixo.", "Copy the \"Client ID\" and \"Client secret\" and paste them below."]],
+      microsoft: [["Abra o portal.azure.com → \"Microsoft Entra ID\" → \"Registros de aplicativo\" → \"Novo registro\".", "Open portal.azure.com → \"Microsoft Entra ID\" → \"App registrations\" → \"New registration\"."],
+                  ["Tipos de conta: \"Contas em qualquer diretório organizacional e contas pessoais da Microsoft\".", "Account types: \"Accounts in any organizational directory and personal Microsoft accounts\"."],
+                  ["Em \"URI de redirecionamento\" escolha \"Web\" e cole o endereço de retorno abaixo.", "Under \"Redirect URI\" choose \"Web\" and paste the redirect address below."],
+                  ["Depois de criar, copie o \"ID do aplicativo (cliente)\". Em \"Certificados e segredos\" → \"Novo segredo do cliente\", copie o VALOR do segredo (não o ID).", "After creating, copy the \"Application (client) ID\". Under \"Certificates & secrets\" → \"New client secret\", copy the secret VALUE (not the ID)."]],
+      github: [["Abra github.com → Settings → Developer settings → OAuth Apps → \"New OAuth App\".", "Open github.com → Settings → Developer settings → OAuth Apps → \"New OAuth App\"."],
+               ["Em \"Homepage URL\" use http://127.0.0.1:8080 e em \"Authorization callback URL\" cole o endereço de retorno abaixo.", "Use http://127.0.0.1:8080 as \"Homepage URL\" and paste the redirect address below as \"Authorization callback URL\"."],
+               ["Depois de criar, copie o \"Client ID\" e gere um \"Client secret\". Cole os dois abaixo.", "After creating, copy the \"Client ID\" and generate a \"Client secret\". Paste both below."]],
+      discord: [["Abra discord.com/developers/applications e clique em \"New Application\".", "Open discord.com/developers/applications and click \"New Application\"."],
+                ["Em \"OAuth2\" → \"Redirects\" adicione o endereço de retorno abaixo.", "Under \"OAuth2\" → \"Redirects\" add the redirect address below."],
+                ["Copie o \"Client ID\" e o \"Client Secret\" (em \"OAuth2\") e cole abaixo.", "Copy the \"Client ID\" and \"Client Secret\" (under \"OAuth2\") and paste them below."]],
+      custom: [["Serve qualquer serviço que use OpenID Connect (Keycloak, Auth0, Authentik, Okta…).", "Works with any OpenID Connect service (Keycloak, Auth0, Authentik, Okta…)."],
+               ["Cadastre lá o endereço de retorno abaixo e copie o ID e a chave secreta.", "Register the redirect address below there and copy the ID and secret."],
+               ["Preencha os endereços de autorização, de token e de dados do usuário (userinfo) que o serviço informa.", "Fill in the authorization, token and userinfo addresses the service provides."]],
+    };
+    const INITIAL = { google: ["G", "#4285f4"], microsoft: ["M", "#00a4ef"], github: ["GH", "#24292f"], discord: ["D", "#5865f2"], custom: ["→", "#4b5563"] };
+    let providers = [];
+
+    function providerButton(p) {
+      const [letter, color] = INITIAL[p.id] || ["•", "#4b5563"];
+      const mark = h("span", { class: "prov-mark", style: `background:${color}`, translate: "no" }, letter);
+      if (!p.configured) return h("button", { class: "btn prov disabled", type: "button", disabled: true }, mark, h("span", { translate: "no" }, p.label), h("small", {}, "Não configurado"));
+      return h("a", { class: "btn prov", href: `/auth/login/${p.id}` + (next ? `?next=${encodeURIComponent(next)}` : "") }, mark, h("span", {}, "Continuar com ", h("b", { translate: "no" }, p.label)));
+    }
+
+    async function loadProviders() {
+      const data = await api("GET", "/auth/providers");
+      providers = data.providers;
+      const visible = providers.filter((p) => p.configured || p.id !== "custom");
+      $("lgProviders").replaceChildren(...visible.map(providerButton));
+      const none = !providers.some((p) => p.configured);
+      $("lgHint").hidden = !none;
+      $("lgHint").textContent = none ? (data.canSetup ? "Nenhum login foi configurado ainda. Configure um abaixo para poder entrar." : "Nenhum login foi configurado ainda. Peça ao administrador para configurar.") : "";
+      $("lgSetup").hidden = !data.canSetup;
+      if (data.canSetup) renderSetup();
+      return data;
+    }
+
+    async function renderSetup() {
+      let cfg;
+      try { cfg = (await api("GET", "/auth/config")).providers; } catch { return; }
+      $("lgConfig").replaceChildren(...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+    }
+
+    let saved = null;  // bloco recém-salvo: continua aberto, com o aviso, depois que a lista é refeita
+
+    function setupBlock(id, c) {
+      const lang = en() ? 1 : 0;
+      const field = (label, name, value, opts = {}) => h("div", { class: "field" }, h("label", {}, label),
+        h("input", { type: opts.secret ? "password" : "text", name, value: value || "", placeholder: opts.placeholder || "", autocomplete: "off", spellcheck: false }));
+      const uri = h("input", { type: "text", readOnly: true, value: c.redirectUri, class: "uri", translate: "no" });
+      const form = h("form", { class: "setup-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        const body = { provider: id, ...Object.fromEntries(new FormData(ev.target)) };
+        msg.className = "ok-msg"; msg.textContent = "";
+        try { await api("POST", "/auth/config", body); saved = id; await loadProviders(); }
+        catch (e) { msg.className = "error"; msg.textContent = e.message; }
+      } },
+        ...(id === "custom" ? [field("Nome que aparece no botão", "label", c.label, { placeholder: "Minha empresa" })] : []),
+        field("ID do cliente (client ID)", "client_id", c.client_id),
+        field("Chave secreta (client secret)", "client_secret", "", { secret: true, placeholder: c.hasSecret ? "•••••••• (já salva; deixe vazio para manter)" : "" }),
+        ...(id === "custom" ? [field("Endereço de autorização", "authorize_url", c.authorize_url, { placeholder: "https://…/authorize" }), field("Endereço do token", "token_url", c.token_url, { placeholder: "https://…/token" }),
+                              field("Endereço de dados do usuário (userinfo)", "userinfo_url", c.userinfo_url, { placeholder: "https://…/userinfo" }), field("Escopos (opcional)", "scope", c.scope, { placeholder: "openid email profile" })] : []),
+        h("div", { class: "btn-row" }, h("button", { class: "btn btn-primary", type: "submit" }, "Salvar"),
+          c.client_id ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => { await api("POST", "/auth/config", { provider: id, client_id: "" }); saved = null; await loadProviders(); } }, "Remover") : null));
+      const msg = h("div", { class: "ok-msg" }, saved === id ? "Salvo. O login já pode ser usado." : "");
+      return h("details", { class: "setup-block", open: saved === id },
+        h("summary", {}, h("span", { translate: "no" }, c.label || "Outro (OpenID Connect)"), c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
+        h("ol", { class: "steps", translate: "no" }, HELP[id].map((s) => h("li", {}, s[lang]))),
+        h("div", { class: "field" }, h("label", {}, "Endereço de retorno (redirect URI)"),
+          h("div", { class: "uri-row" }, uri, h("button", { class: "btn", type: "button", onclick: async () => { try { await navigator.clipboard.writeText(c.redirectUri); } catch { uri.select(); } } }, "Copiar"))),
+        form, msg);
+    }
+
+    (async () => {
+      const code = new URLSearchParams(location.search).get("error");
+      if (code) $("lgError").textContent = (ERRORS[code] || ERRORS.provider_error)[en() ? 1 : 0];
+      if (window.BH_ME_READY) await window.BH_ME_READY;
+      if (window.BH_USER) { location.replace(next && next.startsWith("/") ? next : "servers.html"); return; }
+      await loadProviders();
+    })();
+    window.addEventListener("langchange", () => {
+      const code = new URLSearchParams(location.search).get("error");
+      if (code) $("lgError").textContent = (ERRORS[code] || ERRORS.provider_error)[en() ? 1 : 0];
+      if (!$("lgSetup").hidden) renderSetup();
+    });
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+</body>
+</html>

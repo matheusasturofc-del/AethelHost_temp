@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Descobre as gamerules e as propriedades de cada geração do Minecraft perguntando a servidores de verdade e grava backend/gamerules.json.
 
-Uso (o backend precisa estar rodando e as versões já baixadas):
-    python tools/gen_gamerules.py 1.21.4 26.3
+Uso (o backend precisa estar rodando e as versões já baixadas; a API exige login, então passe o valor do cookie
+bh_session de uma conta na variável BLOCKHOST_COOKIE):
+    BLOCKHOST_COOKIE=... python tools/gen_gamerules.py 1.21.4 26.3
 
 Para cada regra candidata (nomes achados no jar do servidor) envia `gamerule <nome>` ao console e lê a resposta:
 regra existente devolve o valor atual (= padrão, num mundo novo); regra inexistente dá erro e é descartada.
 """
 import io
 import json
+import os
 import re
 import sys
 import time
@@ -23,8 +25,10 @@ API = "http://127.0.0.1:8080/api"
 
 def call(method, path, body=None):
     data = json.dumps(body or {}).encode() if method != "GET" else None
-    req = urllib.request.Request(API + path, data=data, method=method,
-                                 headers={"Content-Type": "application/json"} if data else {})
+    headers = {"Content-Type": "application/json"} if data else {}
+    if os.environ.get("BLOCKHOST_COOKIE"):  # a API exige login: copie o cookie bh_session do navegador (F12 → Application → Cookies)
+        headers["Cookie"] = "bh_session=" + os.environ["BLOCKHOST_COOKIE"]
+    req = urllib.request.Request(API + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.loads(r.read())

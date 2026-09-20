@@ -37,6 +37,35 @@ a { color: inherit; text-decoration: none; }
 .topnav { display: flex; gap: 20px; color: var(--muted); font-size: 15px; }
 .topnav a:hover { color: var(--text); }
 
+/* Conta: menu no topo e página de login */
+.user-menu { display: inline-flex; align-items: center; gap: 8px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--surface-2); display: inline-flex; align-items: center;
+          justify-content: center; font: 800 13px/1 system-ui; color: var(--accent); flex: none; }
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--text); }
+.nav-out, .nav-login { padding: 5px 14px; font-size: 14px; }
+@media (max-width: 640px) {
+  .user-name { display: none; }
+  .topnav { gap: 8px; }
+  .nav-login, .nav-out { padding: 4px 10px; font-size: 13px; }
+  .topnav a[href^="#"] { display: none; }  /* atalhos da home: no celular sobra espaço só para o essencial */
+}
+.login-wrap { max-width: 560px; margin: 48px auto 80px; display: grid; gap: 20px; }
+.login-card { text-align: center; padding: 36px 28px; }
+.login-card h1 { margin: 12px 0 8px; font-size: 26px; }
+.login-logo { width: 64px; height: 64px; image-rendering: pixelated; }
+.login-list { display: grid; gap: 10px; margin-top: 22px; text-align: left; }
+.btn.prov { justify-content: flex-start; gap: 12px; padding: 12px 16px; font-size: 16px; }
+.btn.prov.disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.prov small { margin-left: auto; color: var(--muted); font-weight: 400; }
+.prov-mark { width: 28px; height: 28px; border-radius: 8px; color: #fff; font: 800 12px/1 system-ui; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.setup-card { padding: 24px; }
+.setup-block { border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; background: var(--bg); }
+.setup-block summary { cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.setup-block[open] summary { margin-bottom: 10px; color: var(--accent); }
+.setup-form { margin-top: 8px; }
+.uri-row { display: flex; gap: 8px; }
+.uri { flex: 1; font: 13px ui-monospace, Consolas, monospace; }
+
 /* Botão de idioma (PT | EN) no topo */
 .topnav { align-items: center; }
 .lang-btn { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); padding: 2px; cursor: pointer; font: inherit; }
