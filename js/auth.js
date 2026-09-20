@@ -1,7 +1,7 @@
 // Conta do usuário: menu no topo (nome, foto e Sair) e proteção das páginas. Depende de store.js (api, h).
 
 (() => {
-  const PROTECTED = ["servers.html", "create.html", "panel.html"];
+  const PROTECTED = ["servers.html", "create.html", "panel.html", "admin.html"];
   const page = location.pathname.split("/").pop() || "index.html";
 
   function avatar(user) {
@@ -20,6 +20,7 @@
       if (page !== "login.html") nav.append(h("a", { class: "btn nav-login", href: "login.html" }, "Entrar"));
       return;
     }
+    if (user.admin) nav.append(h("a", { href: "admin.html", class: page === "admin.html" ? "active" : "" }, "Administração"));
     nav.append(h("div", { class: "user-menu", title: user.email || "" },
       avatar(user),
       h("span", { class: "user-name", translate: "no" }, user.name),

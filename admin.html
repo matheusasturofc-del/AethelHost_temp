@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administração — BlockHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-head">
+      <h1>Administração</h1>
+      <input type="text" id="adSearch" placeholder="Buscar conta, e-mail ou servidor…" maxlength="60" autocomplete="off" style="max-width:320px">
+    </div>
+    <div class="error" id="adErr"></div>
+    <div class="info-grid" id="adTotals"></div>
+    <div id="adList" style="margin-top:20px"></div>
+    <p class="muted small" id="adNote" hidden>Só leitura. Você vê aqui as contas e os servidores de todo mundo; para mexer em um servidor, a própria pessoa usa o painel dela.</p>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const PROVIDER = { google: "Google", microsoft: "Microsoft", github: "GitHub", discord: "Discord", custom: "Outro" };
+    const STATE = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };
+    let data = null;
+
+    function fmtRam(mb) { return mb >= 1024 ? (mb / 1024).toFixed(mb % 1024 ? 1 : 0) + " GB" : mb + " MB"; }
+    function fmtWhen(iso) {  // "2026-09-20T19:28:23" (hora local do PC) -> data e hora no idioma escolhido
+      if (!iso) return "—";
+      return fmtDate(new Date(iso).getTime() / 1000);
+    }
+
+    function avatar(u) {
+      const fallback = h("span", { class: "avatar", translate: "no" }, (u.name || "?").trim().charAt(0).toUpperCase());
+      if (!u.avatar) return fallback;
+      const img = h("img", { class: "avatar", src: u.avatar, alt: "", referrerPolicy: "no-referrer" });
+      img.addEventListener("error", () => img.replaceWith(fallback));
+      return img;
+    }
+
+    function serverRow(s) {
+      return h("div", { class: "row" },
+        h("div", { class: "row-main" },
+          h("strong", { translate: "no" }, s.name),
+          h("small", { translate: "no" }, `${s.ip} · ${s.software} ${s.version} · :${s.port}`)),
+        s.public ? h("span", { class: "badge on" }, "Endereço público") : null,
+        h("span", { class: "badge" }, s.plan === "vps" ? "VPS" : "Grátis"),
+        h("span", { class: "badge", translate: "no" }, fmtRam(s.ramMb)),
+        h("span", { class: "status " + s.state }, STATE[s.state]),
+        h("span", { class: "muted", style: "min-width:64px;text-align:right" }, s.state === "online" ? `${s.players} 👤` : ""));
+    }
+
+    function accountCard(u) {
+      const running = u.servers.filter((s) => s.state !== "offline").length;
+      return h("div", { class: "card", style: "margin-bottom:14px;padding:20px" },
+        h("div", { class: "row", style: "border:0;padding:0 0 10px" },
+          avatar(u),
+          h("div", { class: "row-main" },
+            h("strong", { translate: "no" }, u.name, u.admin ? h("span", { class: "badge on", translate: "yes" }, "Administrador") : null),
+            h("small", {}, u.email ? h("span", { translate: "no" }, u.email) : "sem e-mail", " · ", h("span", { translate: "no" }, PROVIDER[u.provider] || u.provider))),
+          h("div", { class: "row-main", style: "text-align:right;flex:none" },
+            h("small", {}, "Entrou em ", h("span", { translate: "no" }, fmtWhen(u.created))),
+            h("small", {}, "Último login ", h("span", { translate: "no" }, fmtWhen(u.lastLogin))),
+            h("small", {}, u.sessions === 1 ? "1 sessão aberta" : `${u.sessions} sessões abertas`))),
+        h("p", { class: "muted small", style: "margin:0 0 4px" },
+          u.servers.length === 0 ? "Nenhum servidor." : `${u.servers.length === 1 ? "1 servidor" : u.servers.length + " servidores"}, ${running} ligado${running === 1 ? "" : "s"} agora`),
+        ...u.servers.map(serverRow));
+    }
+
+    function render() {
+      const q = $("adSearch").value.trim().toLowerCase();
+      const t = data.totals;
+      $("adTotals").replaceChildren(
+        ...[["Contas", t.users], ["Servidores", t.servers], ["Ligados agora", t.running], ["Jogadores online", t.players], ["RAM em uso neste PC", fmtRam(t.ramInUseMb)]]
+          .map(([label, value]) => h("div", { class: "info" }, h("small", {}, label), h("strong", {}, String(value)))));
+      const match = (u) => !q || [u.name, u.email, PROVIDER[u.provider] || "", ...u.servers.flatMap((s) => [s.name, s.ip])].some((x) => (x || "").toLowerCase().includes(q));
+      const cards = data.users.filter(match).map(accountCard);
+      if (data.orphans.length && !q) {
+        cards.push(h("div", { class: "card", style: "margin-bottom:14px;padding:20px" },
+          h("p", { class: "muted small", style: "margin:0 0 4px" }, "Servidores sem conta (a conta dono não existe mais)"),
+          ...data.orphans.map(serverRow)));
+      }
+      $("adList").replaceChildren(...(cards.length ? cards : [h("p", { class: "muted" }, "Nenhuma conta encontrada.")]));
+      $("adNote").hidden = false;
+    }
+
+    async function load() {
+      try {
+        data = await api("GET", "/admin/overview");
+        $("adErr").textContent = "";
+        render();
+      } catch (e) {
+        if (e.status === 403) {
+          $("adTotals").replaceChildren();
+          $("adList").replaceChildren(h("div", { class: "empty" }, h("h2", {}, "Só para o administrador"),
+            h("p", {}, "Esta página é do administrador do BlockHost (a primeira conta criada)."),
+            h("a", { class: "btn btn-primary", href: "servers.html" }, "Ver meus servidores")));
+          clearInterval(timer);
+        } else {
+          $("adErr").textContent = e.message;
+        }
+      }
+    }
+
+    $("adSearch").addEventListener("input", () => data && render());
+    window.addEventListener("langchange", () => data && render());
+    const timer = setInterval(load, 5000);
+    load();
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+</body>
+</html>

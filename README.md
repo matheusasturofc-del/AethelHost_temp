@@ -33,6 +33,10 @@ Use sempre `127.0.0.1` (não `localhost`): o BlockHost redireciona para ele, e o
 - Ainda **não há limites por conta** (quantidade de servidores, RAM). Tudo roda no seu PC.
 - Testes/scripts: `BLOCKHOST_DATA` (pasta de dados) e `BLOCKHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais. Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `BLOCKHOST_COOKIE`.
 
+## Painel do administrador
+
+O administrador (a primeira conta) ganha o link **Administração** no topo (`admin.html`): totais (contas, servidores, ligados agora, jogadores online, RAM em uso neste PC), uma lista de todas as contas (nome, e-mail, serviço de login, data de entrada, último login, sessões abertas) e, dentro de cada uma, os servidores dela com plano, software, versão, RAM, porta, se tem endereço público, se está ligado e quantos jogadores. Tem busca por conta, e-mail ou servidor e atualiza sozinho a cada 5 segundos. Servidores cujo dono não existe mais aparecem numa lista à parte. É só leitura por enquanto (`GET /api/admin/overview`, só para o administrador; para os outros a API responde 403).
+
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.

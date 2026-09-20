@@ -1348,7 +1348,7 @@ def api_settings_gamerules(query, body, sid):
 # ---------------------------------------------------------------- Contas
 
 BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
-PROTECTED_PAGES = {"servers.html", "create.html", "panel.html"}
+PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html"}
 
 
 def _claim_legacy(user):
@@ -1404,10 +1404,39 @@ def api_auth_config_save(query, body):
     return 200, {"providers": auth.list_providers()}
 
 
-def _require_admin():
+def _require_admin(message="Só o administrador pode ligar ou desligar o playit.gg."):
     user = current_user()
     if not user or not user.get("admin"):
-        raise ApiError(403, "Só o administrador pode ligar ou desligar o playit.gg.")
+        raise ApiError(403, message)
+
+
+def api_admin_overview(query, body):
+    """Painel do administrador: todas as contas e os servidores de cada uma (só leitura)."""
+    _require_admin("Só o administrador pode ver o painel de administração.")
+    users = auth.all_users()
+    known = {u["id"] for u in users}
+    by_owner = {}
+    online_players = ram_in_use = running = 0
+    for s in db_load():
+        rt = RUNTIMES.get(s["id"])
+        snap = rt.snapshot() if rt else {"state": "offline", "players": []}
+        item = {"id": s["id"], "name": s["name"], "ip": s["ip"], "plan": s["plan"], "software": SOFTWARE[s["software"]]["label"],
+                "version": s["version"], "ramMb": s["ramMb"], "port": s["port"], "public": bool(s.get("public")),
+                "createdAt": s.get("createdAt"), "state": snap["state"], "players": len(snap["players"])}
+        by_owner.setdefault(s.get("owner") if s.get("owner") in known else None, []).append(item)
+        if snap["state"] != "offline":
+            running += 1
+            online_players += item["players"]
+            if s["plan"] == "free":
+                ram_in_use += s["ramMb"]  # a VPS usa a memória da VPS, não a deste PC
+    for u in users:
+        u["servers"] = by_owner.get(u["id"], [])
+    return 200, {
+        "users": users,
+        "orphans": by_owner.get(None, []),  # servidores de uma conta que não existe mais (ou sem dono)
+        "totals": {"users": len(users), "servers": sum(len(v) for v in by_owner.values()), "running": running,
+                   "players": online_players, "ramInUseMb": ram_in_use},
+    }
 
 
 def api_tunnel(query, body):
@@ -1457,6 +1486,7 @@ def api_public_set(query, body, sid):
 
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("GET", r"^/api/tunnel$", api_tunnel),
     ("POST", r"^/api/tunnel/link$", api_tunnel_link),
     ("POST", r"^/api/tunnel/unlink$", api_tunnel_unlink),

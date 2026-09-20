@@ -59,7 +59,7 @@ BUILTIN = {
                 "userinfo": "https://discord.com/api/users/@me"},
 }
 ORDER = ["google", "microsoft", "github", "discord", "custom"]
-NEXT_RE = re.compile(r"^/(?:servers|create|panel|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
+NEXT_RE = re.compile(r"^/(?:servers|create|panel|admin|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
 
 
 # ---------------------------------------------------------------- arquivos
@@ -291,7 +291,8 @@ def _upsert_user(pid, profile):
             user = {"id": uuid.uuid4().hex[:12], "provider": pid, "sub": profile["sub"], "admin": not _users,
                     "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
             _users[user["id"]] = user
-        user.update(name=(profile.get("name") or "Sem nome")[:80], email=(profile.get("email") or "")[:120], avatar=profile.get("avatar") or "")
+        user.update(name=(profile.get("name") or "Sem nome")[:80], email=(profile.get("email") or "")[:120], avatar=profile.get("avatar") or "",
+                    lastLogin=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(USERS_FILE, list(_users.values()))
     if fresh and user["admin"] and on_first_user:
         on_first_user(user)  # os servidores que já existiam passam a ser dela
@@ -345,6 +346,18 @@ def logout(header):
         with LOCK:
             if _sessions.pop(_hash(token), None) is not None:
                 _write(SESSIONS_FILE, _sessions)
+
+
+def all_users():
+    """Todas as contas, com o último login e quantas sessões ainda valem. Só para o painel do administrador."""
+    now = time.time()
+    with LOCK:
+        open_sessions = {}
+        for s in _sessions.values():
+            if s["exp"] > now:
+                open_sessions[s["user"]] = open_sessions.get(s["user"], 0) + 1
+        return [{**public_user(u), "created": u.get("created"), "lastLogin": u.get("lastLogin"), "sessions": open_sessions.get(u["id"], 0)}
+                for u in _users.values()]
 
 
 def public_user(user):
