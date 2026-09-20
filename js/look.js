@@ -165,6 +165,7 @@ function mountMotdEditor(root, { value = "", iconUrl = "assets/default-icon.png"
 
   return {
     get value() { return input.value; },
+    set value(v) { input.value = v; refresh(); },
     setIcon(url) { icon.src = url; },
     setName(t) { nameEl.textContent = t || "Meu servidor"; },
   };

@@ -81,7 +81,7 @@
 
         <div class="field">
           <label for="version">Versão do Minecraft</label>
-          <select id="version"><option>Carregando…</option></select>
+          <select id="version" data-group="version"><option>Carregando…</option></select>
           <div class="hint" id="versionHint"></div>
         </div>
 
@@ -113,7 +113,8 @@
               <li>Fecha após 5h de inatividade</li>
             </ul>
           </label>
-          <label class="plan">
+          <label class="plan ribbon-host">
+            <span class="ribbon">Em progresso</span>
             <input type="radio" name="plan" value="vps">
             <h3>VPS</h3>
             <div class="price">Sua própria máquina</div>
@@ -177,6 +178,7 @@
 
   <script src="js/store.js"></script>
   <script src="js/look.js"></script>
+  <script src="js/ui.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     let ipEdited = false;
@@ -372,6 +374,17 @@
     }
 
     init();
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+  <script>
+    // O subtítulo padrão acompanha o idioma, enquanto você ainda não mexeu nele.
+    const DEFAULT_MOTD = "&aBem-vindo ao meu servidor!";
+    function applyDefaultMotd() {
+      if (motd.value === DEFAULT_MOTD || motd.value === I18N.tr(DEFAULT_MOTD) || motd.value === "&aWelcome to my server!") motd.value = I18N.tr(DEFAULT_MOTD);
+    }
+    applyDefaultMotd();
+    window.addEventListener("langchange", () => { applyDefaultMotd(); if (meta) loadVersions(); });
   </script>
 </body>
 </html>

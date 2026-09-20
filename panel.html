@@ -22,13 +22,13 @@
       <a class="back" href="servers.html">← Servidores</a>
       <button class="active" data-tab="server">Servidor</button>
       <button data-tab="console">Console</button>
+      <button data-tab="players">Jogadores</button>
       <button data-tab="software">Software</button>
       <button data-tab="content" id="contentBtn">Mods</button>
+      <button data-tab="files">Arquivos</button>
+      <button data-tab="worlds">Mundos</button>
+      <button data-tab="backups">Backups</button>
       <button data-tab="options">Opções</button>
-      <button disabled title="Em breve">Jogadores</button>
-      <button disabled title="Em breve">Arquivos</button>
-      <button disabled title="Em breve">Mundos</button>
-      <button disabled title="Em breve">Backups</button>
     </aside>
 
     <section>
@@ -90,7 +90,7 @@
           </div>
           <div class="field">
             <label for="swVersion">Versão do Minecraft</label>
-            <select id="swVersion"></select>
+            <select id="swVersion" data-group="version"></select>
             <div class="hint" id="swHint"></div>
           </div>
           <div class="field">
@@ -126,6 +126,123 @@
             <div class="hint" id="ctFilterHint" style="margin-top:8px"></div>
             <div id="ctResults"></div>
             <button class="btn" id="ctMore" hidden style="margin-top:12px">Carregar mais</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aba: Jogadores -->
+      <div id="tab-players" hidden>
+        <div class="notice" id="plNotice" hidden></div>
+        <div id="plMain">
+          <div class="card">
+            <h3 style="margin-top:0">Online agora</h3>
+            <div id="plOnline"></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <div class="card-head">
+              <h3 style="margin:0">Lista de permitidos (whitelist)</h3>
+              <label class="switch"><input type="checkbox" id="plWlOn"><span class="knob"></span><span>Ativada</span></label>
+            </div>
+            <p class="muted small">Com a lista ativada, só quem está nela consegue entrar.</p>
+            <form class="cmd-row" id="plWlForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
+            <div id="plWl"></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <h3 style="margin-top:0">Operadores (administradores)</h3>
+            <form class="cmd-row" id="plOpForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
+            <div id="plOps"></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <h3 style="margin-top:0">Banidos</h3>
+            <form class="cmd-row" id="plBanForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><input type="text" placeholder="Motivo (opcional)" maxlength="100" autocomplete="off"><button class="btn btn-primary" type="submit">Banir</button></form>
+            <div id="plBans"></div>
+          </div>
+          <div class="ok-msg" id="plOk"></div>
+          <div class="error" id="plErr"></div>
+        </div>
+      </div>
+
+      <!-- Aba: Arquivos -->
+      <div id="tab-files" hidden>
+        <div class="notice" id="flNotice" hidden></div>
+        <div id="flMain">
+          <div class="card" id="flBrowser">
+            <div class="card-head">
+              <div class="crumbs" id="flCrumbs"></div>
+              <div class="btn-row" style="margin:0">
+                <label class="btn needs-offline">Enviar arquivo<input type="file" id="flUpload" multiple hidden></label>
+                <button class="btn needs-offline" id="flMkdir">Nova pasta</button>
+              </div>
+            </div>
+            <div id="flList"></div>
+            <div class="ok-msg" id="flOk"></div>
+            <div class="error" id="flErr"></div>
+          </div>
+          <div class="card" id="flEditor" hidden>
+            <div class="card-head">
+              <h3 id="flEditName" style="margin:0"></h3>
+              <div class="btn-row" style="margin:0">
+                <button class="btn btn-primary needs-offline" id="flSave">Salvar</button>
+                <button class="btn" id="flClose">Fechar</button>
+              </div>
+            </div>
+            <textarea class="editor" id="flText" spellcheck="false"></textarea>
+            <div class="error" id="flEditErr"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aba: Mundos -->
+      <div id="tab-worlds" hidden>
+        <div class="notice" id="wdNotice" hidden></div>
+        <div id="wdMain">
+          <div class="card">
+            <h3 style="margin-top:0">Seus mundos</h3>
+            <div id="wdList"></div>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <h3 style="margin-top:0">Criar um mundo novo</h3>
+            <div class="form-grid">
+              <div class="field"><label for="wdName">Nome</label><input type="text" id="wdName" maxlength="32" placeholder="criativo" autocomplete="off"></div>
+              <div class="field"><label for="wdType">Tipo</label>
+                <select id="wdType">
+                  <option value="normal">Normal</option>
+                  <option value="flat">Plano (superflat)</option>
+                  <option value="large_biomes">Biomas grandes</option>
+                  <option value="amplified">Amplificado</option>
+                </select>
+              </div>
+              <div class="field"><label for="wdSeed">Semente (seed, opcional)</label><input type="text" id="wdSeed" maxlength="60" placeholder="deixe vazio para sortear" autocomplete="off"></div>
+            </div>
+            <button class="btn btn-primary needs-offline" id="wdCreate">Criar e usar este mundo</button>
+            <p class="muted small">O mundo é gerado na próxima vez que o servidor ligar.</p>
+          </div>
+          <div class="card" style="margin-top:16px">
+            <h3 style="margin-top:0">Enviar um mundo seu (.zip)</h3>
+            <p class="muted small">O .zip precisa ter a pasta do mundo, com o arquivo level.dat dentro.</p>
+            <div class="form-grid">
+              <div class="field"><label for="wdUpName">Nome do mundo</label><input type="text" id="wdUpName" maxlength="32" placeholder="meu-mundo" autocomplete="off"></div>
+            </div>
+            <label class="btn needs-offline">Escolher .zip e enviar<input type="file" id="wdUpload" accept=".zip,application/zip" hidden></label>
+          </div>
+          <div class="ok-msg" id="wdOk"></div>
+          <div class="error" id="wdErr"></div>
+        </div>
+      </div>
+
+      <!-- Aba: Backups -->
+      <div id="tab-backups" hidden>
+        <div class="notice" id="bkNotice" hidden></div>
+        <div id="bkMain">
+          <div class="card">
+            <div class="card-head">
+              <h3 style="margin:0">Backups dos mundos</h3>
+              <button class="btn btn-primary" id="bkCreate">Criar backup agora</button>
+            </div>
+            <p class="muted small">Cada backup guarda os mundos (com Nether e End). Com o servidor ligado, ele é salvo antes de copiar. O BlockHost também faz um backup sozinho antes de trocar de software, restaurar ou apagar um mundo.</p>
+            <div id="bkList"></div>
+            <div class="ok-msg" id="bkOk"></div>
+            <div class="error" id="bkErr"></div>
           </div>
         </div>
       </div>
@@ -169,6 +286,7 @@
 
   <script src="js/store.js"></script>
   <script src="js/look.js"></script>
+  <script src="js/ui.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const id = new URLSearchParams(location.search).get("id");
@@ -375,12 +493,25 @@
     document.querySelectorAll(".side button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-        ["server", "console", "software", "content", "options"].forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
+        ["server", "console", "players", "software", "content", "files", "worlds", "backups", "options"]
+          .forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
         const box = $("console");
         box.scrollTop = box.scrollHeight;
-        if (btn.dataset.tab === "software") openSoftware();
-        if (btn.dataset.tab === "content") loadContent();
+        if (btn.dataset.tab !== "players") clearInterval(plTimer);  // a lista de jogadores só atualiza enquanto está aberta
+        openTabData(btn.dataset.tab);
       });
+    });
+
+    // Carrega os dados da aba que acabou de abrir (e recarrega quando o idioma muda, para datas e textos novos).
+    function openTabData(tab) {
+      const open = { players: openPlayers, software: openSoftware, content: loadContent, files: openFiles, worlds: openWorlds, backups: openBackups }[tab];
+      if (open) open();
+    }
+    window.addEventListener("langchange", () => {
+      shownSubtitle = null;
+      poll();
+      const active = document.querySelector(".side button.active");
+      if (active) openTabData(active.dataset.tab);
     });
 
     // ---------- Aba Software ----------
@@ -564,7 +695,7 @@
       return h("div", { class: "row" }, icon,
         h("div", { class: "row-main" },
           h("strong", {}, hit.title),
-          h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString("pt-BR")} downloads`),
+          h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString(document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR")} downloads`),
           h("span", { class: "desc" }, hit.description)),
         btn);
     }
@@ -649,5 +780,11 @@
     poll();
     setInterval(poll, 1000);
   </script>
+  <script src="js/tab-players.js"></script>
+  <script src="js/tab-files.js"></script>
+  <script src="js/tab-worlds.js"></script>
+  <script src="js/tab-backups.js"></script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
 </body>
 </html>

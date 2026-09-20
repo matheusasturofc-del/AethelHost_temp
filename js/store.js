@@ -62,6 +62,7 @@ function h(tag, props = {}, ...children) {
     if (v === null || v === undefined || v === false) continue;
     if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else if (k === "class") el.className = v;
+    else if (k === "translate") el.setAttribute("translate", v);  // a propriedade só aceita true/false
     else if (k in el) el[k] = v;
     else el.setAttribute(k, v);
   }
@@ -70,7 +71,15 @@ function h(tag, props = {}, ...children) {
 }
 
 function fmtSize(bytes) {
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + " GB";
   return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+
+// Data e hora no idioma escolhido (o botão PT/EN muda o atributo lang da página).
+function fmtDate(seconds) {
+  if (!seconds) return "—";
+  const locale = (document.documentElement.lang || "pt-BR").startsWith("en") ? "en-US" : "pt-BR";
+  return new Date(seconds * 1000).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" });
 }
 
 const STATUS_LABEL = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };

@@ -18,6 +18,8 @@ Abra http://127.0.0.1:8080 no navegador. Ctrl+C no terminal desliga o backend e 
 - `backend/server.py`: serve o site e a API, liga os servidores neste PC e controla a VPS por SSH.
 - `backend/software.py`: versões do Minecraft e download dos programas de servidor (Vanilla, Paper, Purpur, Fabric).
 - `backend/content.py`: mods e plugins (busca e instalação pelo Modrinth, envio de `.jar`).
+- `backend/manage.py`: jogadores, arquivos, mundos e backups.
+- `backend/props.py`: leitura e escrita do `server.properties`.
 - `backend/net.py`: downloads só de sites oficiais conhecidos, com conferência de hash.
 - `data/`: servidores, mundos, backups, chaves SSH e jars baixados. Fica só no seu PC (não vai para o git).
 
@@ -31,6 +33,11 @@ As versões vêm ao vivo dos sites oficiais (Mojang, PaperMC, Purpur, Fabric), e
 | Paper | plugins | PaperMC |
 | Purpur | plugins | PurpurMC |
 | Fabric | mods | FabricMC |
+| Quilt | mods (Quilt e Fabric) | QuiltMC |
+| Forge | mods | Forge (instalador oficial) |
+| NeoForge | mods | NeoForged (instalador oficial) |
+
+Quilt, Forge e NeoForge rodam um instalador oficial uma vez, dentro da pasta do servidor (só no plano Grátis por enquanto).
 
 Cada versão exige um Java mínimo (a Mojang informa qual). O backend procura os Javas instalados e desativa as versões que o PC não consegue rodar, mostrando o comando `winget` para instalar o que falta.
 Ex.: as versões 26.x exigem Java 25 (`winget install EclipseAdoptium.Temurin.25.JDK`).
@@ -45,6 +52,22 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 - **Ícone (capa)**: em Opções (ou ao criar o servidor) você escolhe qualquer imagem. O navegador a reduz para 64×64 (corte no centro, mantendo a transparência) e ela vira o `server-icon.png` do Minecraft, além de aparecer na lista, no cabeçalho do painel e na aba do navegador. Sem imagem, vale o ícone padrão do BlockHost (`assets/default-icon.png`, gerado por `python tools/make_icon.py`).
 - **Subtítulo com cores**: editor com as 16 cores, negrito, itálico, sublinhado, riscado, ofuscado, limpar e alinhamento (o alinhamento é aproximado). Usa os códigos `&a`, `&l`, `&r`… (só minúsculas) e aceita até 2 linhas. O preview imita a lista de servidores do Minecraft.
+
+## Painel
+
+- **Jogadores**: quem está online (expulsar, tornar operador, banir), lista de permitidos (whitelist), operadores e banidos. Com o servidor ligado usa comandos; desligado, grava nos arquivos do Minecraft e consulta a Mojang para achar o UUID.
+- **Arquivos**: navegar pela pasta do servidor, editar arquivos de texto, enviar, baixar (pastas viram .zip), renomear e apagar.
+- **Mundos**: escolher o mundo em uso, criar (nome, tipo e semente), baixar, enviar um .zip seu e apagar.
+- **Backups**: criar (com o servidor ligado ele salva antes de copiar), restaurar, baixar e apagar. O BlockHost também guarda um backup antes de trocar de software, restaurar ou apagar um mundo.
+- Mudanças em arquivos, mundos e mods só com o servidor desligado.
+
+## Idioma
+
+O botão **PT | EN** no topo troca a interface entre português e inglês e lembra a escolha. O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
+
+## Listas de escolha
+
+Os menus de versão, software, memória e tipo de mundo usam o componente próprio de `js/ui.js` (com busca e grupos por série de versão), não o menu padrão do navegador.
 
 ## Planos
 
