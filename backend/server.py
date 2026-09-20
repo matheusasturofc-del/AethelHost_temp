@@ -31,7 +31,9 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
 
 import content  # noqa: E402
+import accounts  # noqa: E402
 import auth  # noqa: E402
+import mail  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
 import tunnel  # noqa: E402
@@ -1380,7 +1382,8 @@ def _require_setup():
 
 
 def api_auth_providers(query, body):
-    return 200, {"providers": auth.list_providers(), "canSetup": auth.setup_allowed(current_user())}
+    return 200, {"providers": auth.list_providers(), "canSetup": auth.setup_allowed(current_user()),
+                 "password": {"enabled": mail.is_configured()}}  # e-mail e senha só funcionam com o envio de e-mail configurado
 
 
 def api_auth_me(query, body):
@@ -1484,8 +1487,52 @@ def api_public_set(query, body, sid):
     return 200, view(server)
 
 
+def api_pw_register(query, body):
+    return 200, accounts.register(body)
+
+
+def api_pw_login(query, body):
+    return 200, accounts.login(body)
+
+
+def api_pw_resend(query, body):
+    return 200, accounts.resend(body)
+
+
+def api_pw_verify(query, body):
+    user, token = accounts.verify(body)
+    return 200, Reply({"ok": True, "user": auth.public_user(user)}, [auth.session_cookie(token)])
+
+
+def api_mail_get(query, body):
+    _require_setup()
+    return 200, mail.config_view()
+
+
+def api_mail_save(query, body):
+    _require_setup()
+    mail.save(body)
+    return 200, mail.config_view()
+
+
+def api_mail_test(query, body):
+    _require_setup()
+    to = mail.normalize_email(body.get("to"))
+    if not to:
+        raise ApiError(400, "Informe um e-mail válido para receber o teste.")
+    mail.send(to, f"{mail.SITE_NAME}: e-mail de teste", "Deu certo! O envio de e-mail do BlockHost está funcionando.")
+    return 200, {"ok": True}
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("POST", r"^/api/auth/password/register$", api_pw_register),
+    ("POST", r"^/api/auth/password/login$", api_pw_login),
+    ("POST", r"^/api/auth/password/resend$", api_pw_resend),
+    ("POST", r"^/api/auth/password/verify$", api_pw_verify),
+    ("GET", r"^/api/auth/mail$", api_mail_get),
+    ("POST", r"^/api/auth/mail$", api_mail_save),
+    ("POST", r"^/api/auth/mail/test$", api_mail_test),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("GET", r"^/api/tunnel$", api_tunnel),
     ("POST", r"^/api/tunnel/link$", api_tunnel_link),
@@ -1545,7 +1592,8 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/settings/properties$", api_settings_properties),
     ("POST", rf"^/api/servers/{ID}/settings/gamerules$", api_settings_gamerules),
 ]
-PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save}  # não exigem login
+PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
+          api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024

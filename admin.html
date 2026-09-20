@@ -20,6 +20,7 @@
   <main class="container">
     <div class="page-head">
       <h1>Administração</h1>
+      <a class="btn" href="login.html?setup=1">Configurar logins e e-mail</a>
       <input type="text" id="adSearch" placeholder="Buscar conta, e-mail ou servidor…" maxlength="60" autocomplete="off" style="max-width:320px">
     </div>
     <div class="error" id="adErr"></div>
@@ -33,6 +34,7 @@
   <script>
     const $ = (id) => document.getElementById(id);
     const PROVIDER = { google: "Google", microsoft: "Microsoft", github: "GitHub", discord: "Discord", custom: "Outro" };
+    const providerName = (id) => id === "password" ? ((document.documentElement.lang || "").startsWith("en") ? "Email & password" : "E-mail e senha") : (PROVIDER[id] || id);
     const STATE = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };
     let data = null;
 
@@ -68,8 +70,8 @@
         h("div", { class: "row", style: "border:0;padding:0 0 10px" },
           avatar(u),
           h("div", { class: "row-main" },
-            h("strong", { translate: "no" }, u.name, u.admin ? h("span", { class: "badge on", translate: "yes" }, "Administrador") : null),
-            h("small", {}, u.email ? h("span", { translate: "no" }, u.email) : "sem e-mail", " · ", h("span", { translate: "no" }, PROVIDER[u.provider] || u.provider))),
+            h("strong", { translate: "no" }, u.name, u.username ? h("span", { class: "muted", style: "font-weight:400" }, " @" + u.username) : null, u.admin ? h("span", { class: "badge on", translate: "yes" }, "Administrador") : null),
+            h("small", {}, u.email ? h("span", { translate: "no" }, u.email) : "sem e-mail", " · ", h("span", { translate: "no" }, providerName(u.provider)))),
           h("div", { class: "row-main", style: "text-align:right;flex:none" },
             h("small", {}, "Entrou em ", h("span", { translate: "no" }, fmtWhen(u.created))),
             h("small", {}, "Último login ", h("span", { translate: "no" }, fmtWhen(u.lastLogin))),
@@ -85,7 +87,7 @@
       $("adTotals").replaceChildren(
         ...[["Contas", t.users], ["Servidores", t.servers], ["Ligados agora", t.running], ["Jogadores online", t.players], ["RAM em uso neste PC", fmtRam(t.ramInUseMb)]]
           .map(([label, value]) => h("div", { class: "info" }, h("small", {}, label), h("strong", {}, String(value)))));
-      const match = (u) => !q || [u.name, u.email, PROVIDER[u.provider] || "", ...u.servers.flatMap((s) => [s.name, s.ip])].some((x) => (x || "").toLowerCase().includes(q));
+      const match = (u) => !q || [u.name, u.email, providerName(u.provider), u.username || "", ...u.servers.flatMap((s) => [s.name, s.ip])].some((x) => (x || "").toLowerCase().includes(q));
       const cards = data.users.filter(match).map(accountCard);
       if (data.orphans.length && !q) {
         cards.push(h("div", { class: "card", style: "margin-bottom:14px;padding:20px" },

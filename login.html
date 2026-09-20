@@ -20,16 +20,16 @@
   <main class="container login-wrap">
     <section class="card login-card">
       <img class="login-logo" src="assets/icon.svg" alt="">
-      <h1>Entrar no BlockHost</h1>
-      <p class="muted">Crie a sua conta ou entre com um destes serviços. Você não precisa criar nenhuma senha nova.</p>
+      <h1 id="lgTitle">Entrar no BlockHost</h1>
+      <p class="muted" id="lgSub"></p>
       <div class="error" id="lgError"></div>
-      <div class="login-list" id="lgProviders"></div>
+      <div id="lgView"></div>
       <p class="muted small" id="lgHint" hidden></p>
     </section>
 
     <section class="card setup-card" id="lgSetup" hidden>
       <h2 style="margin-top:0">Configurar os logins</h2>
-      <p class="muted">Para cada serviço você cria um "aplicativo" no site dele e cola aqui o ID e a chave secreta. Isso é feito uma vez só, e só o administrador (a primeira conta) pode mudar depois.</p>
+      <p class="muted">Para entrar com um serviço (Google, GitHub…) você cria um "aplicativo" no site dele e cola aqui o ID e a chave secreta. Para entrar com e-mail e senha, configure o envio de e-mail (é ele que manda o código de 6 números). Isso é feito uma vez só, e só o administrador (a primeira conta) pode mudar depois.</p>
       <div id="lgConfig"></div>
     </section>
   </main>
@@ -73,22 +73,141 @@
     };
     const INITIAL = { google: ["G", "#4285f4"], microsoft: ["M", "#00a4ef"], github: ["GH", "#24292f"], discord: ["D", "#5865f2"], custom: ["→", "#4b5563"] };
     let providers = [];
+    let pwEnabled = false;
+    let canSetup = false;
+    let resendTimer = null;
+    const NEXT_OK = /^\/(?:servers|create|panel|admin|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$/;  // só páginas do próprio site
+    const goNext = () => location.replace(NEXT_OK.test(next) ? next : "servers.html");
+    const setError = (text) => { $("lgError").textContent = text || ""; };
+    const langCode = () => (en() ? "en" : "pt");
 
     function providerButton(p) {
       const [letter, color] = INITIAL[p.id] || ["•", "#4b5563"];
       const mark = h("span", { class: "prov-mark", style: `background:${color}`, translate: "no" }, letter);
-      if (!p.configured) return h("button", { class: "btn prov disabled", type: "button", disabled: true }, mark, h("span", { translate: "no" }, p.label), h("small", {}, "Não configurado"));
       return h("a", { class: "btn prov", href: `/auth/login/${p.id}` + (next ? `?next=${encodeURIComponent(next)}` : "") }, mark, h("span", {}, "Continuar com ", h("b", { translate: "no" }, p.label)));
+    }
+
+    // Campo de formulário: devolve { box, input }.
+    function formField(label, name, opts = {}) {
+      const input = h("input", { type: opts.type || "text", name, autocomplete: opts.autocomplete || "off", maxlength: opts.max || 100, required: true,
+        placeholder: opts.placeholder || "", spellcheck: false, autocapitalize: "off" });
+      return { input, box: h("div", { class: "field" }, h("label", {}, label), input, opts.hint ? h("div", { class: "hint" }, opts.hint) : null) };
+    }
+
+    function showPasswordToggle(input) {
+      return h("label", { class: "check" }, h("input", { type: "checkbox", onchange: (ev) => { input.type = ev.target.checked ? "text" : "password"; } }), h("span", {}, "Mostrar a senha"));
+    }
+
+    // Envia um formulário: trava o botão, mostra o erro e chama `done` com a resposta.
+    function submitter(button, run, done) {
+      return async (ev) => {
+        ev.preventDefault();
+        setError("");
+        button.disabled = true;
+        try { done(await run()); } catch (e) { setError(e.message); } finally { button.disabled = false; }
+      };
+    }
+
+    function show(title, sub, ...nodes) {
+      clearInterval(resendTimer);
+      $("lgTitle").textContent = title;
+      $("lgSub").textContent = sub;
+      $("lgView").replaceChildren(...nodes);
+    }
+
+    // ---- tela: entrar
+    function viewLogin() {
+      setError("");
+      const configured = providers.filter((p) => p.configured);
+      const nodes = [];
+      if (configured.length) nodes.push(h("div", { class: "login-list" }, ...configured.map(providerButton)));
+      if (configured.length && pwEnabled) nodes.push(h("div", { class: "or" }, h("span", {}, "ou")));
+      if (pwEnabled) {
+        const email = formField("E-mail", "email", { type: "email", autocomplete: "username", max: 254 });
+        const pass = formField("Senha", "password", { type: "password", autocomplete: "current-password", max: 128 });
+        const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Entrar");
+        nodes.push(h("form", { class: "login-form", onsubmit: submitter(go,
+          () => api("POST", "/auth/password/login", { email: email.input.value, password: pass.input.value, lang: langCode() }),
+          (r) => viewCode(r)) }, email.box, pass.box, showPasswordToggle(pass.input), go));
+        nodes.push(h("p", { class: "muted small center" }, "Ainda não tem conta? ",
+          h("button", { class: "linkbtn", type: "button", onclick: viewRegister }, "Criar conta")));
+      }
+      const none = !configured.length && !pwEnabled;
+      $("lgHint").hidden = !none;
+      $("lgHint").textContent = none ? (canSetup ? "Nenhum login foi configurado ainda. Configure um abaixo para poder entrar." : "Nenhum login foi configurado ainda. Peça ao administrador para configurar.") : "";
+      show("Entrar no BlockHost", "Entre com um serviço que você já usa ou com o seu e-mail.", ...nodes);
+    }
+
+    // ---- tela: criar conta
+    function viewRegister() {
+      setError("");
+      $("lgHint").hidden = true;
+      const name = formField("Nome exibido", "name", { autocomplete: "name", max: 40, placeholder: "Como você quer aparecer" });
+      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", hint: "De 3 a 20 letras, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
+      const email = formField("E-mail", "email", { type: "email", autocomplete: "email", max: 254, hint: "Vamos enviar um código de 6 números para confirmar." });
+      const pass = formField("Senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "De 8 a 128 caracteres." });
+      const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Criar conta");
+      show("Criar conta", "Preencha os dados abaixo. Você confirma o e-mail no próximo passo.",
+        h("form", { class: "login-form", onsubmit: submitter(go,
+          () => api("POST", "/auth/password/register", { name: name.input.value, username: user.input.value, email: email.input.value, password: pass.input.value, lang: langCode() }),
+          (r) => viewCode(r)) }, name.box, user.box, email.box, pass.box, showPasswordToggle(pass.input), go),
+        h("p", { class: "muted small center" }, "Já tem conta? ", h("button", { class: "linkbtn", type: "button", onclick: viewLogin }, "Entrar")));
+    }
+
+    // ---- tela: código de 6 números
+    function viewCode(state) {
+      setError("");
+      $("lgHint").hidden = true;
+      let resendAt = Date.now() + state.resendIn * 1000;
+      const challenge = state.challenge;
+      const input = h("input", { class: "code-input", type: "text", inputMode: "numeric", autocomplete: "one-time-code", maxlength: 7, placeholder: "000000", required: true, spellcheck: false });
+      const confirm = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Confirmar");
+      const again = h("button", { class: "btn", type: "button", disabled: true }, "Reenviar código");
+      // Pedido expirado ou tentativas esgotadas: mostra o motivo e volta para o começo.
+      const dead = (e) => { setError(e.message); if (e.status === 410 || (e.status === 429 && !/^Espere/.test(e.message))) setTimeout(viewLogin, 3500); };
+      const form = h("form", { class: "login-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        setError("");
+        confirm.disabled = true;
+        try {
+          await api("POST", "/auth/password/verify", { challenge, code: input.value, lang: langCode() });
+          goNext();
+        } catch (e) { dead(e); input.select(); } finally { confirm.disabled = false; }
+      } }, input, confirm);
+      input.addEventListener("input", () => {
+        input.value = input.value.replace(/[^\d ]/g, "");
+        if (input.value.replace(/\D/g, "").length === 6) form.requestSubmit();
+      });
+      again.addEventListener("click", async () => {
+        setError("");
+        again.disabled = true;
+        try {
+          const r = await api("POST", "/auth/password/resend", { challenge, lang: langCode() });
+          resendAt = Date.now() + r.resendIn * 1000;
+          input.value = "";
+        } catch (e) { dead(e); }
+      });
+      show("Confirme o seu e-mail", "Enviamos um código de 6 números para este e-mail:",
+        h("p", { class: "center" }, h("b", { translate: "no" }, state.email)),
+        form,
+        h("div", { class: "btn-row", style: "justify-content:center" }, again, h("button", { class: "btn", type: "button", onclick: viewLogin }, "Voltar")),
+        h("p", { class: "muted small center" }, "O código vale por 10 minutos. Olhe também a caixa de spam."));
+      const tick = () => {
+        const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+        again.disabled = left > 0;
+        again.textContent = left > 0 ? `Reenviar código (${left}s)` : "Reenviar código";
+      };
+      tick();
+      resendTimer = setInterval(tick, 500);  // depois do show(), que zera o timer anterior
+      input.focus();
     }
 
     async function loadProviders() {
       const data = await api("GET", "/auth/providers");
       providers = data.providers;
-      const visible = providers.filter((p) => p.configured || p.id !== "custom");
-      $("lgProviders").replaceChildren(...visible.map(providerButton));
-      const none = !providers.some((p) => p.configured);
-      $("lgHint").hidden = !none;
-      $("lgHint").textContent = none ? (data.canSetup ? "Nenhum login foi configurado ainda. Configure um abaixo para poder entrar." : "Nenhum login foi configurado ainda. Peça ao administrador para configurar.") : "";
+      pwEnabled = !!(data.password && data.password.enabled);
+      canSetup = data.canSetup;
+      viewLogin();
       $("lgSetup").hidden = !data.canSetup;
       if (data.canSetup) renderSetup();
       return data;
@@ -97,7 +216,56 @@
     async function renderSetup() {
       let cfg;
       try { cfg = (await api("GET", "/auth/config")).providers; } catch { return; }
-      $("lgConfig").replaceChildren(...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+      let mailCfg = null;
+      try { mailCfg = await api("GET", "/auth/mail"); } catch { /* sem o bloco do e-mail */ }
+      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+    }
+
+    const MAIL_HELP = [
+      ["Serve qualquer e-mail com SMTP. O jeito mais fácil é usar um Gmail só para o site.", "Works with any SMTP email. The easiest way is a Gmail account just for the site."],
+      ["No Gmail: ative a \"Verificação em duas etapas\" (myaccount.google.com/security) e crie uma \"Senha de app\" em myaccount.google.com/apppasswords. Copie as 16 letras.", "On Gmail: turn on \"2-Step Verification\" (myaccount.google.com/security) and create an \"App password\" at myaccount.google.com/apppasswords. Copy the 16 letters."],
+      ["Clique em \"Preencher para o Gmail\", coloque o seu Gmail em \"Usuário\" e a senha de app em \"Senha\". Salve e envie um e-mail de teste.", "Click \"Fill in for Gmail\", put your Gmail in \"Username\" and the app password in \"Password\". Save and send a test email."],
+    ];
+
+    function mailBlock(c) {
+      const lang = en() ? 1 : 0;
+      const field = (label, name, value, opts = {}) => h("div", { class: "field" }, h("label", {}, label),
+        h("input", { type: opts.secret ? "password" : "text", name, value: value ?? "", placeholder: opts.placeholder || "", autocomplete: "off", spellcheck: false }));
+      const msg = h("div", { class: "ok-msg" }, saved === "mail" ? "Salvo. Agora dá para entrar com e-mail e senha." : "");
+      const security = h("select", { name: "security" },
+        h("option", { value: "starttls", selected: c.security === "starttls" }, "STARTTLS (porta 587)"),
+        h("option", { value: "ssl", selected: c.security === "ssl" }, "SSL direto (porta 465)"),
+        h("option", { value: "none", selected: c.security === "none" }, "Nenhuma (só para testes neste PC)"));
+      const form = h("form", { class: "setup-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        msg.className = "ok-msg"; msg.textContent = "";
+        try { await api("POST", "/auth/mail", Object.fromEntries(new FormData(ev.target))); saved = "mail"; await loadProviders(); }
+        catch (e) { msg.className = "error"; msg.textContent = e.message; }
+      } },
+        field("Servidor de e-mail (SMTP)", "host", c.host, { placeholder: "smtp.gmail.com" }),
+        field("Porta", "port", c.port, { placeholder: "587" }),
+        h("div", { class: "field" }, h("label", {}, "Segurança"), security),
+        field("Usuário", "username", c.username, { placeholder: "seu.email@gmail.com" }),
+        field("Senha", "password", "", { secret: true, placeholder: c.hasPassword ? "•••••••• (já salva; deixe vazio para manter)" : "senha de app" }),
+        field("Remetente (De:)", "from", c.from, { placeholder: "seu.email@gmail.com" }),
+        h("div", { class: "btn-row" },
+          h("button", { class: "btn btn-primary", type: "submit" }, "Salvar"),
+          h("button", { class: "btn", type: "button", onclick: () => {
+            form.elements.host.value = "smtp.gmail.com"; form.elements.port.value = "587"; form.elements.security.value = "starttls";
+          } }, "Preencher para o Gmail"),
+          c.configured ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => { await api("POST", "/auth/mail", { clear: true }); saved = null; await loadProviders(); } }, "Remover") : null));
+      const to = h("input", { type: "text", placeholder: "seu.email@exemplo.com", value: (window.BH_USER && window.BH_USER.email) || "", autocomplete: "off" });
+      const testMsg = h("div", { class: "ok-msg" });
+      const test = h("div", { class: "field", style: "margin-top:12px" }, h("label", {}, "Enviar um e-mail de teste para"),
+        h("div", { class: "uri-row" }, to, h("button", { class: "btn", type: "button", onclick: async () => {
+          testMsg.className = "ok-msg"; testMsg.textContent = "Enviando o e-mail…";
+          try { await api("POST", "/auth/mail/test", { to: to.value }); testMsg.textContent = "Enviado! Olhe a caixa de entrada (e o spam)."; }
+          catch (e) { testMsg.className = "error"; testMsg.textContent = e.message; }
+        } }, "Enviar teste")), testMsg);
+      return h("details", { class: "setup-block", open: saved === "mail" || !c.configured },
+        h("summary", {}, "E-mail (códigos de confirmação)", c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
+        h("ol", { class: "steps", translate: "no" }, MAIL_HELP.map((s) => h("li", {}, s[lang]))),
+        form, msg, c.configured ? test : null);
     }
 
     let saved = null;  // bloco recém-salvo: continua aberto, com o aviso, depois que a lista é refeita
@@ -134,8 +302,10 @@
       const code = new URLSearchParams(location.search).get("error");
       if (code) $("lgError").textContent = (ERRORS[code] || ERRORS.provider_error)[en() ? 1 : 0];
       if (window.BH_ME_READY) await window.BH_ME_READY;
-      if (window.BH_USER) { location.replace(next && next.startsWith("/") ? next : "servers.html"); return; }
+      const setupMode = new URLSearchParams(location.search).get("setup") === "1";  // a administradora volta aqui para mudar os logins e o e-mail
+      if (window.BH_USER && !(setupMode && window.BH_USER.admin)) { goNext(); return; }
       await loadProviders();
+      if (window.BH_USER) document.querySelector(".login-card").hidden = true;  // já está logada: só a configuração
     })();
     window.addEventListener("langchange", () => {
       const code = new URLSearchParams(location.search).get("error");

@@ -37,6 +37,18 @@ a { color: inherit; text-decoration: none; }
 .topnav { display: flex; gap: 20px; color: var(--muted); font-size: 15px; }
 .topnav a:hover { color: var(--text); }
 
+/* Formulários do login: e-mail, senha e código */
+.login-form { text-align: left; margin-top: 14px; }
+.login-form .field { margin-bottom: 14px; }
+.btn-block { width: 100%; justify-content: center; }
+.center { text-align: center; }
+.or { display: flex; align-items: center; gap: 12px; margin: 18px 0 6px; color: var(--muted); font-size: 14px; text-transform: lowercase; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.check { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; color: var(--muted); font-size: 14px; cursor: pointer; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.code-input { text-align: center; font: 700 30px/1 ui-monospace, Consolas, monospace; letter-spacing: 0.35em; padding: 14px 10px 14px 20px; margin-bottom: 14px; }
+
 /* Conta: menu no topo e página de login */
 .user-menu { display: inline-flex; align-items: center; gap: 8px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--surface-2); display: inline-flex; align-items: center;
@@ -172,7 +184,7 @@ html { scroll-behavior: smooth; }
 .field .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .field .error { color: var(--danger); font-size: 13px; margin-top: 6px; min-height: 0; }
 
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], input[type="password"], input[type="email"], select {
   width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text); font: inherit;
 }

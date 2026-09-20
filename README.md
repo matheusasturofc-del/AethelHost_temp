@@ -14,7 +14,7 @@ Abra http://127.0.0.1:8080 no navegador. Ctrl+C no terminal desliga o backend e 
 
 ## Contas e login
 
-Para usar o painel é preciso entrar com uma conta: **Google, Microsoft, GitHub, Discord** ou qualquer serviço OpenID Connect ("Outro"). Não existe senha do BlockHost. Cada conta só vê e mexe nos próprios servidores (e tem a própria chave SSH para a VPS).
+Para usar o painel é preciso entrar com uma conta: **Google, Microsoft, GitHub, Discord**, qualquer serviço OpenID Connect ("Outro") ou **e-mail e senha** (com confirmação por um código de 6 números enviado por e-mail). Cada conta só vê e mexe nos próprios servidores (e tem a própria chave SSH para a VPS).
 
 **Configurar (uma vez).** Cada serviço pede que você registre um "aplicativo" no site dele e cole aqui o ID e a chave secreta. Na página `login.html`, enquanto não existe nenhuma conta, aparece a seção **Configurar os logins** com o passo a passo de cada serviço e o endereço de retorno para copiar:
 
@@ -26,6 +26,17 @@ Para usar o painel é preciso entrar com uma conta: **Google, Microsoft, GitHub,
 | Discord | discord.com/developers/applications → OAuth2 | `http://127.0.0.1:8080/auth/callback/discord` |
 
 Use sempre `127.0.0.1` (não `localhost`): o BlockHost redireciona para ele, e o cookie de login é ligado a esse endereço. Se um dia o site for para a internet, use o endereço público (https) no registro e em `BASE_URL` (`backend/server.py`).
+
+### E-mail e senha
+
+Na página de login aparecem os serviços configurados e, depois de um **ou**, o formulário de e-mail e senha, com **Criar conta** embaixo.
+
+- **Criar conta:** nome exibido, nome de usuário (único, sem diferenciar maiúsculas de minúsculas; 3 a 20 letras, números, ponto, hífen ou `_`), e-mail e senha (8 a 128 caracteres). Um código de 6 números vai para o e-mail e a conta só passa a existir depois de digitá-lo.
+- **Entrar:** e-mail e senha certos, e então o código de 6 números por e-mail (a cada login).
+- **O código** vale 10 minutos, 5 tentativas e uma vez só; "Reenviar" espera 1 minuto (no máximo 4 envios por pedido, 5 e-mails por endereço por hora, 60 por hora no total). 5 senhas erradas seguidas travam aquele e-mail por 15 minutos.
+- **Senha:** guardada só como hash scrypt com sal (em `data/users.json`), nunca em texto. A resposta de "senha errada" e "e-mail inexistente" é a mesma, e criar conta com um e-mail que já existe não revela isso na tela (a pessoa recebe um aviso por e-mail).
+- **Configurar o envio de e-mail (uma vez, o administrador):** em `login.html` (ou pelo botão "Configurar logins e e-mail" na página Administração) abra o bloco **E-mail** e preencha o SMTP. O jeito mais simples é um Gmail só para o site: ative a verificação em duas etapas, crie uma "senha de app" em myaccount.google.com/apppasswords, clique em **Preencher para o Gmail**, ponha o Gmail em Usuário/Remetente e a senha de app em Senha, salve e use **Enviar teste**. Fica em `data/mail.json` (nunca volta para o navegador). Sem isso, o formulário de e-mail e senha não aparece.
+- Ainda não existe "esqueci a senha" nem tela de configurações da conta.
 
 - **A primeira conta que entrar é a administradora.** Ela herda servidores criados antes das contas existirem (e a chave SSH antiga) e é a única que pode mudar os logins depois.
 - Contas são separadas por serviço: a mesma pessoa entrando pelo Google e pela Microsoft tem duas contas.
@@ -40,7 +51,7 @@ O administrador (a primeira conta) ganha o link **Administração** no topo (`ad
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.
-- `backend/auth.py`: contas, login OAuth e sessões.
+- `backend/auth.py`: contas, login OAuth e sessões. `backend/accounts.py`: e-mail, senha e códigos. `backend/mail.py`: envio de e-mail (SMTP).
 - `backend/tunnel.py`: endereço público dos servidores deste PC pelo playit.gg.
 - `backend/server.py`: serve o site e a API, liga os servidores neste PC e controla a VPS por SSH.
 - `backend/software.py`: versões do Minecraft e download dos programas de servidor (Vanilla, Paper, Purpur, Fabric).

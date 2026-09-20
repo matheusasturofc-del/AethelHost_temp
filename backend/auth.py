@@ -1,7 +1,8 @@
-"""Contas: entrar com Google, Microsoft, GitHub, Discord ou outro provedor OpenID Connect.
+"""Contas: entrar com Google, Microsoft, GitHub, Discord ou outro provedor OpenID Connect
+(o cadastro com e-mail e senha fica em accounts.py e usa as mesmas contas e sessões daqui).
 
 Usa o fluxo "Authorization Code" com PKCE, um `state` amarrado ao navegador (contra login forjado) e sessões
-guardadas só como hash. O BlockHost nunca vê senha: quem autentica é o provedor.
+guardadas só como hash. Nos logins de provedor o BlockHost nunca vê senha: quem autentica é o provedor.
 Dados em data/: auth.json (credenciais dos provedores), users.json e sessions.json.
 """
 import base64
@@ -277,7 +278,7 @@ def finish(pid, code, state, bind_cookie, redirect_base):
     if not profile["sub"]:
         raise LoginFailed("profile")
     user = _upsert_user(pid, profile)
-    return user, _new_session(user["id"]), pend["next"]
+    return user, new_session(user["id"]), pend["next"]
 
 
 # ---------------------------------------------------------------- usuários e sessões
@@ -303,7 +304,37 @@ def _hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _new_session(user_id):
+def create_user(fields):
+    """Conta nova (cadastro com e-mail). A primeira conta do sistema é a administradora e fica com os servidores antigos."""
+    with LOCK:
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        user = {"id": uuid.uuid4().hex[:12], "admin": not _users, "created": now, "avatar": "", **fields}
+        _users[user["id"]] = user
+        _write(USERS_FILE, list(_users.values()))
+    if user["admin"] and on_first_user:
+        on_first_user(user)
+    return user
+
+
+def get_user(uid):
+    with LOCK:
+        return _users.get(uid)
+
+
+def find_by_username(username):
+    """Nomes de usuário são únicos sem diferenciar maiúsculas de minúsculas."""
+    low = str(username).lower()
+    with LOCK:
+        return next((u for u in _users.values() if (u.get("username") or "").lower() == low), None)
+
+
+def touch_login(user):
+    with LOCK:
+        user["lastLogin"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        _write(USERS_FILE, list(_users.values()))
+
+
+def new_session(user_id):
     token = secrets.token_urlsafe(32)
     with LOCK:
         now = time.time()
@@ -361,8 +392,8 @@ def all_users():
 
 
 def public_user(user):
-    return {"id": user["id"], "name": user["name"], "email": user["email"], "avatar": user["avatar"],
-            "provider": user["provider"], "admin": bool(user.get("admin"))}
+    return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
+            "avatar": user["avatar"], "provider": user["provider"], "admin": bool(user.get("admin"))}
 
 
 def session_cookie(token):
