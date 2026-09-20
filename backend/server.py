@@ -34,6 +34,7 @@ import content  # noqa: E402
 import auth  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
+import tunnel  # noqa: E402
 from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
 from props import COLOR_CODE_RE, motd_to_properties, prop_escape, read_properties, set_properties  # noqa: E402
 from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_java, prepare_launch,  # noqa: E402
@@ -134,6 +135,7 @@ def _normalize(server):
     server.setdefault("software", "vanilla")
     server.setdefault("ramMb", DEFAULT_RAM_MB)
     server.setdefault("owner", None)  # sem dono até a primeira conta ser criada; aí passam a ser dela
+    server.setdefault("public", False)  # endereço público pelo playit.gg (só plano Grátis)
     return server
 
 
@@ -281,6 +283,8 @@ class Runtime:
             self.plan = server["plan"]
             self.gamerules = dict(server.get("gamerules") or {})
             self.players.clear()
+        if server.get("public") and server["plan"] == "free":
+            tunnel.want(server["id"], server["port"])  # o endereço fica pronto enquanto o servidor liga
         if self.lines:
             self.log("──────── Nova execução ────────", "sep")
         threading.Thread(target=self._run, args=(server,), daemon=True).start()
@@ -316,6 +320,7 @@ class Runtime:
             self.log(f"Erro: {e}", "error")
             with self.lock:
                 self.state = "offline"
+            tunnel.unwant(self.sid)
             return
         self._watch()
 
@@ -346,6 +351,7 @@ class Runtime:
             self.players.clear()
             self.idle_since = None
             self.proc = None
+        tunnel.unwant(self.sid)
 
     def stop(self):
         with self.lock:
@@ -776,6 +782,7 @@ def shutdown_all():
     deadline = time.time() + 60
     while time.time() < deadline and any(rt.state != "offline" for rt in local):
         time.sleep(0.5)
+    tunnel.shutdown()
 
 
 # ---------------------------------------------------------------- API
@@ -800,6 +807,7 @@ def view(server):
         "softwareLabel": SOFTWARE[server["software"]]["label"],
         "contentKind": content.kind_of(server),
         "iconVersion": icon_version(server["id"]),
+        "tunnel": tunnel.info(server["id"]) if server.get("public") else {"state": "off"},
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
     }
 
@@ -910,7 +918,7 @@ def api_create(query, body):
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
             "edition": "java", "software": software, "version": version, "ramMb": DEFAULT_RAM_MB,
-            "plan": plan, "port": port, "eula": True, "owner": current_user()["id"],
+            "plan": plan, "port": port, "eula": True, "owner": current_user()["id"], "public": False,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         if vps:
@@ -1061,6 +1069,7 @@ def api_delete(query, body, sid):
     if folder.parent == SERVERS_DIR.resolve() and folder.is_dir():
         shutil.rmtree(folder, ignore_errors=True)
     RUNTIMES.pop(sid, None)
+    tunnel.forget(sid)
     return 200, {"ok": True}
 
 
@@ -1395,8 +1404,63 @@ def api_auth_config_save(query, body):
     return 200, {"providers": auth.list_providers()}
 
 
+def _require_admin():
+    user = current_user()
+    if not user or not user.get("admin"):
+        raise ApiError(403, "Só o administrador pode ligar ou desligar o playit.gg.")
+
+
+def api_tunnel(query, body):
+    st = tunnel.status()
+    if not (current_user() or {}).get("admin"):
+        st["claim"] = None  # o link de aprovação só serve para quem administra
+    st["admin"] = bool((current_user() or {}).get("admin"))
+    return 200, st
+
+
+def api_tunnel_link(query, body):
+    _require_admin()
+    if not tunnel.supported():
+        raise ApiError(400, "O playit ainda não tem programa para o sistema deste PC.")
+    return 200, tunnel.begin_claim()
+
+
+def api_tunnel_unlink(query, body):
+    _require_admin()
+    with DB_LOCK:
+        servers = db_load()
+        for s in servers:
+            s["public"] = False  # sem conta ligada, ninguém tem endereço público
+        db_save(servers)
+    tunnel.unlink()
+    return 200, {"ok": True}
+
+
+def api_public_set(query, body, sid):
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ApiError(400, "Informe enabled: true ou false.")
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        if server["plan"] != "free":
+            raise ApiError(400, "Na VPS o servidor já tem o endereço da própria VPS.")
+        if enabled and not tunnel.secret():
+            raise ApiError(409, "O administrador precisa ligar o BlockHost ao playit.gg antes.")
+        server["public"] = enabled
+        db_save(servers)
+    rt = RUNTIMES.get(sid)
+    if rt and rt.state in ("starting", "online"):
+        tunnel.want(sid, server["port"]) if enabled else tunnel.unwant(sid)
+    return 200, view(server)
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("GET", r"^/api/tunnel$", api_tunnel),
+    ("POST", r"^/api/tunnel/link$", api_tunnel_link),
+    ("POST", r"^/api/tunnel/unlink$", api_tunnel_unlink),
+    ("POST", rf"^/api/servers/{ID}/public$", api_public_set),
     ("GET", r"^/api/auth/providers$", api_auth_providers),
     ("GET", r"^/api/auth/me$", api_auth_me),
     ("POST", r"^/api/auth/logout$", api_auth_logout),

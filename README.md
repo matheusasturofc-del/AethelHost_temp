@@ -37,6 +37,7 @@ Use sempre `127.0.0.1` (não `localhost`): o BlockHost redireciona para ele, e o
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.
 - `backend/auth.py`: contas, login OAuth e sessões.
+- `backend/tunnel.py`: endereço público dos servidores deste PC pelo playit.gg.
 - `backend/server.py`: serve o site e a API, liga os servidores neste PC e controla a VPS por SSH.
 - `backend/software.py`: versões do Minecraft e download dos programas de servidor (Vanilla, Paper, Purpur, Fabric).
 - `backend/content.py`: mods e plugins (busca e instalação pelo Modrinth, envio de `.jar`).
@@ -101,4 +102,13 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 ## Jogar
 
 Neste PC, use `localhost:PORTA` (a porta aparece no painel, começando em 25565).
-Para amigos de fora entrarem, é preciso liberar a porta no roteador.
+
+### Amigos de fora: endereço público (playit.gg)
+
+Sem abrir porta no roteador. Na aba **Servidor** de um servidor do plano Grátis, o cartão **Jogar com amigos** faz tudo:
+
+1. **Ligar ao playit.gg** (só o administrador, uma vez): abre um link do playit.gg onde você entra (ou cria uma conta grátis) e aprova o BlockHost. A tela percebe sozinha quando termina. A chave do agente fica em `data/playit.json` (não compartilhe).
+2. Ative **Endereço público** no servidor. Ao **Iniciar**, o BlockHost baixa o programa oficial do playit (versão 0.17.1 fixa, do GitHub oficial deles, com o SHA-256 conferido; ~5 MB, só na primeira vez, em `data/tools/playit/`), cria um túnel "Minecraft Java" só para esse servidor e mostra o endereço (ex.: `algo.joinmc.link`) com botão Copiar.
+3. O programa do playit roda só enquanto houver servidor público ligado e é encerrado 1 minuto depois do último. Excluir o servidor apaga o túnel dele no playit.
+
+Notas: o plano grátis do playit tem limite de túneis; o endereço é estável enquanto o túnel existir; qualquer pessoa com o endereço pode tentar entrar, então use a lista de permitidos (aba Jogadores) para deixar só os amigos. Desligar o playit.gg (link no cartão) remove a chave deste PC; para apagar o agente de vez, use playit.gg/account/agents. Suporte: Windows x64 e Linux (amd64/arm64); só foi testado até a etapa de aprovação com a API real, o resto com um playit de mentira.

@@ -16,6 +16,7 @@ ALLOWED_HOSTS = {
     "meta.quiltmc.org", "maven.quiltmc.org",
     "files.minecraftforge.net", "maven.minecraftforge.net",
     "maven.neoforged.net",
+    "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com",  # programa do playit (túnel)
 }
 USER_AGENT = "BlockHost/0.2 (projeto pessoal)"
 
