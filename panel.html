@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Painel — BlockHost</title>
+  <title>Painel — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="container">
-      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
       <nav class="topnav">
         <a href="servers.html">Servidores</a>
       </nav>
@@ -55,7 +55,7 @@
           <ol class="steps">
             <li>Copie a chave pública abaixo e adicione, em uma linha, ao arquivo <code>~/.ssh/authorized_keys</code> do usuário <b id="vpsUser"></b> na sua VPS.</li>
             <li>No painel do provedor (no Oracle: Security List da VCN), libere a porta <b id="vpsPort"></b> (TCP) para os jogadores.</li>
-            <li>Clique em <b>Testar conexão</b>. Depois é só <b>Iniciar</b>: o BlockHost instala o que faltar (Java, tmux) por SSH.</li>
+            <li>Clique em <b>Testar conexão</b>. Depois é só <b>Iniciar</b>: o AethelHost instala o que faltar (Java, tmux) por SSH.</li>
           </ol>
           <textarea class="keybox" id="vpsKey" rows="3" readonly spellcheck="false">Carregando chave…</textarea>
           <div class="btn-row">
@@ -240,7 +240,7 @@
               <h3 style="margin:0">Backups dos mundos</h3>
               <button class="btn btn-primary" id="bkCreate">Criar backup agora</button>
             </div>
-            <p class="muted small">Cada backup guarda os mundos (com Nether e End). Com o servidor ligado, ele é salvo antes de copiar. O BlockHost também faz um backup sozinho antes de trocar de software, restaurar ou apagar um mundo.</p>
+            <p class="muted small">Cada backup guarda os mundos (com Nether e End). Com o servidor ligado, ele é salvo antes de copiar. O AethelHost também faz um backup sozinho antes de trocar de software, restaurar ou apagar um mundo.</p>
             <div id="bkList"></div>
             <div class="ok-msg" id="bkOk"></div>
             <div class="error" id="bkErr"></div>
@@ -269,7 +269,7 @@
               <img id="optIcon" alt="Ícone do servidor">
               <div>
                 <label class="btn">Escolher imagem<input type="file" id="iconFile" accept="image/*" hidden></label>
-                <button type="button" class="btn" id="iconReset">Usar o padrão do BlockHost</button>
+                <button type="button" class="btn" id="iconReset">Usar o padrão do AethelHost</button>
                 <div class="hint">Qualquer imagem: ela vira 64×64 (corte no centro). PNG com fundo transparente funciona. Vale na próxima vez que o servidor ligar.</div>
                 <div class="ok-msg" id="iconOk"></div>
                 <div class="error" id="iconErr"></div>
@@ -364,7 +364,7 @@
 
     function render() {
       const rt = server.runtime;
-      document.title = `${server.name} — BlockHost`;
+      document.title = `${server.name} — AethelHost`;
       $("title").textContent = server.name;
       if (server.subtitle !== shownSubtitle) {  // só redesenha se mudou (senão o "ofuscado" pisca)
         $("subtitle").replaceChildren(mcNodes(server.subtitle, { trim: true }));
@@ -800,7 +800,7 @@
       $("iconErr").textContent = $("iconOk").textContent = "";
       try {
         await api("POST", `${base}/icon/reset`);
-        $("iconOk").textContent = "Voltou para o ícone padrão do BlockHost.";
+        $("iconOk").textContent = "Voltou para o ícone padrão do AethelHost.";
       } catch (e) {
         $("iconErr").textContent = e.message;
       }
@@ -809,7 +809,7 @@
 
     $("delete").addEventListener("click", async () => {
       const where = server.plan === "vps"
-        ? "Os arquivos que já estão na VPS (pasta ~/blockhost) NÃO serão apagados por aqui."
+        ? "Os arquivos que já estão na VPS (pasta ~/aethelhost) NÃO serão apagados por aqui."
         : "O mundo e os arquivos do servidor serão apagados deste PC.";
       if (!confirm(`Excluir "${server.name}"? ${where}`)) return;
       try {

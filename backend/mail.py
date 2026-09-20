@@ -12,7 +12,7 @@ from config import DATA
 from content import ContentError
 
 MAIL_FILE = DATA / "mail.json"
-SITE_NAME = "BlockHost"
+SITE_NAME = "AethelHost"
 LOCK = threading.RLock()
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 EMAIL_RE = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$")

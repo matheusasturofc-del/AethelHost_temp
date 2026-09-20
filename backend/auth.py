@@ -2,7 +2,7 @@
 (o cadastro com e-mail e senha fica em accounts.py e usa as mesmas contas e sessões daqui).
 
 Usa o fluxo "Authorization Code" com PKCE, um `state` amarrado ao navegador (contra login forjado) e sessões
-guardadas só como hash. Nos logins de provedor o BlockHost nunca vê senha: quem autentica é o provedor.
+guardadas só como hash. Nos logins de provedor o AethelHost nunca vê senha: quem autentica é o provedor.
 Dados em data/: auth.json (credenciais dos provedores), users.json e sessions.json.
 """
 import base64
@@ -188,7 +188,7 @@ _opener = urllib.request.build_opener(_NoRedirect)
 
 def _http(url, form=None, headers=None):
     data = urllib.parse.urlencode(form).encode() if form is not None else None
-    req = urllib.request.Request(url, data=data, headers={"Accept": "application/json", "User-Agent": "BlockHost/0.4", **(headers or {})})
+    req = urllib.request.Request(url, data=data, headers={"Accept": "application/json", "User-Agent": "AethelHost/0.4", **(headers or {})})
     try:
         with _opener.open(req, timeout=20) as r:
             return json.loads(r.read(1_000_000))

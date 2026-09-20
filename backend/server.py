@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BlockHost — backend local.
+"""AethelHost — backend local.
 
 Serve o site e a API, e liga/desliga servidores de Minecraft de verdade neste PC.
 Usa só a biblioteca padrão do Python (nada para instalar).
@@ -45,8 +45,8 @@ from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_ja
 DB_FILE = DATA / "servers.json"
 
 HOST = "127.0.0.1"  # só este PC acessa a API
-PORT = int(os.environ.get("BLOCKHOST_PORT") or 8080)  # outra porta só para testes
-DOMAIN = "blockhost.net"  # nome provisório
+PORT = int(os.environ.get("AETHELHOST_PORT") or os.environ.get("BLOCKHOST_PORT") or 8080)  # outra porta só para testes
+DOMAIN = "aethelhost.net"  # nome provisório
 FIRST_MC_PORT = 25565
 MAX_PLAYERS = 20
 DEFAULT_RAM_MB = 1024
@@ -202,7 +202,7 @@ MAX_ICON_BYTES = 256 * 1024
 
 
 def custom_icon(sid):
-    return SERVERS_DIR / sid / "blockhost-icon.png"  # a "capa" escolhida por você
+    return SERVERS_DIR / sid / "aethelhost-icon.png"  # a "capa" escolhida por você
 
 
 def icon_bytes(sid):
@@ -405,7 +405,7 @@ class Runtime:
 def key_paths(owner):
     """Cada conta tem a sua própria chave SSH: uma conta nunca consegue usar a VPS de outra."""
     folder = DATA / "keys" / owner
-    return folder / "blockhost_ed25519", folder / "known_hosts"
+    return folder / "aethelhost_ed25519", folder / "known_hosts"
 
 
 def ensure_key(owner):
@@ -418,7 +418,7 @@ def ensure_key(owner):
         pub.unlink(missing_ok=True)
         try:
             r = subprocess.run(
-                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "blockhost", "-f", str(key_file)],
+                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "aethelhost", "-f", str(key_file)],
                 capture_output=True, timeout=30, creationflags=NO_WINDOW,
             )
         except FileNotFoundError:
@@ -436,7 +436,7 @@ def ensure_key(owner):
 def ssh_error(text):
     t, low = text.strip(), text.lower()
     if "permission denied" in low:
-        return ("A VPS recusou a chave SSH. Adicione a chave pública do BlockHost ao arquivo "
+        return ("A VPS recusou a chave SSH. Adicione a chave pública do AethelHost ao arquivo "
                 "~/.ssh/authorized_keys do usuário informado.")
     if "host key verification failed" in low or "identification has changed" in low:
         return "A identidade da VPS mudou (VPS reinstalada?). Se foi você, apague a linha dela em data/keys/known_hosts."
@@ -526,7 +526,7 @@ if command -v tmux >/dev/null 2>&1; then echo "TMUX=yes"; else echo "TMUX=no"; f
 
 SETUP_BODY = r'''
 say() { echo "[VPS] $*"; }
-DIR="$HOME/blockhost/$ID"
+DIR="$HOME/aethelhost/$ID"
 SESSION="bh-$ID"
 if [ "$(id -u)" = 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
 
@@ -666,7 +666,7 @@ class RemoteRuntime(Runtime):
     def _tail(self, start_at):
         threading.Thread(target=self._poll_session, daemon=True).start()
         while not self.gone:
-            cmd = f'tail -n {start_at} -F "$HOME/blockhost/{self.sid}/logs/latest.log" 2>&1'
+            cmd = f'tail -n {start_at} -F "$HOME/aethelhost/{self.sid}/logs/latest.log" 2>&1'
             self.proc = subprocess.Popen(
                 ssh_cmd(self.vps, cmd), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, creationflags=NO_WINDOW,
@@ -1368,9 +1368,9 @@ def _claim_legacy(user):
     if (old / "blockhost_ed25519").exists():
         dest = old / user["id"]
         dest.mkdir(parents=True, exist_ok=True)
-        for name in ("blockhost_ed25519", "blockhost_ed25519.pub", "known_hosts"):
-            if (old / name).exists():
-                shutil.move(str(old / name), str(dest / name))
+        for name, new_name in (("blockhost_ed25519", "aethelhost_ed25519"), ("blockhost_ed25519.pub", "aethelhost_ed25519.pub"), ("known_hosts", "known_hosts")):
+            if (old / name).exists():  # o projeto se chamava BlockHost: a chave antiga já vem com o nome novo
+                shutil.move(str(old / name), str(dest / new_name))
 
 
 auth.on_first_user = _claim_legacy
@@ -1478,7 +1478,7 @@ def api_public_set(query, body, sid):
         if server["plan"] != "free":
             raise ApiError(400, "Na VPS o servidor já tem o endereço da própria VPS.")
         if enabled and not tunnel.secret():
-            raise ApiError(409, "O administrador precisa ligar o BlockHost ao playit.gg antes.")
+            raise ApiError(409, "O administrador precisa ligar o AethelHost ao playit.gg antes.")
         server["public"] = enabled
         db_save(servers)
     rt = RUNTIMES.get(sid)
@@ -1520,7 +1520,7 @@ def api_mail_test(query, body):
     to = mail.normalize_email(body.get("to"))
     if not to:
         raise ApiError(400, "Informe um e-mail válido para receber o teste.")
-    mail.send(to, f"{mail.SITE_NAME}: e-mail de teste", "Deu certo! O envio de e-mail do BlockHost está funcionando.")
+    mail.send(to, f"{mail.SITE_NAME}: e-mail de teste", "Deu certo! O envio de e-mail do AethelHost está funcionando.")
     return 200, {"ok": True}
 
 
@@ -1605,7 +1605,7 @@ ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}"}
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BlockHost"
+    server_version = "AethelHost"
 
     def log_message(self, *args):  # o polling do painel encheria o terminal
         pass
@@ -1802,12 +1802,36 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self): self._handle("DELETE")
 
 
+def migrate_legacy_names():
+    """O projeto se chamava BlockHost: renomeia os arquivos internos que já existem para os nomes novos (sem perder nada)."""
+    pairs = {"blockhost-icon.png": "aethelhost-icon.png", "blockhost-content.json": "aethelhost-content.json",
+             "blockhost-install.json": "aethelhost-install.json"}
+    if SERVERS_DIR.is_dir():
+        for folder in SERVERS_DIR.iterdir():
+            for old, new in pairs.items():
+                if (folder / old).is_file() and not (folder / new).exists():
+                    try:
+                        (folder / old).rename(folder / new)
+                    except OSError:
+                        pass
+    keys = DATA / "keys"
+    if keys.is_dir():  # só as pastas das contas: a chave solta na raiz é tratada por _claim_legacy
+        for folder in [d for d in keys.iterdir() if d.is_dir()]:
+            for old, new in (("blockhost_ed25519", "aethelhost_ed25519"), ("blockhost_ed25519.pub", "aethelhost_ed25519.pub")):
+                if (folder / old).is_file() and not (folder / new).exists():
+                    try:
+                        (folder / old).rename(folder / new)
+                    except OSError:
+                        pass
+
+
 def main():
     DATA.mkdir(exist_ok=True)
+    migrate_legacy_names()
     manage.cleanup_tmp()
     threading.Thread(target=monitor, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"BlockHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
+    print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

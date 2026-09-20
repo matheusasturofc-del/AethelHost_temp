@@ -1,4 +1,4 @@
-// Componentes de interface do BlockHost. Depende de store.js (h).
+// Componentes de interface do AethelHost. Depende de store.js (h).
 //
 // enhanceSelect: troca o menu nativo de um <select> por uma lista com o nosso visual.
 // O <select> original continua por baixo (escondido), então .value, .options, .disabled e o evento "change"

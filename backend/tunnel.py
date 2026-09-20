@@ -1,6 +1,6 @@
 """Endereço público para os servidores deste PC, pelo playit.gg: os amigos entram sem você abrir porta no roteador.
 
-Como funciona: o administrador liga o BlockHost a uma conta do playit.gg (uma vez, aprovando num link). O BlockHost
+Como funciona: o administrador liga o AethelHost a uma conta do playit.gg (uma vez, aprovando num link). O AethelHost
 baixa o programa oficial do playit (versão fixa, com hash conferido), cria um túnel "Minecraft Java" por servidor
 e mantém o programa rodando enquanto houver algum servidor com endereço público ligado.
 """
@@ -228,7 +228,7 @@ def _pid_file():
 
 
 def _kill_stale():
-    """Se o BlockHost caiu com o playit rodando, o processo antigo ainda pode estar ativo: encerra só se for mesmo o playit."""
+    """Se o AethelHost caiu com o playit rodando, o processo antigo ainda pode estar ativo: encerra só se for mesmo o playit."""
     try:
         pid = int(_pid_file().read_text().strip())
     except (OSError, ValueError):
@@ -289,7 +289,11 @@ def shutdown():
 # ---------------------------------------------------------------- túneis
 
 def tunnel_name(sid):
-    return f"blockhost-{sid}"[:60]
+    return f"aethelhost-{sid}"[:60]
+
+
+def _legacy_tunnel_name(sid):
+    return f"blockhost-{sid}"[:60]  # túneis criados quando o projeto se chamava BlockHost
 
 
 def _agent_id(key):
@@ -309,7 +313,8 @@ def _agent_id(key):
 
 def _find(key, agent_id, sid):
     data = _call("/tunnels/list", {"tunnel_id": None, "agent_id": agent_id}, key)
-    return next((t for t in data.get("tunnels", []) if t.get("name") == tunnel_name(sid)), None)
+    names = (tunnel_name(sid), _legacy_tunnel_name(sid))
+    return next((t for t in data.get("tunnels", []) if t.get("name") in names), None)
 
 
 def _local_port(tunnel):
@@ -374,7 +379,7 @@ def forget(sid):
 def want(sid, port):
     with _LOCK:
         if not secret():
-            _info[sid] = {"state": "error", "error": "Ligue o BlockHost ao playit.gg primeiro (botão na aba Servidor)."}
+            _info[sid] = {"state": "error", "error": "Ligue o AethelHost ao playit.gg primeiro (botão na aba Servidor)."}
             return
         changed = _wants.get(sid) != port
         _wants[sid] = port

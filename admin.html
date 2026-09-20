@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Administração — BlockHost</title>
+  <title>Administração — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="container">
-      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Block<span>Host</span></a>
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
       <nav class="topnav">
         <a href="servers.html">Servidores</a>
       </nav>
@@ -107,7 +107,7 @@
         if (e.status === 403) {
           $("adTotals").replaceChildren();
           $("adList").replaceChildren(h("div", { class: "empty" }, h("h2", {}, "Só para o administrador"),
-            h("p", {}, "Esta página é do administrador do BlockHost (a primeira conta criada)."),
+            h("p", {}, "Esta página é do administrador do AethelHost (a primeira conta criada)."),
             h("a", { class: "btn btn-primary", href: "servers.html" }, "Ver meus servidores")));
           clearInterval(timer);
         } else {

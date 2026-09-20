@@ -35,7 +35,7 @@ def folder_of(server):
 
 
 def _meta_file(server):
-    return SERVERS_DIR / server["id"] / "blockhost-content.json"
+    return SERVERS_DIR / server["id"] / "aethelhost-content.json"
 
 
 def _read_meta(server):

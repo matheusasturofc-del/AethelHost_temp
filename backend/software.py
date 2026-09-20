@@ -411,7 +411,7 @@ def prepare_launch(sw, version, jar, sdir, java_exe, log):
     if sw not in INSTALLERS:
         return ["-jar", str(jar), "nogui"]
     sdir = Path(sdir)
-    marker = sdir / "blockhost-install.json"
+    marker = sdir / "aethelhost-install.json"
     want = {"software": sw, "version": version, "installer": Path(jar).name}
     try:
         have = json.loads(marker.read_text(encoding="utf-8"))

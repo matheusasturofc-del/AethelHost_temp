@@ -29,7 +29,7 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,20}$")
 RESERVED = {"admin", "administrador", "administrator", "root", "system", "sistema", "suporte", "support", "moderador",
             "moderator", "staff", "null", "undefined", mail.SITE_NAME.lower()}
 WEAK = {"12345678", "123456789", "1234567890", "87654321", "password", "password1", "qwertyui", "qwertyuiop", "abc12345",
-        "senha123", "senha1234", "11111111", "00000000", "iloveyou", "minecraft", "minecraft1", "blockhost"}
+        "senha123", "senha1234", "11111111", "00000000", "iloveyou", "minecraft", "minecraft1", "blockhost", "aethelhost"}
 
 _LOCK = threading.RLock()
 _challenges = {}  # hash do token -> pedido em andamento

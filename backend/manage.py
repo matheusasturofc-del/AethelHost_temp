@@ -484,7 +484,7 @@ def offline_change(sid, action, name, reason=""):
         keep.append({"uuid": uid, "name": real})
     else:
         keep.append({"uuid": uid, "name": real, "created": time.strftime("%Y-%m-%d %H:%M:%S +0000", time.gmtime()),
-                     "source": "BlockHost", "expires": "forever", "reason": reason or "Banned by an operator."})
+                     "source": "AethelHost", "expires": "forever", "reason": reason or "Banned by an operator."})
     _save_list(path, keep)
 
 

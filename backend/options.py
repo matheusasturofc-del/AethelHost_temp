@@ -29,7 +29,7 @@ def _ref(gen):
 
 # ---------------------------------------------------------------- propriedades
 
-# Só estas chaves podem ser editadas. Ficam de fora as que o BlockHost cuida (porta, subtítulo, mundo) e as secretas.
+# Só estas chaves podem ser editadas. Ficam de fora as que o AethelHost cuida (porta, subtítulo, mundo) e as secretas.
 P_BOOL, P_INT, P_SELECT, P_TEXT = "bool", "int", "select", "text"
 PROPERTIES = {
     "max-players": (P_INT, {"min": 1, "max": 100000}),

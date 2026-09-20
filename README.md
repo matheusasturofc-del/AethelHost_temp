@@ -1,4 +1,4 @@
-# BlockHost
+# AethelHost
 
 Painel para criar e gerenciar servidores de Minecraft Java, no estilo Aternos, com tema escuro.
 
@@ -25,7 +25,7 @@ Para usar o painel é preciso entrar com uma conta: **Google, Microsoft, GitHub,
 | GitHub | Settings → Developer settings → OAuth Apps | `http://127.0.0.1:8080/auth/callback/github` |
 | Discord | discord.com/developers/applications → OAuth2 | `http://127.0.0.1:8080/auth/callback/discord` |
 
-Use sempre `127.0.0.1` (não `localhost`): o BlockHost redireciona para ele, e o cookie de login é ligado a esse endereço. Se um dia o site for para a internet, use o endereço público (https) no registro e em `BASE_URL` (`backend/server.py`).
+Use sempre `127.0.0.1` (não `localhost`): o AethelHost redireciona para ele, e o cookie de login é ligado a esse endereço. Se um dia o site for para a internet, use o endereço público (https) no registro e em `BASE_URL` (`backend/server.py`).
 
 ### E-mail e senha
 
@@ -42,7 +42,7 @@ Na página de login aparecem os serviços configurados e, depois de um **ou**, o
 - Contas são separadas por serviço: a mesma pessoa entrando pelo Google e pela Microsoft tem duas contas.
 - Segurança: OAuth2 com PKCE e `state` amarrado ao navegador; a sessão dura 14 dias e só o hash dela fica em disco (`data/sessions.json`); o cookie é `HttpOnly` e `SameSite=Lax`. As chaves secretas ficam em `data/auth.json` e nunca voltam para o navegador.
 - Ainda **não há limites por conta** (quantidade de servidores, RAM). Tudo roda no seu PC.
-- Testes/scripts: `BLOCKHOST_DATA` (pasta de dados) e `BLOCKHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais. Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `BLOCKHOST_COOKIE`.
+- Testes/scripts: `AETHELHOST_DATA` (pasta de dados) e `AETHELHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais (os nomes antigos `BLOCKHOST_*` ainda funcionam). Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `AETHELHOST_COOKIE`.
 
 ## Painel do administrador
 
@@ -88,7 +88,7 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 ## Aparência: capa e subtítulo
 
-- **Ícone (capa)**: em Opções (ou ao criar o servidor) você escolhe qualquer imagem. O navegador a reduz para 64×64 (corte no centro, mantendo a transparência) e ela vira o `server-icon.png` do Minecraft, além de aparecer na lista, no cabeçalho do painel e na aba do navegador. Sem imagem, vale o ícone padrão do BlockHost (`assets/default-icon.png`, gerado por `python tools/make_icon.py`).
+- **Ícone (capa)**: em Opções (ou ao criar o servidor) você escolhe qualquer imagem. O navegador a reduz para 64×64 (corte no centro, mantendo a transparência) e ela vira o `server-icon.png` do Minecraft, além de aparecer na lista, no cabeçalho do painel e na aba do navegador. Sem imagem, vale o ícone padrão do AethelHost (`assets/default-icon.png`, gerado por `python tools/make_icon.py`).
 - **Subtítulo com cores**: editor com as 16 cores, negrito, itálico, sublinhado, riscado, ofuscado, limpar e alinhamento (o alinhamento é aproximado). Usa os códigos `&a`, `&l`, `&r`… (só minúsculas) e aceita até 2 linhas. O preview imita a lista de servidores do Minecraft.
 
 ## Painel
@@ -97,7 +97,7 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 - **Jogadores**: quem está online (expulsar, tornar operador, banir), lista de permitidos (whitelist), operadores e banidos. Com o servidor ligado usa comandos; desligado, grava nos arquivos do Minecraft e consulta a Mojang para achar o UUID.
 - **Arquivos**: navegar pela pasta do servidor, editar arquivos de texto, enviar, baixar (pastas viram .zip), renomear e apagar.
 - **Mundos**: escolher o mundo em uso, criar (nome, tipo e semente), baixar, enviar um .zip seu e apagar.
-- **Backups**: criar (com o servidor ligado ele salva antes de copiar), restaurar, baixar e apagar. O BlockHost também guarda um backup antes de trocar de software, restaurar ou apagar um mundo.
+- **Backups**: criar (com o servidor ligado ele salva antes de copiar), restaurar, baixar e apagar. O AethelHost também guarda um backup antes de trocar de software, restaurar ou apagar um mundo.
 - Mudanças em arquivos, mundos, mods e propriedades só com o servidor desligado.
 - As abas ficam nesta ordem: Servidor, Opções, Console, Jogadores, Software, Mods/Plugins (não aparece no Vanilla), Mundos, Arquivos e Backups.
 
@@ -122,8 +122,8 @@ Neste PC, use `localhost:PORTA` (a porta aparece no painel, começando em 25565)
 
 Sem abrir porta no roteador. Na aba **Servidor** de um servidor do plano Grátis, o cartão **Jogar com amigos** faz tudo:
 
-1. **Ligar ao playit.gg** (só o administrador, uma vez): abre um link do playit.gg onde você entra (ou cria uma conta grátis) e aprova o BlockHost. A tela percebe sozinha quando termina. A chave do agente fica em `data/playit.json` (não compartilhe).
-2. Ative **Endereço público** no servidor. Ao **Iniciar**, o BlockHost baixa o programa oficial do playit (versão 0.17.1 fixa, do GitHub oficial deles, com o SHA-256 conferido; ~5 MB, só na primeira vez, em `data/tools/playit/`), cria um túnel "Minecraft Java" só para esse servidor e mostra o endereço (ex.: `algo.joinmc.link`) com botão Copiar.
+1. **Ligar ao playit.gg** (só o administrador, uma vez): abre um link do playit.gg onde você entra (ou cria uma conta grátis) e aprova o AethelHost. A tela percebe sozinha quando termina. A chave do agente fica em `data/playit.json` (não compartilhe).
+2. Ative **Endereço público** no servidor. Ao **Iniciar**, o AethelHost baixa o programa oficial do playit (versão 0.17.1 fixa, do GitHub oficial deles, com o SHA-256 conferido; ~5 MB, só na primeira vez, em `data/tools/playit/`), cria um túnel "Minecraft Java" só para esse servidor e mostra o endereço (ex.: `algo.joinmc.link`) com botão Copiar.
 3. O programa do playit roda só enquanto houver servidor público ligado e é encerrado 1 minuto depois do último. Excluir o servidor apaga o túnel dele no playit.
 
 Notas: o plano grátis do playit tem limite de túneis; o endereço é estável enquanto o túnel existir; qualquer pessoa com o endereço pode tentar entrar, então use a lista de permitidos (aba Jogadores) para deixar só os amigos. Desligar o playit.gg (link no cartão) remove a chave deste PC; para apagar o agente de vez, use playit.gg/account/agents. Suporte: Windows x64 e Linux (amd64/arm64); só foi testado até a etapa de aprovação com a API real, o resto com um playit de mentira.

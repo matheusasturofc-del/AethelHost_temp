@@ -18,7 +18,7 @@ ALLOWED_HOSTS = {
     "maven.neoforged.net",
     "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com",  # programa do playit (túnel)
 }
-USER_AGENT = "BlockHost/0.2 (projeto pessoal)"
+USER_AGENT = "AethelHost/0.2 (projeto pessoal)"
 
 
 def check_url(url):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gera o ícone do BlockHost: duas linhas curvas opostas, uma cinza e uma verde, que juntas formam um bloco.
+"""Gera o ícone do AethelHost: duas linhas curvas opostas, uma cinza e uma verde, que juntas formam um bloco.
 
 Uso:  python tools/make_icon.py [--preview caminho.png]
 Saída: assets/icon.svg (site e aba do navegador) e assets/default-icon.png (64x64, ícone do servidor no Minecraft).

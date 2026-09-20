@@ -51,13 +51,13 @@ function renderPublic() {
   const parts = [h("h3", { style: "margin-top:0" }, "Jogar com amigos")];
 
   if (!tunnelSt.linked) {
-    parts.push(h("p", { class: "muted" }, "Deixe amigos de fora entrarem sem abrir porta no roteador. O BlockHost usa o playit.gg, que é grátis."));
+    parts.push(h("p", { class: "muted" }, "Deixe amigos de fora entrarem sem abrir porta no roteador. O AethelHost usa o playit.gg, que é grátis."));
     if (!tunnelSt.admin) {
-      parts.push(h("p", { class: "muted small" }, "Peça ao administrador do BlockHost para ligar o playit.gg (o primeiro a criar conta aqui)."));
+      parts.push(h("p", { class: "muted small" }, "Peça ao administrador do AethelHost para ligar o playit.gg (o primeiro a criar conta aqui)."));
     } else if (claim && claim.state === "waiting") {
       parts.push(h("ol", { class: "steps" },
         h("li", {}, "Abra o link abaixo e entre (ou crie uma conta grátis) no playit.gg."),
-        h("li", {}, "Clique para aprovar o BlockHost. Esta tela avisa sozinha quando terminar.")));
+        h("li", {}, "Clique para aprovar o AethelHost. Esta tela avisa sozinha quando terminar.")));
       parts.push(h("div", { class: "btn-row" },
         h("a", { class: "btn btn-primary", href: claim.url, target: "_blank", rel: "noopener" }, "Abrir o playit.gg")));
       parts.push(h("p", { class: "muted small" }, "Aguardando a aprovação…"));
