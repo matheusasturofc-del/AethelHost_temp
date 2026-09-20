@@ -38,6 +38,7 @@ a { color: inherit; text-decoration: none; }
 .topnav a:hover { color: var(--text); }
 
 /* Formulários do login: e-mail, senha e código */
+.login-card .error, .setup-card .error, .login-card + .setup-card .error { color: var(--danger); font-size: 14px; margin: 10px 0 0; }
 .login-form { text-align: left; margin-top: 14px; }
 .login-form .field { margin-bottom: 14px; }
 .btn-block { width: 100%; justify-content: center; }

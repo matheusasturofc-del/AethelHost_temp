@@ -154,6 +154,24 @@
         h("p", { class: "muted small center" }, "Já tem conta? ", h("button", { class: "linkbtn", type: "button", onclick: viewLogin }, "Entrar")));
     }
 
+    // ---- tela: perfil (primeira entrada por Google, GitHub…)
+    function viewProfile() {
+      setError("");
+      $("lgHint").hidden = true;
+      $("lgSetup").hidden = true;
+      const name = formField("Nome exibido", "name", { autocomplete: "name", max: 40, placeholder: "Como você quer aparecer" });
+      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", hint: "De 3 a 20 letras, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
+      name.input.value = (window.BH_USER && window.BH_USER.name) || "";
+      user.input.value = window.BH_SUGGESTED || "";
+      const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Continuar");
+      show("Complete o seu perfil", "Escolha como você quer aparecer e o seu nome de usuário. Você faz isso uma vez só.",
+        h("form", { class: "login-form", onsubmit: submitter(go,
+          () => api("POST", "/auth/profile", { name: name.input.value, username: user.input.value }),
+          () => goNext()) }, name.box, user.box, go),
+        h("p", { class: "muted small center" }, h("button", { class: "linkbtn", type: "button", onclick: async () => { try { await api("POST", "/auth/logout", {}); } catch { /* sai mesmo assim */ } location.href = "index.html"; } }, "Sair desta conta")));
+      name.input.focus();
+    }
+
     // ---- tela: código de 6 números
     function viewCode(state) {
       setError("");
@@ -303,6 +321,7 @@
       if (code) $("lgError").textContent = (ERRORS[code] || ERRORS.provider_error)[en() ? 1 : 0];
       if (window.BH_ME_READY) await window.BH_ME_READY;
       const setupMode = new URLSearchParams(location.search).get("setup") === "1";  // a administradora volta aqui para mudar os logins e o e-mail
+      if (window.BH_USER && window.BH_USER.needsProfile) { $("lgSetup").hidden = true; viewProfile(); return; }
       if (window.BH_USER && !(setupMode && window.BH_USER.admin)) { goNext(); return; }
       await loadProviders();
       if (window.BH_USER) document.querySelector(".login-card").hidden = true;  // já está logada: só a configuração

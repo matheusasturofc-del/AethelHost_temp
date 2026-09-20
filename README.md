@@ -38,6 +38,7 @@ Na página de login aparecem os serviços configurados e, depois de um **ou**, o
 - **Configurar o envio de e-mail (uma vez, o administrador):** em `login.html` (ou pelo botão "Configurar logins e e-mail" na página Administração) abra o bloco **E-mail** e preencha o SMTP. O jeito mais simples é um Gmail só para o site: ative a verificação em duas etapas, crie uma "senha de app" em myaccount.google.com/apppasswords, clique em **Preencher para o Gmail**, ponha o Gmail em Usuário/Remetente e a senha de app em Senha, salve e use **Enviar teste**. Fica em `data/mail.json` (nunca volta para o navegador). Sem isso, o formulário de e-mail e senha não aparece.
 - Ainda não existe "esqueci a senha" nem tela de configurações da conta.
 
+- **Perfil (Google, GitHub…):** na primeira entrada por um serviço (e para contas antigas que ainda não têm), o site pede o **nome exibido** e o **nome de usuário** (único) antes de liberar as páginas. O nome escolhido não é mais sobrescrito pelo nome do serviço. `POST /api/auth/profile`.
 - **A primeira conta que entrar é a administradora.** Ela herda servidores criados antes das contas existirem (e a chave SSH antiga) e é a única que pode mudar os logins depois.
 - Contas são separadas por serviço: a mesma pessoa entrando pelo Google e pela Microsoft tem duas contas.
 - Segurança: OAuth2 com PKCE e `state` amarrado ao navegador; a sessão dura 14 dias e só o hash dela fica em disco (`data/sessions.json`); o cookie é `HttpOnly` e `SameSite=Lax`. As chaves secretas ficam em `data/auth.json` e nunca voltam para o navegador.

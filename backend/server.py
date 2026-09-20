@@ -1388,7 +1388,14 @@ def api_auth_providers(query, body):
 
 def api_auth_me(query, body):
     user = current_user()
-    return 200, {"user": auth.public_user(user) if user else None}
+    out = {"user": auth.public_user(user) if user else None}
+    if user and not user.get("username"):
+        out["suggestedUsername"] = accounts.suggest_username(user)
+    return 200, out
+
+
+def api_auth_profile(query, body):
+    return 200, {"user": auth.public_user(accounts.set_profile(current_user(), body))}
 
 
 def api_auth_logout(query, body):
@@ -1540,6 +1547,7 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/public$", api_public_set),
     ("GET", r"^/api/auth/providers$", api_auth_providers),
     ("GET", r"^/api/auth/me$", api_auth_me),
+    ("POST", r"^/api/auth/profile$", api_auth_profile),
     ("POST", r"^/api/auth/logout$", api_auth_logout),
     ("GET", r"^/api/auth/config$", api_auth_config),
     ("POST", r"^/api/auth/config$", api_auth_config_save),

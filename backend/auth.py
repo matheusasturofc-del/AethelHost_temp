@@ -292,8 +292,9 @@ def _upsert_user(pid, profile):
             user = {"id": uuid.uuid4().hex[:12], "provider": pid, "sub": profile["sub"], "admin": not _users,
                     "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
             _users[user["id"]] = user
-        user.update(name=(profile.get("name") or "Sem nome")[:80], email=(profile.get("email") or "")[:120], avatar=profile.get("avatar") or "",
-                    lastLogin=time.strftime("%Y-%m-%dT%H:%M:%S"))
+        if not user.get("username"):  # depois de escolher o perfil, o nome é da pessoa (o serviço não o sobrescreve mais)
+            user["name"] = (profile.get("name") or "Sem nome")[:80]
+        user.update(email=(profile.get("email") or "")[:120], avatar=profile.get("avatar") or "", lastLogin=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(USERS_FILE, list(_users.values()))
     if fresh and user["admin"] and on_first_user:
         on_first_user(user)  # os servidores que já existiam passam a ser dela
@@ -326,6 +327,12 @@ def find_by_username(username):
     low = str(username).lower()
     with LOCK:
         return next((u for u in _users.values() if (u.get("username") or "").lower() == low), None)
+
+
+def update_user(user, **fields):
+    with LOCK:
+        user.update(fields)
+        _write(USERS_FILE, list(_users.values()))
 
 
 def touch_login(user):
@@ -393,7 +400,8 @@ def all_users():
 
 def public_user(user):
     return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
-            "avatar": user["avatar"], "provider": user["provider"], "admin": bool(user.get("admin"))}
+            "avatar": user["avatar"], "provider": user["provider"], "admin": bool(user.get("admin")),
+            "needsProfile": not user.get("username")}  # conta criada por um serviço: falta escolher nome exibido e usuário
 
 
 def session_cookie(token):

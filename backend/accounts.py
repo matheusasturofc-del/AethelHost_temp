@@ -14,6 +14,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 
 import auth
 import mail
@@ -157,6 +158,37 @@ def _lang(body):
 def find_password_user(email):
     with auth.LOCK:
         return next((u for u in auth._users.values() if u["provider"] == "password" and u["sub"] == email), None)
+
+
+# ---------------------------------------------------------------- perfil (contas criadas por Google, GitHub…)
+
+def suggest_username(user):
+    """Um nome de usuário livre, montado a partir do nome ou do e-mail da conta."""
+    for source in (user.get("name"), (user.get("email") or "").split("@")[0], "player"):
+        ascii_name = unicodedata.normalize("NFKD", str(source or "")).encode("ascii", "ignore").decode().lower()
+        base = re.sub(r"[^a-z0-9_.-]+", "", ascii_name.replace(" ", "_"))[:16].strip("._-")
+        if len(base) >= 3:
+            break
+    n = 0
+    candidate = base
+    while auth.find_by_username(candidate) or candidate in RESERVED:
+        n += 1
+        candidate = f"{base[:20 - len(str(n))]}{n}"
+    return candidate
+
+
+def set_profile(user, body):
+    """Primeira entrada por um serviço: a pessoa escolhe o nome exibido e o nome de usuário (único)."""
+    if user.get("username"):
+        raise ContentError(409, "O seu perfil já está completo.")
+    name = check_name(body.get("name"))
+    username = str(body.get("username", "")).strip()
+    check_username(username)
+    with auth.LOCK:
+        if auth.find_by_username(username):
+            raise ContentError(409, "Este nome de usuário já está em uso. Escolha outro.")
+        auth.update_user(user, name=name, username=username)
+    return user
 
 
 # ---------------------------------------------------------------- criar conta

@@ -33,9 +33,15 @@
   window.BH_ME_READY = (async () => {
     let user = null;
     try {
-      user = (await (await fetch("/api/auth/me")).json()).user;
+      const me = await (await fetch("/api/auth/me")).json();
+      user = me.user;
+      window.BH_SUGGESTED = me.suggestedUsername || "";
     } catch { /* backend fora do ar: cada página mostra o próprio aviso */ }
     window.BH_USER = user;
+    if (user && user.needsProfile && PROTECTED.includes(page)) {  // conta criada por Google, GitHub…: falta escolher nome exibido e usuário
+      location.replace("login.html?profile=1&next=" + encodeURIComponent("/" + page + location.search));
+      return;
+    }
     if (!user && PROTECTED.includes(page)) {  // o servidor já redireciona; isto cobre uma sessão que acabou de expirar
       location.replace("login.html?next=" + encodeURIComponent("/" + page + location.search));
       return;
