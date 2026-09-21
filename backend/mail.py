@@ -223,12 +223,12 @@ def code_message(lang, purpose, code):
                 f"Alguém tentou usar este e-mail em outra conta do {SITE_NAME}, mas ele já pertence a uma conta.\n\n"
                 f"Se foi você, não precisa fazer mais nada. Se não foi, ignore esta mensagem.")
     if en:
-        why = {"register": "to finish creating your account", "pwchange": "to change your password", "pwcreate": "to create your password",
+        why = {"register": "to finish creating your account", "profilepw": "to finish creating your account", "pwchange": "to change your password", "pwcreate": "to create your password",
                "emailchange": "to confirm your new email"}.get(purpose, "to sign in")
         return (f"{code} is your {SITE_NAME} code",
                 f"Your {SITE_NAME} verification code {why} is:\n\n    {code}\n\nIt expires in 10 minutes. "
                 f"If it wasn't you, ignore this email and don't share the code with anyone.")
-    why = {"register": "para terminar de criar a sua conta", "pwchange": "para trocar a sua senha", "pwcreate": "para criar a sua senha",
+    why = {"register": "para terminar de criar a sua conta", "profilepw": "para terminar de criar a sua conta", "pwchange": "para trocar a sua senha", "pwcreate": "para criar a sua senha",
            "emailchange": "para confirmar o seu novo e-mail"}.get(purpose, "para entrar")
     return (f"{code} é o seu código do {SITE_NAME}",
             f"O seu código de verificação do {SITE_NAME} {why} é:\n\n    {code}\n\nEle vale por 10 minutos. "

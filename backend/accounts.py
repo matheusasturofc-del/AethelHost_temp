@@ -179,6 +179,46 @@ def suggest_username(user):
     return candidate
 
 
+def needs_password(user):
+    """A primeira entrada por um serviço pede uma senha do AethelHost, mas só quando dá para confirmá-la por e-mail
+    (envio configurado e a conta tem e-mail). Sem isso, a senha nem serviria para entrar."""
+    return mail.is_configured() and bool(mail.normalize_email(user.get("email")))
+
+
+def start_profile(user, body):
+    """Primeira entrada por um serviço: nome exibido, usuário e (se needs_password) uma senha. Com senha, nada é salvo até o
+    código de 6 números chegar por e-mail (igual a criar conta por e-mail). Devolve o pedido do código, ou None se já terminou."""
+    if user.get("username"):
+        raise ContentError(409, "O seu perfil já está completo.")
+    name = check_name(body.get("name"))
+    username = str(body.get("username", "")).strip()
+    check_username(username)
+    if not needs_password(user):
+        set_profile(user, body)
+        return None
+    if auth.find_by_username(username):
+        raise ContentError(409, "Este nome de usuário já está em uso. Escolha outro.")
+    email = mail.normalize_email(user["email"])
+    new = body.get("password")
+    if not isinstance(new, str) or new != body.get("confirm"):
+        raise ContentError(400, "A confirmação não é igual à senha.")
+    check_password(new, email, username)
+    other = find_password_user(email)
+    if other and other["id"] != user["id"]:
+        raise ContentError(409, "Já existe outra conta com senha usando este e-mail. Entre nela e conecte este login pela aba Conectar-se (ou peça ao administrador para mesclar as contas).")
+    ch = {"purpose": "profilepw", "email": email, "user": user["id"], "pw": hash_password(new), "profile": {"name": name, "username": username}}
+    try:
+        return _start(ch, _lang(body))
+    except ContentError as e:
+        if e.status not in (502, 503):  # 502/503: o e-mail está quebrado ou fora do ar; senha errada etc. continuam sendo erro
+            raise
+        # Não travamos quem está entrando por causa de um e-mail mal configurado: o perfil é salvo sem senha (dá para criar
+        # a senha depois, na aba Segurança) e o administrador vê o aviso no terminal.
+        print(f"[aviso] não consegui enviar o código de e-mail ({e.message}); o perfil de {user['id']} foi salvo sem senha.")
+        set_profile(user, body)
+        return None
+
+
 def set_profile(user, body):
     """Primeira entrada por um serviço: a pessoa escolhe o nome exibido e o nome de usuário (único)."""
     if user.get("username"):
@@ -368,11 +408,23 @@ def _notify(email, lang, kind):
 def confirm_change(user, body, cookie_header):
     """Passo 2: o código certo aplica a mudança. Devolve a conta atualizada."""
     tid, ch = _get(body.get("challenge"))
-    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange"):
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw"):
         raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
     _consume_code(tid, ch, body.get("code"))
     lang = _lang(body)
-    if ch["purpose"] in ("pwchange", "pwcreate"):
+    if ch["purpose"] == "profilepw":  # primeira entrada por um serviço: agora o perfil e a senha valem
+        prof = ch["profile"]
+        with auth.LOCK:
+            if user.get("username"):
+                raise ContentError(409, "O seu perfil já está completo.")
+            if auth.find_by_username(prof["username"]):
+                raise ContentError(409, "Este nome de usuário já está em uso. Escolha outro.")
+            other = find_password_user(ch["email"])
+            if other and other["id"] != user["id"]:
+                raise ContentError(409, "Este e-mail acabou de ser usado por outra conta. Comece de novo.")
+            auth.update_user(user, name=prof["name"], username=prof["username"])
+            auth.set_password(user, ch["pw"], login_email=ch["email"])
+    elif ch["purpose"] in ("pwchange", "pwcreate"):
         auth.set_password(user, ch["pw"], login_email=ch["email"])
         auth.logout_others(user["id"], cookie_header)
         _notify(ch["email"], lang, "pw_changed" if ch["purpose"] == "pwchange" else "pw_created")
@@ -390,6 +442,6 @@ def confirm_change(user, body, cookie_header):
 
 def resend_change(user, body):
     tid, ch = _get(body.get("challenge"))
-    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange"):
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw"):
         raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
     return resend(body)

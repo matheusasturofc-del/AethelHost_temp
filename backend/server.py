@@ -1437,6 +1437,7 @@ def api_auth_me(query, body):
     out = {"user": auth.self_user(user) if user else None}
     if user and not user.get("username"):
         out["suggestedUsername"] = accounts.suggest_username(user)
+        out["needsPassword"] = accounts.needs_password(user)  # a tela do perfil também pede uma senha do AethelHost
     return 200, out
 
 
@@ -1532,7 +1533,11 @@ def api_user_banner(query, body, uid):
 
 
 def api_auth_profile(query, body):
-    return 200, {"user": auth.public_user(accounts.set_profile(current_user(), body))}
+    user = current_user()
+    pending = accounts.start_profile(user, body)
+    if pending:  # com senha: falta o código do e-mail (POST /api/account/verify)
+        return 200, pending
+    return 200, {"user": auth.public_user(user)}
 
 
 def api_auth_logout(query, body):

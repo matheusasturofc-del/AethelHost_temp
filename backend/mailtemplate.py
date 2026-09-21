@@ -10,6 +10,7 @@ COPY = {
     "en": {
         "register": ("Put this code to confirm your email for AethelHost!", "Enter this code below to confirm your email!"),
         "emailchange": ("Put this code to confirm your new email for AethelHost!", "Enter this code below to confirm your new email!"),
+        "profilepw": ("Put this code to confirm your email for AethelHost!", "Enter this code below to confirm your email!"),
         "login": ("Put this code to sign in to AethelHost!", "Enter this code below to sign in!"),
         "pwchange": ("Put this code to change your password on AethelHost!", "Enter this code below to confirm the change!"),
         "pwcreate": ("Put this code to create your password on AethelHost!", "Enter this code below to confirm it!"),
@@ -21,6 +22,7 @@ COPY = {
     "pt": {
         "register": ("Use este código para confirmar o seu e-mail no AethelHost!", "Digite o código abaixo para confirmar o seu e-mail!"),
         "emailchange": ("Use este código para confirmar o seu novo e-mail no AethelHost!", "Digite o código abaixo para confirmar o seu novo e-mail!"),
+        "profilepw": ("Use este código para confirmar o seu e-mail no AethelHost!", "Digite o código abaixo para confirmar o seu e-mail!"),
         "login": ("Use este código para entrar no AethelHost!", "Digite o código abaixo para entrar!"),
         "pwchange": ("Use este código para trocar a sua senha no AethelHost!", "Digite o código abaixo para confirmar a troca!"),
         "pwcreate": ("Use este código para criar a sua senha no AethelHost!", "Digite o código abaixo para confirmar!"),

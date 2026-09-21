@@ -127,6 +127,7 @@
       const me = await (await fetch("/api/auth/me")).json();
       user = me.user;
       window.BH_SUGGESTED = me.suggestedUsername || "";
+      window.BH_NEEDS_PASSWORD = !!me.needsPassword;  // a tela do perfil também pede uma senha do AethelHost
     } catch { /* backend fora do ar: cada página mostra o próprio aviso */ }
     window.BH_USER = user;
     // O tema escolhido fica na conta: vale em qualquer aparelho em que a pessoa entrar

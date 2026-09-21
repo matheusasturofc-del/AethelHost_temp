@@ -96,8 +96,8 @@
       return { input, box: h("div", { class: "field" }, h("label", {}, label), input, opts.hint ? h("div", { class: "hint" }, opts.hint) : null) };
     }
 
-    function showPasswordToggle(input) {
-      return h("label", { class: "check" }, h("input", { type: "checkbox", onchange: (ev) => { input.type = ev.target.checked ? "text" : "password"; } }), h("span", {}, "Mostrar a senha"));
+    function showPasswordToggle(...inputs) {
+      return h("label", { class: "check" }, h("input", { type: "checkbox", onchange: (ev) => { inputs.forEach((i) => { i.type = ev.target.checked ? "text" : "password"; }); } }), h("span", {}, "Mostrar a senha"));
     }
 
     // Envia um formulário: trava o botão, mostra o erro e chama `done` com a resposta.
@@ -165,17 +165,26 @@
       const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", lower: true, hint: "De 3 a 20 letras minúsculas, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
       name.input.value = (window.BH_USER && window.BH_USER.name) || "";
       user.input.value = window.BH_SUGGESTED || "";
+      // Com o envio de e-mail configurado, quem entra pela primeira vez também cria uma senha do AethelHost (confirmada por código).
+      const needPw = !!window.BH_NEEDS_PASSWORD;
+      const pass = needPw ? formField("Senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "Uma senha só do AethelHost (não use a senha do Google). De 8 a 128 caracteres." }) : null;
+      const again = needPw ? formField("Confirmar a senha", "confirm", { type: "password", autocomplete: "new-password", max: 128 }) : null;
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Continuar");
-      show("Complete o seu perfil", "Escolha como você quer aparecer e o seu nome de usuário. Você faz isso uma vez só.",
+      const profileCode = { verify: "/account/verify", resend: "/account/resend", back: viewProfile };  // "Voltar" leva de volta ao perfil (a pessoa já está logada)
+      show("Complete o seu perfil", needPw
+          ? "Escolha como você quer aparecer, o seu nome de usuário e uma senha. Você faz isso uma vez só."
+          : "Escolha como você quer aparecer e o seu nome de usuário. Você faz isso uma vez só.",
         h("form", { class: "login-form", onsubmit: submitter(go,
-          () => api("POST", "/auth/profile", { name: name.input.value, username: user.input.value }),
-          () => goNext()) }, name.box, user.box, go),
+          () => api("POST", "/auth/profile", { name: name.input.value, username: user.input.value, lang: langCode(),
+                                               ...(needPw ? { password: pass.input.value, confirm: again.input.value } : {}) }),
+          (r) => (r && r.challenge ? viewCode(r, profileCode) : goNext())) },
+          name.box, user.box, ...(needPw ? [pass.box, again.box, showPasswordToggle(pass.input, again.input)] : []), go),
         h("p", { class: "muted small center" }, h("button", { class: "linkbtn", type: "button", onclick: async () => { try { await api("POST", "/auth/logout", {}); } catch { /* sai mesmo assim */ } location.href = "index.html"; } }, "Sair desta conta")));
       name.input.focus();
     }
 
     // ---- tela: código de 6 números
-    function viewCode(state) {
+    function viewCode(state, ep = { verify: "/auth/password/verify", resend: "/auth/password/resend" }) {
       setError("");
       $("lgHint").hidden = true;
       let resendAt = Date.now() + state.resendIn * 1000;
@@ -184,13 +193,13 @@
       const confirm = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Confirmar");
       const again = h("button", { class: "btn", type: "button", disabled: true }, "Reenviar código");
       // Pedido expirado ou tentativas esgotadas: mostra o motivo e volta para o começo.
-      const dead = (e) => { setError(e.message); if (e.status === 410 || (e.status === 429 && !/^Espere/.test(e.message))) setTimeout(viewLogin, 3500); };
+      const dead = (e) => { setError(e.message); if (e.status === 410 || (e.status === 429 && !/^Espere/.test(e.message))) setTimeout(ep.back || viewLogin, 3500); };
       const form = h("form", { class: "login-form", onsubmit: async (ev) => {
         ev.preventDefault();
         setError("");
         confirm.disabled = true;
         try {
-          await api("POST", "/auth/password/verify", { challenge, code: input.value, lang: langCode() });
+          await api("POST", ep.verify, { challenge, code: input.value, lang: langCode() });
           goNext();
         } catch (e) { dead(e); input.select(); } finally { confirm.disabled = false; }
       } }, input, confirm);
@@ -202,7 +211,7 @@
         setError("");
         again.disabled = true;
         try {
-          const r = await api("POST", "/auth/password/resend", { challenge, lang: langCode() });
+          const r = await withWait(api("POST", ep.resend, { challenge, lang: langCode() }));
           resendAt = Date.now() + r.resendIn * 1000;
           input.value = "";
         } catch (e) { dead(e); }
@@ -210,7 +219,7 @@
       show("Confirme o seu e-mail", "Enviamos um código de 6 números para este e-mail:",
         h("p", { class: "center" }, h("b", { translate: "no" }, state.email)),
         form,
-        h("div", { class: "btn-row", style: "justify-content:center" }, again, h("button", { class: "btn", type: "button", onclick: viewLogin }, "Voltar")),
+        h("div", { class: "btn-row", style: "justify-content:center" }, again, h("button", { class: "btn", type: "button", onclick: ep.back || viewLogin }, "Voltar")),
         h("p", { class: "muted small center" }, "O código vale por 10 minutos. Olhe também a caixa de spam."));
       const tick = () => {
         const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
