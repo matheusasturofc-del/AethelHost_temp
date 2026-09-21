@@ -1,10 +1,16 @@
 """Envio de e-mail (SMTP) para os códigos de confirmação. A configuração fica em data/mail.json."""
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import smtplib
 import ssl
 import threading
+from urllib.parse import urlencode
+
+import mailtemplate
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
@@ -12,6 +18,9 @@ from config import DATA
 from content import ContentError
 
 MAIL_FILE = DATA / "mail.json"
+BLOCK_FILE = DATA / "blocked_emails.json"
+SECRET_FILE = DATA / "mail_secret.key"
+PUBLIC_URL = "http://127.0.0.1:8080"  # o server.py coloca aqui o endereço do site (usado no link de bloquear)
 SITE_NAME = "AethelHost"
 LOCK = threading.RLock()
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -98,10 +107,69 @@ def save(body):
 
 # ---------------------------------------------------------------- envio
 
-def send(to, subject, text):
+# ---------------------------------------------------------------- endereços que pediram para não receber e-mails
+
+def _secret():
+    """Chave que assina os links de bloquear (guardada em data/, criada na primeira vez)."""
+    with LOCK:
+        try:
+            return bytes.fromhex(SECRET_FILE.read_text().strip())
+        except (OSError, ValueError):
+            key = secrets.token_bytes(32)
+            SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SECRET_FILE.write_text(key.hex())
+            try:
+                os.chmod(SECRET_FILE, 0o600)
+            except OSError:
+                pass
+            return key
+
+
+def _sig(email):
+    return hmac.new(_secret(), f"block:{email}".encode(), hashlib.sha256).hexdigest()[:40]
+
+
+def check_token(email, token):
+    return bool(email) and hmac.compare_digest(_sig(email), str(token or ""))
+
+
+def block_url(email, lang="en"):
+    return f"{PUBLIC_URL}/mail/block?" + urlencode({"e": email, "t": _sig(email), "l": "pt" if lang == "pt" else "en"})
+
+
+def _blocked():
+    try:
+        return set(json.loads(BLOCK_FILE.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return set()
+
+
+def is_blocked(email):
+    return str(email).strip().lower() in _blocked()
+
+
+def set_blocked(email, blocked):
+    with LOCK:
+        items = _blocked()
+        (items.add if blocked else items.discard)(email.strip().lower())
+        BLOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        BLOCK_FILE.write_text(json.dumps(sorted(items)), encoding="utf-8")
+
+
+def code_email(lang, purpose, code, to):
+    """(assunto, texto simples, HTML) do e-mail com o código de 6 números."""
+    subject, _ = code_message(lang, purpose, code)
+    text, html = mailtemplate.code_email(lang, purpose, code, block_url(to, lang))
+    return subject, text, html
+
+
+def send(to, subject, text, html=None):
+    """Envia o e-mail. Devolve False (sem enviar nada) se o destino pediu para não receber e-mails."""
     cfg = load()
     if not is_configured():
         raise ContentError(503, "O envio de e-mail ainda não foi configurado pelo administrador.")
+    if is_blocked(to):
+        return False
     msg = EmailMessage()
     msg["From"] = formataddr((SITE_NAME, cfg["from"]))
     msg["To"] = to
@@ -109,6 +177,8 @@ def send(to, subject, text):
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=cfg["from"].split("@")[1])
     msg.set_content(text)
+    if html:
+        msg.add_alternative(html, subtype="html")
     try:
         if cfg.get("security") == "ssl":
             smtp = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15, context=ssl.create_default_context())
@@ -122,6 +192,7 @@ def send(to, subject, text):
             if cfg.get("username"):
                 smtp.login(cfg["username"], cfg["password"])
             smtp.send_message(msg)
+        return True
     except smtplib.SMTPAuthenticationError:
         raise ContentError(502, "O servidor de e-mail recusou o login. Confira o usuário e a senha (no Gmail, use uma senha de app).") from None
     except smtplib.SMTPRecipientsRefused:

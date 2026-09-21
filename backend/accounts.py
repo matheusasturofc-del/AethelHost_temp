@@ -124,15 +124,15 @@ def _purge():
 def _deliver(tid, ch, lang):
     """Gera um código novo e o envia (ou, se o e-mail já tem conta, envia o aviso). Só conta como envio se der certo."""
     _check_send_budget(ch["email"])
+    html = None
     if ch.get("exists"):
-        code = None
         subject, text = mail.code_message(lang, ch.get("exists_kind", "exists"), "")
         ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))  # nenhum código serve
     else:
         code = f"{secrets.randbelow(10 ** 6):06d}"
-        subject, text = mail.code_message(lang, ch["purpose"], code)
+        subject, text, html = mail.code_email(lang, ch["purpose"], code, ch["email"])
         ch["code_hash"] = _code_hash(tid, code)
-    mail.send(ch["email"], subject, text)
+    mail.send(ch["email"], subject, text, html)  # se o endereço bloqueou os e-mails, nada sai (e a resposta continua igual)
     _hit(f"send:{ch['email']}")
     _hit("send:*")
     ch.update(sent_at=time.time(), tries=0, sends=ch.get("sends", 0) + 1, exp=time.time() + CODE_TTL)

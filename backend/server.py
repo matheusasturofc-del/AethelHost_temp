@@ -35,6 +35,7 @@ import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
 import mail  # noqa: E402
+import mailtemplate  # noqa: E402
 import notify  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
@@ -1394,6 +1395,7 @@ def api_settings_gamerules(query, body, sid):
 # ---------------------------------------------------------------- Contas
 
 BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
+mail.PUBLIC_URL = BASE_URL  # o link "bloquear este endereço" dos e-mails aponta para o site
 PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html"}
 
 
@@ -1850,7 +1852,8 @@ def api_mail_test(query, body):
     to = mail.normalize_email(body.get("to"))
     if not to:
         raise ApiError(400, "Informe um e-mail válido para receber o teste.")
-    mail.send(to, f"{mail.SITE_NAME}: e-mail de teste", "Deu certo! O envio de e-mail do AethelHost está funcionando.")
+    if not mail.send(to, f"{mail.SITE_NAME}: e-mail de teste", "Deu certo! O envio de e-mail do AethelHost está funcionando."):
+        raise ApiError(409, "Esse endereço pediu para não receber e-mails do AethelHost.")
     return 200, {"ok": True}
 
 
@@ -2073,6 +2076,8 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             if parsed.path.startswith("/auth/"):
                 self._auth_route(method, parsed)
+            elif parsed.path == "/mail/block":
+                self._mail_block(method, parsed)
             elif parsed.path.startswith("/api/"):
                 self._api(method, parsed)
             elif method == "GET":
@@ -2095,6 +2100,33 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             traceback.print_exc()
             self._json(500, {"error": "Erro interno do servidor."})
+
+    def _mail_block(self, method, parsed):
+        """Página do link "Bloquear este endereço" dos e-mails. O link só mostra a página; quem bloqueia é o botão (POST),
+        para que programas que abrem links de e-mail sozinhos não bloqueiem ninguém sem querer."""
+        if method not in ("GET", "POST"):
+            raise ApiError(405, "Método não permitido.")
+        if method == "POST":
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 4096:
+                raise ApiError(413, "Requisição grande demais.")
+            form = parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        else:
+            form = parse_qs(parsed.query)
+        field = lambda k: (form.get(k) or [""])[0]
+        lang = "pt" if field("l") == "pt" else "en"
+        email, token = mail.normalize_email(field("e")), field("t")
+        if not mail.check_token(email, token):
+            page = mailtemplate.block_page(lang, "invalid")
+        elif method == "POST" and field("action") == "block":
+            mail.set_blocked(email, True)
+            page = mailtemplate.block_page(lang, "blocked", email, token)
+        elif method == "POST" and field("action") == "unblock":
+            mail.set_blocked(email, False)
+            page = mailtemplate.block_page(lang, "unblocked", email, token)
+        else:
+            page = mailtemplate.block_page(lang, "already" if mail.is_blocked(email) else "ask", email, token)
+        self._send(200 if mail.check_token(email, token) else 400, page.encode("utf-8"), "text/html; charset=utf-8")
 
     def _api(self, method, parsed):
         route = None
