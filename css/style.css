@@ -33,6 +33,8 @@
   color-scheme: light;
 }
 
+html.i18n-wait body { visibility: hidden; }  /* escondida só até traduzir (theme.js e i18n.js) */
+
 * { box-sizing: border-box; }
 
 html, body { margin: 0; }
@@ -556,8 +558,8 @@ body.files-read .files-write, body.files-none .files-write { display: none !impo
 .banner.b-gray { background: linear-gradient(135deg, #2a2f38 0%, #21252c 50%, #1b2029 100%); }
 .banner.has-img { background-size: cover; background-position: center; }
 .banner.has-img::before { display: none; }
-.settings { max-width: 760px; margin: 32px auto 80px; display: grid; gap: 20px; }
-.settings h2 { margin: 0 0 4px; }
+.stack { display: grid; gap: 20px; }
+.stack h2 { margin: 0 0 4px; }
 .swatch-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 14px; }
 .b-swatch { position: relative; width: 84px; height: 44px; border-radius: 10px; border: 2px solid var(--border); padding: 0; cursor: pointer; overflow: hidden; }
 .b-swatch::before { content: ""; position: absolute; inset: 0; background: url("../assets/icon.svg") 0 0 / 16px 16px space; opacity: 0.3; }

@@ -18,12 +18,21 @@
     </div>
   </header>
 
-  <main class="container settings">
-    <div class="page-head" style="padding:0">
+  <main class="container panel">
+    <aside class="side">
+      <a class="back" href="profile.html">← Perfil</a>
+      <button class="active" data-tab="custom">Personalizar</button>
+      <button data-tab="security">Segurança</button>
+    </aside>
+
+    <section>
+    <div class="page-head" style="padding:0 0 20px">
       <h1 style="margin:0">Editar perfil</h1>
       <a class="btn" href="profile.html">Ver perfil</a>
     </div>
 
+    <!-- Aba: Personalizar (foto, banner, nome e aparência) -->
+    <div id="tab-custom" class="stack">
     <!-- Perfil: banner, foto e nome -->
     <section class="card profile-card">
       <div class="banner" id="stBanner" aria-hidden="true"></div>
@@ -75,6 +84,10 @@
       </div>
     </section>
 
+    </div>
+
+    <!-- Aba: Segurança (senha e e-mail) -->
+    <div id="tab-security" class="stack" hidden>
     <!-- Senha -->
     <section class="card" id="stPwCard">
       <h2 id="stPwTitle">Trocar a senha</h2>
@@ -112,6 +125,8 @@
       <div class="ok-msg" id="stEmailOk"></div>
       <div class="error" id="stEmailErr"></div>
     </section>
+    </div>
+    </section>
   </main>
 
   <script src="js/store.js"></script>
@@ -122,6 +137,17 @@
     const lang = () => ((document.documentElement.lang || "").startsWith("en") ? "en" : "pt");
     let me = null;
     let mailOn = true;
+
+    // ---------- Abas (Personalizar | Segurança), como no painel do servidor ----------
+    const TABS = ["custom", "security"];
+    function showTab(tab) {
+      if (!TABS.includes(tab)) tab = "custom";
+      document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+      TABS.forEach((t) => ($("tab-" + t).hidden = t !== tab));
+      history.replaceState(null, "", "#" + tab);  // recarregar a página (ou mandar o link) volta para a mesma aba
+    }
+    document.querySelectorAll(".side button[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+    showTab(location.hash.slice(1));
 
     // ---------- Perfil ----------
     function avatarNode(user, big) {

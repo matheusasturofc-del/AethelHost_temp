@@ -78,7 +78,7 @@ Na aba **Acesso e Compartilhamento** de um servidor, o dono escreve o **nome de 
 
 ## Editar perfil (`settings.html`)
 
-No menu do seu nome (topo): **Editar perfil**. Nessa página:
+No menu do seu nome (topo): **Editar perfil**. A página tem duas abas na lateral, como o painel do servidor: **Personalizar** (foto, banner, nome e aparência) e **Segurança** (trocar a senha e o e-mail). Recarregar ou mandar o link com `#security` abre direto na aba certa. Nelas:
 
 - **Foto:** troque por uma imagem sua (PNG, JPEG, WebP ou GIF; o navegador recorta em quadrado 256×256 antes de enviar) ou volte para a do serviço de login (Google…). **Banner:** escolha uma das 6 cores prontas (com os ícones do AethelHost) ou envie uma imagem (recortada em 1200×300). **Nome exibido:** editável. O nome de usuário não muda.
 - **Tema** Escuro/Branco fica guardado na conta e vale em qualquer aparelho.
@@ -141,7 +141,7 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 ## Idioma
 
-O idioma padrão é o **inglês**. O botão **PT | EN** no topo troca a interface entre inglês e português e lembra a escolha no navegador (quem já tem uma escolha guardada, mesmo que automática, continua com ela). O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
+O idioma padrão é o **inglês** (quem abre o site pela primeira vez o vê em inglês, sem piscar em português antes). O botão **PT | EN** no topo troca a interface entre inglês e português e lembra a escolha no navegador (quem já tem uma escolha guardada, mesmo que automática, continua com ela). O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
 
 ## Listas de escolha
 

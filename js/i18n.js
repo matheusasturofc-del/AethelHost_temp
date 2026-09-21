@@ -146,6 +146,7 @@ const I18N = (() => {
   I18N_tr = tr;
   mountButton();
   set(lang, false);
+  document.documentElement.classList.remove("i18n-wait");  // já está traduzida: pode aparecer (ver theme.js)
 
   I18N_tr = tr;
   return { tr, set, get lang() { return lang; } };
