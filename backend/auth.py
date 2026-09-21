@@ -60,7 +60,7 @@ BUILTIN = {
                 "userinfo": "https://discord.com/api/users/@me"},
 }
 ORDER = ["google", "microsoft", "github", "discord", "custom"]
-NEXT_RE = re.compile(r"^/(?:servers|create|panel|admin|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
+NEXT_RE = re.compile(r"^/(?:servers|create|panel|admin|profile|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
 
 
 # ---------------------------------------------------------------- arquivos
@@ -286,7 +286,7 @@ def finish(pid, code, state, bind_cookie, redirect_base):
 def _upsert_user(pid, profile):
     """A conta é identificada por (provedor, id no provedor), nunca pelo e-mail: e-mail não verificado não vira acesso."""
     with LOCK:
-        user = next((u for u in _users.values() if u["provider"] == pid and u["sub"] == profile["sub"]), None)
+        user = next((u for u in _users.values() if (pid, profile["sub"]) in identities(u)), None)
         fresh = user is None
         if fresh:
             user = {"id": uuid.uuid4().hex[:12], "provider": pid, "sub": profile["sub"], "admin": not _users,
@@ -303,6 +303,56 @@ def _upsert_user(pid, profile):
 
 def _hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def identities(user):
+    """Todas as formas de entrar nesta conta: (serviço, id no serviço). Contas mescladas têm mais de uma."""
+    return [(user["provider"], user["sub"])] + [(i["provider"], i["sub"]) for i in user.get("links", [])]
+
+
+def pw_email(user):
+    """O e-mail usado para entrar com senha nesta conta (ou None se ela não tem senha)."""
+    if not user.get("pw"):
+        return None
+    return user.get("pwEmail") or (user["sub"] if user["provider"] == "password" else None)
+
+
+def merge_users(keep_id, drop_id, name=None, username=None):
+    """Junta duas contas numa só: `drop` deixa de existir e todos os seus logins passam a entrar em `keep`."""
+    with LOCK:
+        keep, drop = _users.get(keep_id), _users.get(drop_id)
+        if not keep or not drop:
+            raise ContentError(404, "Conta não encontrada.")
+        if keep is drop:
+            raise ContentError(400, "Escolha duas contas diferentes.")
+        if keep.get("pw") and drop.get("pw"):
+            raise ContentError(409, "As duas contas têm senha de e-mail. Só uma pode ficar.")
+        have = identities(keep)
+        links = keep.setdefault("links", [])
+        for prov, sub in identities(drop):
+            if (prov, sub) not in have:
+                links.append({"provider": prov, "sub": sub})
+        if drop.get("pw"):
+            keep["pw"], keep["pwEmail"] = drop["pw"], pw_email(drop)
+        if not keep.get("username") and drop.get("username"):  # o perfil completo é o que vale
+            keep["username"], keep["name"] = drop["username"], drop["name"]
+        if name:
+            keep["name"] = name
+        if username:
+            other = find_by_username(username)
+            if other and other is not keep and other is not drop:
+                raise ContentError(409, "Este nome de usuário já está em uso. Escolha outro.")
+            keep["username"] = username
+        keep["admin"] = bool(keep.get("admin") or drop.get("admin"))
+        keep["avatar"] = keep.get("avatar") or drop.get("avatar", "")
+        keep["email"] = keep.get("email") or drop.get("email", "")
+        for s in _sessions.values():  # quem estava logado na conta antiga continua logado, agora na conta única
+            if s["user"] == drop_id:
+                s["user"] = keep_id
+        del _users[drop_id]
+        _write(USERS_FILE, list(_users.values()))
+        _write(SESSIONS_FILE, _sessions)
+        return keep
 
 
 def create_user(fields):
@@ -399,8 +449,13 @@ def all_users():
 
 
 def public_user(user):
+    methods = []  # formas de entrar (sem repetir): google, password…
+    for prov, _ in identities(user):
+        if prov not in methods:
+            methods.append(prov)
     return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
-            "avatar": user["avatar"], "provider": user["provider"], "admin": bool(user.get("admin")),
+            "avatar": user["avatar"], "provider": user["provider"], "methods": methods, "created": user.get("created"),
+            "admin": bool(user.get("admin")),
             "needsProfile": not user.get("username")}  # conta criada por um serviço: falta escolher nome exibido e usuário
 
 

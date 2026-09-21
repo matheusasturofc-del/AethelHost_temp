@@ -157,7 +157,7 @@ def _lang(body):
 
 def find_password_user(email):
     with auth.LOCK:
-        return next((u for u in auth._users.values() if u["provider"] == "password" and u["sub"] == email), None)
+        return next((u for u in auth._users.values() if auth.pw_email(u) == email), None)
 
 
 # ---------------------------------------------------------------- perfil (contas criadas por Google, GitHub…)

@@ -6,6 +6,7 @@
   <title>Administração — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -37,6 +38,7 @@
     const providerName = (id) => id === "password" ? ((document.documentElement.lang || "").startsWith("en") ? "Email & password" : "E-mail e senha") : (PROVIDER[id] || id);
     const STATE = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };
     let data = null;
+    let mergeFor = null;  // { id, target }: qual caixa está com a mesclagem aberta (fica guardado entre as atualizações de 5 s)
 
     function fmtRam(mb) { return mb >= 1024 ? (mb / 1024).toFixed(mb % 1024 ? 1 : 0) + " GB" : mb + " MB"; }
     function fmtWhen(iso) {  // "2026-09-20T19:28:23" (hora local do PC) -> data e hora no idioma escolhido
@@ -64,6 +66,26 @@
         h("span", { class: "muted", style: "min-width:64px;text-align:right" }, s.state === "online" ? `${s.players} 👤` : ""));
     }
 
+    // Mesclar: esta conta (drop) entra na conta escolhida (keep): logins, servidores e chave SSH passam para ela.
+    function mergeBox(u) {
+      if (!mergeFor || mergeFor.id !== u.id) {
+        return h("div", { style: "margin-top:10px" }, h("button", { class: "btn", type: "button", style: "padding:5px 12px;font-size:13px",
+          onclick: () => { mergeFor = { id: u.id, target: "" }; render(); } }, "Mesclar em outra conta…"));
+      }
+      const others = data.users.filter((x) => x.id !== u.id);
+      const select = h("select", { onchange: (ev) => { mergeFor.target = ev.target.value; } },
+        h("option", { value: "" }, "Escolha a conta que fica…"),
+        ...others.map((x) => h("option", { value: x.id, selected: x.id === mergeFor.target, translate: "no" }, `${x.name}${x.username ? " (@" + x.username + ")" : ""} — ${x.email || providerName(x.provider)}`)));
+      return h("div", { class: "uri-row", style: "margin-top:10px;flex-wrap:wrap" }, select,
+        h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+          if (!mergeFor.target) return $("adErr").replaceChildren(document.createTextNode("Escolha a conta que fica."));
+          if (!confirm("Mesclar estas duas contas numa só? A conta desta caixa deixa de existir e os logins e servidores dela passam para a conta escolhida. Não dá para desfazer.")) return;
+          try { await api("POST", "/admin/merge", { keep: mergeFor.target, drop: u.id }); mergeFor = null; $("adErr").textContent = ""; await load(); }
+          catch (e) { $("adErr").textContent = e.message; }
+        } }, "Mesclar"),
+        h("button", { class: "btn", type: "button", onclick: () => { mergeFor = null; render(); } }, "Cancelar"));
+    }
+
     function accountCard(u) {
       const running = u.servers.filter((s) => s.state !== "offline").length;
       return h("div", { class: "card", style: "margin-bottom:14px;padding:20px" },
@@ -71,14 +93,15 @@
           avatar(u),
           h("div", { class: "row-main" },
             h("strong", { translate: "no" }, u.name, u.username ? h("span", { class: "muted", style: "font-weight:400" }, " @" + u.username) : null, u.admin ? h("span", { class: "badge on", translate: "yes" }, "Administrador") : null),
-            h("small", {}, u.email ? h("span", { translate: "no" }, u.email) : "sem e-mail", " · ", h("span", { translate: "no" }, providerName(u.provider)))),
+            h("small", {}, u.email ? h("span", { translate: "no" }, u.email) : "sem e-mail", " · ", h("span", { translate: "no" }, (u.methods || [u.provider]).map(providerName).join(" + ")))),
           h("div", { class: "row-main", style: "text-align:right;flex:none" },
             h("small", {}, "Entrou em ", h("span", { translate: "no" }, fmtWhen(u.created))),
             h("small", {}, "Último login ", h("span", { translate: "no" }, fmtWhen(u.lastLogin))),
             h("small", {}, u.sessions === 1 ? "1 sessão aberta" : `${u.sessions} sessões abertas`))),
         h("p", { class: "muted small", style: "margin:0 0 4px" },
           u.servers.length === 0 ? "Nenhum servidor." : `${u.servers.length === 1 ? "1 servidor" : u.servers.length + " servidores"}, ${running} ligado${running === 1 ? "" : "s"} agora`),
-        ...u.servers.map(serverRow));
+        ...u.servers.map(serverRow),
+        data.users.length > 1 ? mergeBox(u) : null);
     }
 
     function render() {

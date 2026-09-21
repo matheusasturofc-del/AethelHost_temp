@@ -1350,7 +1350,7 @@ def api_settings_gamerules(query, body, sid):
 # ---------------------------------------------------------------- Contas
 
 BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
-PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html"}
+PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html"}
 
 
 def _claim_legacy(user):
@@ -1418,6 +1418,27 @@ def _require_admin(message="Só o administrador pode ligar ou desligar o playit.
     user = current_user()
     if not user or not user.get("admin"):
         raise ApiError(403, message)
+
+
+def merge_accounts(keep_id, drop_id, name=None, username=None):
+    """Junta duas contas: os logins, os servidores e a chave SSH da conta `drop` passam para `keep`."""
+    with DB_LOCK:
+        keep = auth.merge_users(keep_id, drop_id, name, username)
+        servers = db_load()
+        for s in servers:
+            if s.get("owner") == drop_id:
+                s["owner"] = keep_id
+        db_save(servers)
+        old_keys, new_keys = DATA / "keys" / drop_id, DATA / "keys" / keep_id
+        if old_keys.is_dir() and not new_keys.exists():
+            old_keys.rename(new_keys)  # se as duas já tinham chave, a antiga fica onde está (a VPS de cada uma é separada)
+    return keep
+
+
+def api_admin_merge(query, body):
+    _require_admin("Só o administrador pode mesclar contas.")
+    keep = merge_accounts(str(body.get("keep", "")), str(body.get("drop", "")))
+    return 200, {"ok": True, "user": auth.public_user(keep)}
 
 
 def api_admin_overview(query, body):
@@ -1541,6 +1562,7 @@ ROUTES = [
     ("POST", r"^/api/auth/mail$", api_mail_save),
     ("POST", r"^/api/auth/mail/test$", api_mail_test),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
+    ("POST", r"^/api/admin/merge$", api_admin_merge),
     ("GET", r"^/api/tunnel$", api_tunnel),
     ("POST", r"^/api/tunnel/link$", api_tunnel_link),
     ("POST", r"^/api/tunnel/unlink$", api_tunnel_unlink),

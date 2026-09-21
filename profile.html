@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Perfil — AethelHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container profile">
+    <section class="card profile-card">
+      <div class="banner" aria-hidden="true"></div>
+      <div class="profile-head">
+        <span id="pfAvatar"></span>
+        <div>
+          <h1 id="pfName" translate="no"></h1>
+          <div class="handle" id="pfHandle" translate="no"></div>
+        </div>
+      </div>
+      <div class="profile-body">
+        <dl class="profile-facts">
+          <div><dt>E-mail</dt><dd id="pfEmail" translate="no">—</dd></div>
+          <div><dt>Formas de entrar</dt><dd id="pfMethods">—</dd></div>
+          <div><dt>Membro desde</dt><dd id="pfSince" translate="no">—</dd></div>
+        </dl>
+        <p class="muted small" style="margin:14px 0 0">O banner usa o ícone do AethelHost. Em breve você poderá editá-lo.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">Aparência</h2>
+      <p class="muted" style="margin-bottom:0">Escolha a cor de fundo do site.</p>
+      <div class="theme-picker">
+        <button class="theme-opt" type="button" data-theme-set="dark" aria-pressed="false"><span class="swatch dark"></span><strong>Escuro</strong></button>
+        <button class="theme-opt" type="button" data-theme-set="light" aria-pressed="false"><span class="swatch light"></span><strong>Branco</strong></button>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const METHODS = { google: "Google", microsoft: "Microsoft", github: "GitHub", discord: "Discord", custom: "Outro", password: null };
+    const en = () => (document.documentElement.lang || "").startsWith("en");
+    const methodName = (id) => (id === "password" ? (en() ? "Email & password" : "E-mail e senha") : METHODS[id] || id);
+
+    function paint(user) {
+      const initial = (user.name || "?").trim().charAt(0).toUpperCase();
+      const fallback = h("span", { class: "avatar big", translate: "no" }, initial);
+      let avatar = fallback;
+      if (user.avatar) {
+        avatar = h("img", { class: "avatar big", src: user.avatar, alt: "", referrerPolicy: "no-referrer" });
+        avatar.addEventListener("error", () => avatar.replaceWith(fallback));
+      }
+      $("pfAvatar").replaceChildren(avatar);
+      $("pfName").textContent = user.name;
+      $("pfHandle").textContent = user.username ? "@" + user.username : "";
+      $("pfEmail").textContent = user.email || "—";
+      $("pfMethods").textContent = user.methods.map(methodName).join(" · ");
+      $("pfMethods").setAttribute("translate", "no");
+      $("pfSince").textContent = user.created ? fmtDate(new Date(user.created).getTime() / 1000) : "—";
+      document.title = `${user.name} — AethelHost`;
+    }
+
+    function paintTheme() {
+      document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === BH_THEME.get())));
+    }
+
+    document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => { BH_THEME.set(b.dataset.themeSet); paintTheme(); }));
+    paintTheme();
+
+    let me = null;
+    (async () => {
+      await window.BH_ME_READY;
+      me = window.BH_USER;
+      if (me) paint(me);
+    })();
+    window.addEventListener("langchange", () => { if (me) paint(me); });
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+</body>
+</html>

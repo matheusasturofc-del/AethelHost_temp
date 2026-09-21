@@ -12,6 +12,25 @@
   --warn: #fbbf24;
   --ok: #22c55e;
   --radius: 12px;
+  --border-strong: #3a4150;
+  color-scheme: dark;
+}
+
+/* Tema claro (branco): só troca as cores; o console e a prévia do Minecraft continuam escuros de propósito */
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eceff4;
+  --border: #d6dbe4;
+  --border-strong: #b4bcca;
+  --text: #171b22;
+  --muted: #566073;
+  --accent: #16a34a;
+  --accent-ink: #ffffff;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --ok: #15803d;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -93,7 +112,7 @@ a { color: inherit; text-decoration: none; }
   background: var(--surface-2); color: var(--text);
   font: inherit; font-weight: 600; cursor: pointer;
 }
-.btn:hover { border-color: #3a4150; }
+.btn:hover { border-color: var(--border-strong); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn-primary:hover { filter: brightness(1.08); border-color: var(--accent); }
@@ -342,13 +361,13 @@ a.btn { text-decoration: none; }
 .cs-native { display: none !important; }
 .cs-btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-radius: 10px;
           border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
-.cs-btn:hover:not(:disabled) { border-color: #3a4150; }
+.cs-btn:hover:not(:disabled) { border-color: var(--border-strong); }
 .cs-btn:focus-visible, .cs.open .cs-btn { outline: 2px solid var(--accent); outline-offset: -1px; }
 .cs-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .cs-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cs-chevron { display: inline-flex; color: var(--muted); transition: transform 0.15s; flex: none; }
 .cs.open .cs-chevron { transform: rotate(180deg); color: var(--accent); }
-.cs-panel { position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid #3a4150;
+.cs-panel { position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border-strong);
             border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); overflow: hidden; }
 .cs-search { width: 100%; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface-2); padding: 10px 14px; }
 .cs-search:focus { outline: none; border-bottom-color: var(--accent); }
@@ -440,3 +459,48 @@ code { background: var(--bg); border: 1px solid var(--border); border-radius: 6p
   .side .back { margin-bottom: 0; }
   .plans { grid-template-columns: 1fr; }
 }
+
+
+/* ===== Menu do perfil (topo) ===== */
+.user-menu { position: relative; }
+.user-btn { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 4px; border-radius: 999px; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--text); font: inherit; cursor: pointer; }
+.user-btn:hover, .user-btn[aria-expanded="true"] { border-color: var(--accent); }
+.user-btn .caret { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--muted); }
+.user-pop { position: absolute; right: 0; top: calc(100% + 8px); min-width: 190px; z-index: 60; padding: 6px; background: var(--surface);
+            border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); }
+.user-pop[hidden] { display: none; }
+.user-pop .who { padding: 8px 12px 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+.user-pop .who b { display: block; color: var(--text); font-size: 15px; }
+.user-pop a, .user-pop button { display: block; width: 100%; text-align: left; padding: 9px 12px; border: 0; border-radius: 8px; background: none;
+                                color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+.user-pop a:hover, .user-pop button:hover { background: var(--surface-2); color: var(--text); }
+.user-pop .danger { color: var(--danger); }
+
+/* ===== Página do perfil ===== */
+.profile { max-width: 760px; margin: 32px auto 80px; display: grid; gap: 20px; }
+.profile-card { padding: 0; overflow: hidden; }
+.banner { position: relative; height: 160px; background: linear-gradient(135deg, #1a2a22 0%, #16211c 45%, #1b2029 100%); overflow: hidden; }
+.banner::before { content: ""; position: absolute; inset: 0; background: url("../assets/icon.svg") 0 0 / 36px 36px space; opacity: 0.32; }
+.banner::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgba(0, 0, 0, 0.35)); }
+.profile-head { display: flex; align-items: flex-end; gap: 18px; padding: 0 28px; margin-top: -44px; position: relative; z-index: 1; flex-wrap: wrap; }
+.avatar.big { width: 96px; height: 96px; font-size: 40px; border: 4px solid var(--surface); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
+.profile-head h1 { margin: 0; font-size: 28px; line-height: 1.15; }
+.profile-head .handle { color: var(--muted); font-size: 16px; }
+.profile-body { padding: 18px 28px 28px; }
+.profile-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 0; }
+.profile-facts div { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+.profile-facts dt { color: var(--muted); font-size: 13px; }
+.profile-facts dd { margin: 2px 0 0; font-weight: 600; word-break: break-word; }
+.theme-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+.theme-opt { border: 2px solid var(--border); border-radius: 12px; padding: 10px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.theme-opt:hover { border-color: var(--border-strong); }
+.theme-opt[aria-pressed="true"] { border-color: var(--accent); }
+.theme-opt .swatch { display: block; height: 64px; border-radius: 8px; margin-bottom: 8px; border: 1px solid rgba(128, 128, 128, 0.35); position: relative; }
+.theme-opt .swatch::before { content: ""; position: absolute; left: 10px; top: 10px; width: 46%; height: 8px; border-radius: 4px; background: rgba(128, 128, 128, 0.55); }
+.theme-opt .swatch::after { content: ""; position: absolute; left: 10px; top: 28px; width: 28%; height: 20px; border-radius: 6px; background: #4ade80; }
+.swatch.dark { background: #0f1115; }
+.swatch.light { background: #f4f6f9; }
+
+/* No tema branco, o subtítulo colorido do Minecraft ganha um fundo escuro (as cores claras do jogo sumiriam no branco) */
+:root[data-theme="light"] .sub-mc { display: inline-block; background: #1b1f27; padding: 2px 10px; border-radius: 6px; }

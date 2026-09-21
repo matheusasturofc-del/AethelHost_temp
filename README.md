@@ -49,6 +49,13 @@ Na página de login aparecem os serviços configurados e, depois de um **ou**, o
 
 O administrador (a primeira conta) ganha o link **Administração** no topo (`admin.html`): totais (contas, servidores, ligados agora, jogadores online, RAM em uso neste PC), uma lista de todas as contas (nome, e-mail, serviço de login, data de entrada, último login, sessões abertas) e, dentro de cada uma, os servidores dela com plano, software, versão, RAM, porta, se tem endereço público, se está ligado e quantos jogadores. Tem busca por conta, e-mail ou servidor e atualiza sozinho a cada 5 segundos. Servidores cujo dono não existe mais aparecem numa lista à parte. É só leitura por enquanto (`GET /api/admin/overview`, só para o administrador; para os outros a API responde 403).
 
+## Perfil, tema e mesclar contas
+
+- **Menu do perfil:** clicar no seu nome/foto no topo abre um menu com **Ver perfil**, **Administração** (só a administradora) e **Sair**.
+- **Ver perfil** (`profile.html`): banner com o ícone do AethelHost repetido (a edição do banner vem depois), foto, nome, `@usuário`, e-mail, formas de entrar e data de entrada, e a seção **Aparência** para escolher o fundo do site: **Escuro** (padrão) ou **Branco**. A escolha fica guardada no navegador (`bh_theme`).
+- **Várias formas de entrar numa conta:** uma conta pode ter Google + e-mail e senha etc. (`links` em `data/users.json`). Login por qualquer uma delas cai na mesma conta.
+- **Mesclar contas** (administradora): em Administração, o botão **Mesclar em outra conta…** junta uma conta duplicada na conta escolhida: os logins, os servidores e a chave SSH passam para ela; quem estava logado na conta antiga continua logado na única. Se as duas têm senha de e-mail, não mescla. `POST /api/admin/merge`.
+
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.

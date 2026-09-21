@@ -6,6 +6,7 @@
   <title>Entrar — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -76,7 +77,7 @@
     let pwEnabled = false;
     let canSetup = false;
     let resendTimer = null;
-    const NEXT_OK = /^\/(?:servers|create|panel|admin|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$/;  // só páginas do próprio site
+    const NEXT_OK = /^\/(?:servers|create|panel|admin|profile|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$/;  // só páginas do próprio site
     const goNext = () => location.replace(NEXT_OK.test(next) ? next : "servers.html");
     const setError = (text) => { $("lgError").textContent = text || ""; };
     const langCode = () => (en() ? "en" : "pt");
