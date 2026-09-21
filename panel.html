@@ -30,14 +30,16 @@
       <button data-tab="worlds">Mundos</button>
       <button data-tab="files">Arquivos</button>
       <button data-tab="backups">Backups</button>
+      <button data-tab="sharing" id="sharingBtn">Acesso e Compartilhamento</button>
     </aside>
 
     <section>
       <div class="panel-head panel-top">
         <img class="hdr-icon" id="hdrIcon" alt="Ícone do servidor">
         <div>
-          <h1 id="title"></h1>
+          <h1 id="title" style="display:inline-block"></h1><span class="badge shared shared-badge" id="sharedBy" hidden></span>
           <div class="sub-mc" id="subtitle"></div>
+          <div class="muted small" id="sharedFrom" hidden style="margin-top:4px">Compartilhado por <b id="sharedFromName" translate="no"></b></div>
         </div>
       </div>
       <div class="demo-banner" id="banner"></div>
@@ -50,8 +52,8 @@
           <button class="btn btn-primary btn-lg" id="power">Iniciar</button>
           <div class="error" id="msg" style="margin-top:14px"></div>
         </div>
-        <div class="card" id="pubCard" hidden style="margin-bottom:16px"></div>
-        <div class="card" id="vpsCard" hidden style="margin-bottom:16px">
+        <div class="card full-only" id="pubCard" hidden style="margin-bottom:16px"></div>
+        <div class="card owner-only" id="vpsCard" hidden style="margin-bottom:16px">
           <h3 style="margin-top:0">Conexão com a VPS</h3>
           <ol class="steps">
             <li>Copie a chave pública abaixo e adicione, em uma linha, ao arquivo <code>~/.ssh/authorized_keys</code> do usuário <b id="vpsUser"></b> na sua VPS.</li>
@@ -76,7 +78,7 @@
       <!-- Aba: Console -->
       <div id="tab-console" hidden>
         <div class="console" id="console"></div>
-        <form class="cmd-row" id="cmdForm">
+        <form class="cmd-row full-only" id="cmdForm">
           <input type="text" id="cmd" placeholder="Digite um comando (ex.: say olá)" autocomplete="off" maxlength="200">
           <button class="btn btn-primary" type="submit" id="cmdSend">Enviar</button>
         </form>
@@ -143,20 +145,20 @@
           <div class="card" style="margin-top:16px">
             <div class="card-head">
               <h3 style="margin:0">Lista de permitidos (whitelist)</h3>
-              <label class="switch"><input type="checkbox" id="plWlOn"><span class="knob"></span><span>Ativada</span></label>
+              <label class="switch full-only"><input type="checkbox" id="plWlOn"><span class="knob"></span><span>Ativada</span></label>
             </div>
             <p class="muted small">Com a lista ativada, só quem está nela consegue entrar.</p>
-            <form class="cmd-row" id="plWlForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
+            <form class="cmd-row full-only" id="plWlForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
             <div id="plWl"></div>
           </div>
           <div class="card" style="margin-top:16px">
             <h3 style="margin-top:0">Operadores (administradores)</h3>
-            <form class="cmd-row" id="plOpForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
+            <form class="cmd-row full-only" id="plOpForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><button class="btn btn-primary" type="submit">Adicionar</button></form>
             <div id="plOps"></div>
           </div>
           <div class="card" style="margin-top:16px">
             <h3 style="margin-top:0">Banidos</h3>
-            <form class="cmd-row" id="plBanForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><input type="text" placeholder="Motivo (opcional)" maxlength="100" autocomplete="off"><button class="btn btn-primary" type="submit">Banir</button></form>
+            <form class="cmd-row full-only" id="plBanForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><input type="text" placeholder="Motivo (opcional)" maxlength="100" autocomplete="off"><button class="btn btn-primary" type="submit">Banir</button></form>
             <div id="plBans"></div>
           </div>
           <div class="ok-msg" id="plOk"></div>
@@ -172,8 +174,8 @@
             <div class="card-head">
               <div class="crumbs" id="flCrumbs"></div>
               <div class="btn-row" style="margin:0">
-                <label class="btn needs-offline">Enviar arquivo<input type="file" id="flUpload" multiple hidden></label>
-                <button class="btn needs-offline" id="flMkdir">Nova pasta</button>
+                <label class="btn needs-offline files-write">Enviar arquivo<input type="file" id="flUpload" multiple hidden></label>
+                <button class="btn needs-offline files-write" id="flMkdir">Nova pasta</button>
               </div>
             </div>
             <div id="flList"></div>
@@ -184,7 +186,7 @@
             <div class="card-head">
               <h3 id="flEditName" style="margin:0"></h3>
               <div class="btn-row" style="margin:0">
-                <button class="btn btn-primary needs-offline" id="flSave">Salvar</button>
+                <button class="btn btn-primary needs-offline files-write" id="flSave">Salvar</button>
                 <button class="btn" id="flClose">Fechar</button>
               </div>
             </div>
@@ -249,6 +251,56 @@
         </div>
       </div>
 
+      <!-- Aba: Acesso e Compartilhamento -->
+      <div id="tab-sharing" hidden>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-top:0">Sobre o compartilhamento</h3>
+          <p class="muted" style="margin-bottom:6px">Compartilhe este servidor com outras contas do AethelHost, pelo nome de usuário. A pessoa recebe um convite no sino (lá em cima) e só ganha acesso se aceitar. O servidor aparece na lista dela como <b>Compartilhado</b>.</p>
+          <p class="muted small" style="margin:0" id="shReadOnly" hidden>Quem tem acesso pode ver esta lista, mas só o dono muda o compartilhamento.</p>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head">
+            <h3 style="margin:0">Pessoas com acesso a este servidor</h3>
+            <button class="btn btn-danger" type="button" id="shLeave" hidden>Sair deste servidor</button>
+          </div>
+          <div id="shList"></div>
+          <div class="ok-msg" id="shOk"></div>
+          <div class="error" id="shErr"></div>
+        </div>
+
+        <div class="card" id="shAddCard" style="margin-bottom:16px" hidden>
+          <h3 style="margin-top:0">Convidar alguém</h3>
+          <form class="share-form" id="shForm">
+            <div class="field" style="margin:0"><label for="shUser">Nome de usuário</label>
+              <input type="text" id="shUser" maxlength="20" placeholder="ex.: steve_2026" autocomplete="off" spellcheck="false">
+              <div class="hint">O nome de usuário da pessoa no AethelHost (aparece no perfil dela, depois do @).</div></div>
+            <div class="field" style="margin:0"><label for="shLevel">Nível de acesso</label>
+              <select id="shLevel"><option value="full">Completo</option><option value="basic" selected>Básico</option></select>
+              <div class="hint">Define o que a pessoa pode fazer neste servidor.</div></div>
+            <div class="field" style="margin:0"><label for="shFiles">Acesso aos arquivos</label>
+              <select id="shFiles"><option value="none" selected>Nenhum</option><option value="read">Somente leitura</option><option value="write">Leitura e escrita</option></select>
+              <div class="hint">Controla se a pessoa vê e mexe nos arquivos do servidor.</div></div>
+            <div><button class="btn btn-primary" type="submit">Enviar convite</button></div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Tipos de acesso</h3>
+          <div class="type-grid">
+            <div><h4>Dono</h4><p>Controle total: configura tudo, exclui o servidor e decide quem tem acesso.</p></div>
+            <div><h4>Completo</h4><p>Liga e desliga, usa o console, mexe em jogadores, opções, mods, mundos e backups. Não muda o compartilhamento nem exclui o servidor.</p></div>
+            <div><h4>Básico</h4><p>Vê o status, o console e os jogadores, e pode ligar e desligar. Não muda configurações.</p></div>
+          </div>
+          <h3 style="margin:22px 0 10px">Acesso aos arquivos</h3>
+          <div class="type-grid">
+            <div><h4>Nenhum</h4><p>A aba Arquivos não aparece para a pessoa.</p></div>
+            <div><h4>Somente leitura</h4><p>Vê e baixa os arquivos, mas não muda nada.</p></div>
+            <div><h4>Leitura e escrita</h4><p>Também edita, envia, renomeia e apaga arquivos.</p></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Aba: Opções -->
       <div id="tab-options" hidden>
         <div class="card">
@@ -309,7 +361,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:32px">
+        <div class="card owner-only" style="margin-top:32px">
           <div class="danger-zone" style="margin-top:0;padding-top:0;border-top:0">
             <p style="color:var(--muted);margin-top:0">Excluir remove o servidor da sua lista. No plano grátis, apaga também o mundo e os arquivos dele deste PC. Não dá para desfazer.</p>
             <button class="btn btn-danger" id="delete">Excluir servidor</button>
@@ -385,6 +437,7 @@
       // O Vanilla não aceita mods nem plugins: a aba nem aparece.
       $("contentBtn").hidden = !server.contentKind;
       if (!server.contentKind && !$("tab-content").hidden) document.querySelector("[data-tab=server]").click();
+      if (typeof applyRole === "function") applyRole();  // quem recebeu o servidor só vê o que o nível permite
       $("plan").textContent = server.plan === "vps" ? `VPS (${server.vps.provider})` : "Grátis";
 
       $("banner").textContent = server.plan === "vps"
@@ -537,7 +590,7 @@
     document.querySelectorAll(".side button[data-tab]").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-        ["server", "console", "players", "software", "content", "files", "worlds", "backups", "options"]
+        ["server", "console", "players", "software", "content", "files", "worlds", "backups", "options", "sharing"]
           .forEach((t) => ($("tab-" + t).hidden = t !== btn.dataset.tab));
         const box = $("console");
         box.scrollTop = box.scrollHeight;
@@ -548,7 +601,7 @@
 
     // Carrega os dados da aba que acabou de abrir (e recarrega quando o idioma muda, para datas e textos novos).
     function openTabData(tab) {
-      const open = { options: openOptions, players: openPlayers, software: openSoftware, content: loadContent, files: openFiles, worlds: openWorlds, backups: openBackups }[tab];
+      const open = { options: openOptions, players: openPlayers, software: openSoftware, content: loadContent, files: openFiles, worlds: openWorlds, backups: openBackups, sharing: openSharing }[tab];
       if (open) open();
     }
     window.addEventListener("langchange", () => {
@@ -831,6 +884,7 @@
   <script src="js/options-labels.js"></script>
   <script src="js/tab-options.js"></script>
   <script src="js/tab-public.js"></script>
+  <script src="js/tab-sharing.js"></script>
   <script src="js/i18n-en.js"></script>
   <script src="js/i18n.js"></script>
 </body>

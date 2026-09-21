@@ -34,6 +34,7 @@ import content  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
 import mail  # noqa: E402
+import notify  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
 import tunnel  # noqa: E402
@@ -138,6 +139,7 @@ def _normalize(server):
     server.setdefault("ramMb", DEFAULT_RAM_MB)
     server.setdefault("owner", None)  # sem dono até a primeira conta ser criada; aí passam a ser dela
     server.setdefault("public", False)  # endereço público pelo playit.gg (só plano Grátis)
+    server.setdefault("shares", [])  # compartilhamento: [{user, level, files, status}]
     return server
 
 
@@ -165,16 +167,46 @@ def current_user():
     return getattr(CTX, "user", None)
 
 
-def _owned(server):
-    user = current_user()
-    return bool(user and server.get("owner") == user["id"])
+LEVEL_RANK = {"basic": 1, "full": 2, "owner": 3}
+SHARE_LEVELS = ("full", "basic")
+SHARE_FILES = ("none", "read", "write")
+MAX_SHARES = 20
+
+
+def _role(server, user=None):
+    """(nível, arquivos) da conta neste servidor, ou None se ela não tem acesso.
+    Nível: owner (dono), full (completo) ou basic (básico). Arquivos: write, read ou none."""
+    user = user or current_user()
+    if not user:
+        return None
+    if server.get("owner") == user["id"]:
+        return ("owner", "write")
+    for sh in server.get("shares", []):
+        if sh["user"] == user["id"] and sh["status"] == "accepted":
+            return (sh["level"], sh["files"])
+    return None
+
+
+def _allowed(role, need):
+    level, files = role
+    if need in LEVEL_RANK:
+        return LEVEL_RANK[level] >= LEVEL_RANK[need]
+    if need == "files_read":
+        return level == "owner" or files in ("read", "write")
+    if need == "files_write":
+        return level == "owner" or files == "write"
+    return False
 
 
 def _pick(servers, sid):
-    """O servidor `sid`, se ele for da conta logada. Para os outros, é como se não existisse."""
-    server = next((s for s in servers if s["id"] == sid and _owned(s)), None)
-    if not server:
+    """O servidor `sid`, se a conta logada tem acesso a ele com o nível que a rota pede (CTX.need; o padrão é só o dono).
+    Quem não tem acesso nenhum recebe 404: é como se o servidor não existisse."""
+    server = next((s for s in servers if s["id"] == sid), None)
+    role = _role(server) if server else None
+    if not role:
         raise ApiError(404, "Servidor não encontrado.")
+    if not _allowed(role, getattr(CTX, "need", "owner")):
+        raise ApiError(403, "Você não tem permissão para fazer isso neste servidor.")
     return server
 
 
@@ -801,8 +833,18 @@ def _max_players(server):
 
 def view(server):
     rt = RUNTIMES.get(server["id"])
+    role = _role(server)
+    shared = bool(role and role[0] != "owner")
+    extra = {}
+    if shared:  # quem recebeu o servidor não vê dados da VPS do dono nem a lista de convites
+        owner = auth.get_user(server["owner"]) or {}
+        extra = {"ownerName": owner.get("name", ""), "ownerUsername": owner.get("username", "")}
+        if server.get("vps"):
+            extra["vps"] = {"provider": server["vps"].get("provider", ""), "host": server["vps"]["host"]}
     return {
-        **server,
+        **{k: v for k, v in server.items() if k != "shares"},
+        **extra,
+        "role": role[0] if role else None, "files": role[1] if role else None, "shared": shared,
         "publicName": f"{server['ip']}.{DOMAIN}",
         "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
         "maxPlayers": _max_players(server),
@@ -870,7 +912,7 @@ def api_ip_check(query, body):
 
 
 def api_list(query, body):
-    return 200, [view(s) for s in db_load() if _owned(s)]
+    return 200, [view(s) for s in db_load() if _role(s)]
 
 
 def api_create(query, body):
@@ -1059,7 +1101,7 @@ def api_icon_reset(query, body, sid):
     return 200, {"ok": True, "iconVersion": 0}
 
 
-def api_delete(query, body, sid):
+def api_delete(query, body, sid):  # noqa: D401 - só o dono
     with DB_LOCK:
         servers = db_load()
         _pick(servers, sid)
@@ -1072,6 +1114,7 @@ def api_delete(query, body, sid):
         shutil.rmtree(folder, ignore_errors=True)
     RUNTIMES.pop(sid, None)
     tunnel.forget(sid)
+    notify.remove_where(lambda n: n["type"] == "share_invite" and n["data"].get("server") == sid)  # convites de um servidor que não existe mais
     return 200, {"ok": True}
 
 
@@ -1428,7 +1471,16 @@ def merge_accounts(keep_id, drop_id, name=None, username=None):
         for s in servers:
             if s.get("owner") == drop_id:
                 s["owner"] = keep_id
+            fixed, seen = [], {s.get("owner")}
+            for sh in s.get("shares", []):
+                if sh["user"] == drop_id:
+                    sh["user"] = keep_id
+                if sh["user"] not in seen:  # sem repetir a mesma pessoa (nem o dono como convidado)
+                    seen.add(sh["user"])
+                    fixed.append(sh)
+            s["shares"] = fixed
         db_save(servers)
+        notify.reassign(drop_id, keep_id)
         old_keys, new_keys = DATA / "keys" / drop_id, DATA / "keys" / keep_id
         if old_keys.is_dir() and not new_keys.exists():
             old_keys.rename(new_keys)  # se as duas já tinham chave, a antiga fica onde está (a VPS de cada uma é separada)
@@ -1439,6 +1491,170 @@ def api_admin_merge(query, body):
     _require_admin("Só o administrador pode mesclar contas.")
     keep = merge_accounts(str(body.get("keep", "")), str(body.get("drop", "")))
     return 200, {"ok": True, "user": auth.public_user(keep)}
+
+
+# ---------------------------------------------------------------- compartilhamento
+
+_invite_hits = {}  # dono -> horários dos últimos convites (limite: 15 por hora)
+
+
+def _card(uid):
+    u = auth.get_user(uid)
+    return {"id": u["id"], "name": u["name"], "username": u.get("username") or "", "avatar": u.get("avatar") or ""} if u else None
+
+
+def _share_levels(body, current=None):
+    level = body.get("level", current["level"] if current else None)
+    files = body.get("files", current["files"] if current else None)
+    if level not in SHARE_LEVELS:
+        raise ApiError(400, "Escolha o nível de acesso: Completo ou Básico.")
+    if files not in SHARE_FILES:
+        raise ApiError(400, "Escolha o acesso aos arquivos: Nenhum, Somente leitura ou Leitura e escrita.")
+    return level, files
+
+
+def _shares_view(server):
+    owner_role = _role(server)
+    return {"owner": _card(server["owner"]), "canEdit": bool(owner_role and owner_role[0] == "owner"),
+            "shares": [{"user": _card(s["user"]), "level": s["level"], "files": s["files"], "status": s["status"], "invitedAt": s.get("invitedAt")}
+                       for s in server.get("shares", []) if auth.get_user(s["user"])]}
+
+
+def api_shares_list(query, body, sid):
+    return 200, _shares_view(find_server(sid))
+
+
+def api_share_add(query, body, sid):
+    me = current_user()
+    username = str(body.get("username", "")).strip().lstrip("@")
+    level, files = _share_levels(body)
+    if not username:
+        raise ApiError(400, "Escreva o nome de usuário de quem vai receber o convite.")
+    now = time.time()
+    recent = [t for t in _invite_hits.get(me["id"], []) if now - t < 3600]
+    if len(recent) >= 15:
+        raise ApiError(429, "Você mandou muitos convites em pouco tempo. Tente de novo mais tarde.")
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        target = auth.find_by_username(username)
+        if not target:
+            raise ApiError(404, "Não achei ninguém com esse nome de usuário. Confira se está certo.")
+        if target["id"] == server["owner"]:
+            raise ApiError(400, "Esse usuário já é o dono do servidor.")
+        if any(s["user"] == target["id"] for s in server["shares"]):
+            raise ApiError(409, "Esse usuário já tem acesso (ou um convite pendente) neste servidor.")
+        if len(server["shares"]) >= MAX_SHARES:
+            raise ApiError(409, f"Um servidor pode ser compartilhado com até {MAX_SHARES} pessoas.")
+        server["shares"].append({"user": target["id"], "level": level, "files": files, "status": "pending", "invitedAt": time.strftime("%Y-%m-%dT%H:%M:%S")})
+        db_save(servers)
+    _invite_hits[me["id"]] = recent + [now]
+    notify.add(target["id"], "share_invite", {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"],
+                                              "fromUsername": me.get("username") or "", "level": level, "files": files})
+    return 201, _shares_view(server)
+
+
+def api_share_update(query, body, sid, uid):
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        share = next((s for s in server["shares"] if s["user"] == uid), None)
+        if not share:
+            raise ApiError(404, "Essa pessoa não está na lista.")
+        share["level"], share["files"] = _share_levels(body, share)
+        db_save(servers)
+    if share["status"] == "accepted":
+        me = current_user()
+        notify.add(uid, "share_changed", {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"],
+                                         "fromUsername": me.get("username") or "", "level": share["level"], "files": share["files"]})
+    else:  # convite ainda pendente: o texto do convite passa a mostrar o nível novo
+        notify.remove_where(lambda n: n["user"] == uid and n["type"] == "share_invite" and n["data"].get("server") == sid)
+        me = current_user()
+        notify.add(uid, "share_invite", {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"],
+                                         "fromUsername": me.get("username") or "", "level": share["level"], "files": share["files"]})
+    return 200, _shares_view(server)
+
+
+def api_share_remove(query, body, sid, uid):
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        share = next((s for s in server["shares"] if s["user"] == uid), None)
+        if not share:
+            raise ApiError(404, "Essa pessoa não está na lista.")
+        server["shares"] = [s for s in server["shares"] if s["user"] != uid]
+        db_save(servers)
+    notify.remove_where(lambda n: n["user"] == uid and n["type"] == "share_invite" and n["data"].get("server") == sid)
+    if share["status"] == "accepted":
+        me = current_user()
+        notify.add(uid, "share_removed", {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"], "fromUsername": me.get("username") or ""})
+    return 200, _shares_view(server)
+
+
+def api_share_leave(query, body, sid):
+    """Quem recebeu o servidor sai dele."""
+    me = current_user()
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        if server["owner"] == me["id"]:
+            raise ApiError(400, "O dono não pode sair do próprio servidor. Exclua o servidor se não quiser mais.")
+        server["shares"] = [s for s in server["shares"] if s["user"] != me["id"]]
+        db_save(servers)
+    notify.add(server["owner"], "share_left", {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"], "fromUsername": me.get("username") or ""})
+    return 200, {"ok": True}
+
+
+def api_notifications(query, body):
+    items, unread = notify.for_user(current_user()["id"])
+    return 200, {"items": items, "unread": unread}
+
+
+def api_notifications_read(query, body):
+    ids = body.get("ids")
+    notify.mark_read(current_user()["id"], set(map(str, ids)) if isinstance(ids, list) else None)
+    return 200, {"ok": True}
+
+
+def api_notification_delete(query, body, nid):
+    n = notify.get(current_user()["id"], nid)
+    if n and n["type"] == "share_invite":
+        raise ApiError(409, "Aceite ou recuse o convite.")
+    notify.remove(current_user()["id"], nid)
+    return 200, {"ok": True}
+
+
+def _answer_invite(nid, accept):
+    me = current_user()
+    n = notify.get(me["id"], nid)
+    if not n or n["type"] != "share_invite":
+        raise ApiError(404, "Convite não encontrado.")
+    sid = n["data"]["server"]
+    with DB_LOCK:
+        servers = db_load()
+        server = next((s for s in servers if s["id"] == sid), None)
+        share = next((s for s in (server or {}).get("shares", []) if s["user"] == me["id"] and s["status"] == "pending"), None)
+        if not share:  # o dono cancelou ou apagou o servidor
+            notify.remove(me["id"], nid)
+            raise ApiError(410, "Este convite não vale mais.")
+        if accept:
+            share["status"], share["acceptedAt"] = "accepted", time.strftime("%Y-%m-%dT%H:%M:%S")
+        else:
+            server["shares"] = [s for s in server["shares"] if s is not share]
+        db_save(servers)
+    notify.remove(me["id"], nid)
+    notify.add(server["owner"], "share_accepted" if accept else "share_declined",
+               {"server": sid, "serverName": server["name"], "from": me["id"], "fromName": me["name"], "fromUsername": me.get("username") or "",
+                "level": share["level"], "files": share["files"]})
+    return 200, {"ok": True, "server": view(server) if accept else None}
+
+
+def api_notification_accept(query, body, nid):
+    return _answer_invite(nid, True)
+
+
+def api_notification_decline(query, body, nid):
+    return _answer_invite(nid, False)
 
 
 def api_admin_overview(query, body):
@@ -1554,6 +1770,16 @@ def api_mail_test(query, body):
 
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("GET", r"^/api/notifications$", api_notifications),
+    ("POST", r"^/api/notifications/read$", api_notifications_read),
+    ("DELETE", rf"^/api/notifications/{ID}$", api_notification_delete),
+    ("POST", rf"^/api/notifications/{ID}/accept$", api_notification_accept),
+    ("POST", rf"^/api/notifications/{ID}/decline$", api_notification_decline),
+    ("GET", rf"^/api/servers/{ID}/shares$", api_shares_list),
+    ("POST", rf"^/api/servers/{ID}/shares$", api_share_add),
+    ("POST", rf"^/api/servers/{ID}/shares/{ID}$", api_share_update),
+    ("DELETE", rf"^/api/servers/{ID}/shares/{ID}$", api_share_remove),
+    ("POST", rf"^/api/servers/{ID}/leave$", api_share_leave),
     ("POST", r"^/api/auth/password/register$", api_pw_register),
     ("POST", r"^/api/auth/password/login$", api_pw_login),
     ("POST", r"^/api/auth/password/resend$", api_pw_resend),
@@ -1622,6 +1848,18 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/settings/properties$", api_settings_properties),
     ("POST", rf"^/api/servers/{ID}/settings/gamerules$", api_settings_gamerules),
 ]
+# O que cada rota de servidor exige de quem não é o dono. Tudo que não está aqui (excluir o servidor, dados da VPS,
+# mudar o compartilhamento…) é só do dono. Arquivos têm o seu próprio nível (leitura ou escrita).
+NEED = {
+    **{f: "basic" for f in (api_get, api_start, api_stop, api_console, api_icon_get, api_players, api_shares_list, api_share_leave)},
+    **{f: "full" for f in (api_command, api_players_action, api_patch, api_icon_set, api_icon_reset, api_software_set, api_public_set,
+                           api_content_list, api_content_search, api_content_install, api_content_upload, api_content_toggle, api_content_delete,
+                           api_worlds, api_world_use, api_world_create, api_world_delete, api_world_download, api_world_upload,
+                           api_backups, api_backup_create, api_backup_restore, api_backup_delete, api_backup_download,
+                           api_settings, api_settings_properties, api_settings_gamerules)},
+    **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
+    **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
+}
 PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
@@ -1771,6 +2009,9 @@ class Handler(BaseHTTPRequestHandler):
         fn, groups = route
         if fn not in PUBLIC and not current_user():
             raise ApiError(401, "Faça login para continuar.")
+        CTX.need = NEED.get(fn, "owner")
+        if groups and parsed.path.startswith("/api/servers/"):
+            _pick(db_load(), groups[0])  # 404 se não tem acesso, 403 se o nível não basta
 
         body = {}
         temp = None

@@ -48,9 +48,10 @@
             h("img", { class: "card-icon", src: iconUrl(s), alt: "" }),
             h("div", { class: "card-title" }, h("h3", {}, s.name), h("div", { class: "sub" }, mcNodes(s.subtitle, { trim: true })))),
           h("div", { class: "addr" }, s.publicName),
+          s.shared ? h("div", { class: "muted small", style: "margin:0 0 8px" }, "Compartilhado por ", h("b", { translate: "no" }, s.ownerName)) : null,
           h("div", { class: "card-foot" },
             h("span", { class: "status " + s.runtime.state }, STATUS_LABEL[s.runtime.state]),
-            h("span", {}, h("span", { class: "badge" }, `${s.softwareLabel} ${s.version}`), " ", h("span", { class: "badge" }, s.plan === "vps" ? "VPS" : "Grátis")))))));
+            h("span", {}, s.shared ? h("span", { class: "badge shared" }, "Compartilhado") : null, " ", h("span", { class: "badge" }, `${s.softwareLabel} ${s.version}`), " ", h("span", { class: "badge" }, s.plan === "vps" ? "VPS" : "Grátis")))))));
     }
 
     async function load() {
@@ -64,6 +65,7 @@
     load();
     setInterval(load, 3000);
     window.addEventListener("langchange", load);
+    window.addEventListener("bh-servers-changed", load);  // aceitou um convite no sino: o servidor novo aparece já
   </script>
   <script src="js/i18n-en.js"></script>
   <script src="js/i18n.js"></script>

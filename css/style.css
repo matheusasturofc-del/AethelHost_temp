@@ -504,3 +504,46 @@ code { background: var(--bg); border: 1px solid var(--border); border-radius: 6p
 
 /* No tema branco, o subtítulo colorido do Minecraft ganha um fundo escuro (as cores claras do jogo sumiriam no branco) */
 :root[data-theme="light"] .sub-mc { display: inline-block; background: #1b1f27; padding: 2px 10px; border-radius: 6px; }
+
+/* ===== Sino de notificações ===== */
+.bell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%;
+        border: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; padding: 0; }
+.bell:hover, .bell[aria-expanded="true"] { border-color: var(--accent); }
+.bell svg { width: 18px; height: 18px; }
+.bell-count { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger);
+              color: #fff; font: 800 11px/18px system-ui; text-align: center; }
+.bell-wrap { position: relative; display: inline-flex; }
+.notif-pop { position: absolute; right: 0; top: calc(100% + 8px); width: 340px; max-width: calc(100vw - 24px); max-height: 70vh; overflow: auto; z-index: 60;
+             background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); }
+.notif-pop[hidden] { display: none; }
+.notif-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--border); font-weight: 700; }
+.notif-head .linkbtn { font-size: 13px; font-weight: 400; }
+.notif-item { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.notif-item:last-child { border-bottom: 0; }
+.notif-item.unread { background: rgba(74, 222, 128, 0.07); }
+.notif-item .when { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.notif-item .lv { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 4px; }
+.notif-item .lv b { color: var(--text); font-weight: 600; }
+.notif-actions { display: flex; gap: 8px; margin-top: 10px; }
+.notif-actions .btn { padding: 5px 14px; font-size: 13px; }
+.notif-empty { padding: 22px 14px; text-align: center; color: var(--muted); }
+
+/* ===== Compartilhamento ===== */
+.badge.shared { color: #38bdf8; border-color: #38bdf8; }
+.badge.owner { color: var(--warn); border-color: var(--warn); }
+.badge.pending { color: var(--warn); border-color: var(--warn); }
+.share-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.share-row:first-child { border-top: 0; }
+.share-row .who { flex: 1; min-width: 160px; display: flex; align-items: center; gap: 10px; }
+.share-row .who small { display: block; color: var(--muted); }
+.share-row select { width: auto; min-width: 150px; padding: 7px 10px; }
+.share-form { display: grid; gap: 14px; }
+.type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+.type-grid h4 { margin: 0 0 4px; }
+.type-grid p { margin: 0; color: var(--muted); font-size: 14px; }
+.shared-badge { margin-left: 10px; vertical-align: middle; font-size: 12px; }
+
+/* Papéis: quem recebeu o servidor só vê o que o nível dele permite (a API também confere) */
+body.role-basic .full-only { display: none !important; }
+body:not(.role-owner) .owner-only { display: none !important; }
+body.files-read .files-write, body.files-none .files-write { display: none !important; }

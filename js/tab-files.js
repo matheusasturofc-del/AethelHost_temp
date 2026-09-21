@@ -51,10 +51,10 @@ function renderFiles(data) {
       ? h("button", { class: "file-name", type: "button", translate: "no", onclick: () => loadFiles(flRel(it.name)) }, it.name)
       : h("span", { class: "file-name plain", translate: "no" }, it.name);
     const actions = [];
-    if (it.text) actions.push(h("button", { class: "btn", type: "button", onclick: () => editFile(it.name) }, "Editar"));
+    if (it.text) actions.push(h("button", { class: "btn", type: "button", onclick: () => editFile(it.name) }, server.files === "read" ? "Ver" : "Editar"));
     actions.push(h("a", { class: "btn", href: flUrl("download", flRel(it.name)), download: it.dir ? it.name + ".zip" : it.name }, "Baixar"));
-    actions.push(h("button", { class: "btn needs-offline", type: "button", onclick: () => renameFile(it.name) }, "Renomear"));
-    actions.push(h("button", { class: "btn btn-danger needs-offline", type: "button", onclick: () => deleteFile(it) }, "Excluir"));
+    actions.push(h("button", { class: "btn needs-offline files-write", type: "button", onclick: () => renameFile(it.name) }, "Renomear"));
+    actions.push(h("button", { class: "btn btn-danger needs-offline files-write", type: "button", onclick: () => deleteFile(it) }, "Excluir"));
     return h("div", { class: "row file-row" },
       h("span", { class: "file-ico", innerHTML: it.dir ? FILE_ICON.dir : FILE_ICON.file }),
       h("div", { class: "row-main" }, main, h("small", {}, [it.dir ? null : fmtSize(it.size), fmtDate(it.modified)].filter(Boolean).join(" · "))),

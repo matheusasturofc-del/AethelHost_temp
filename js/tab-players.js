@@ -37,7 +37,7 @@ function plRow(name, extra, ...buttons) {
 }
 
 function plButton(text, action, name, opts = {}) {
-  return h("button", { class: "btn" + (opts.danger ? " btn-danger" : "") + (opts.offline ? " needs-offline" : ""), type: "button",
+  return h("button", { class: "btn full-only" + (opts.danger ? " btn-danger" : "") + (opts.offline ? " needs-offline" : ""), type: "button",
                        onclick: () => plAct(action, name, opts.reason ? prompt(opts.reason, "") ?? null : "") }, text);
 }
 

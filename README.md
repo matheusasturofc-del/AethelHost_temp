@@ -56,6 +56,24 @@ O administrador (a primeira conta) ganha o link **Administração** no topo (`ad
 - **Várias formas de entrar numa conta:** uma conta pode ter Google + e-mail e senha etc. (`links` em `data/users.json`). Login por qualquer uma delas cai na mesma conta.
 - **Mesclar contas** (administradora): em Administração, o botão **Mesclar em outra conta…** junta uma conta duplicada na conta escolhida: os logins, os servidores e a chave SSH passam para ela; quem estava logado na conta antiga continua logado na única. Se as duas têm senha de e-mail, não mescla. `POST /api/admin/merge`.
 
+## Compartilhar servidores e notificações
+
+Na aba **Acesso e Compartilhamento** de um servidor, o dono escreve o **nome de usuário** de outra conta, escolhe o **nível de acesso** e o **acesso aos arquivos** e envia o convite. A pessoa vê o convite no **sino** (ao lado do perfil, no topo) e só ganha acesso se **aceitar**. O servidor aparece na lista dela com o selo **Compartilhado** (e "Compartilhado por …").
+
+| Nível | Pode |
+|---|---|
+| **Dono** | tudo: também exclui o servidor, mexe na VPS e decide quem tem acesso |
+| **Completo** | ligar/desligar, console e comandos, jogadores (op, ban, whitelist), opções, software, mods/plugins, mundos, backups, ícone/nome, endereço público. Não muda o compartilhamento nem exclui |
+| **Básico** | ver status, console e jogadores; ligar e desligar. Nada de configurações |
+
+**Arquivos** tem nível próprio: *Nenhum* (a aba some), *Somente leitura* (vê e baixa) ou *Leitura e escrita* (edita, envia, renomeia, apaga).
+
+- O dono muda o nível ou remove a pessoa a qualquer momento (ela é avisada no sino). Quem recebeu pode **sair** do servidor.
+- Todos com acesso veem a lista de quem tem acesso; só o dono altera. Um convite pendente ainda não dá acesso a nada.
+- O sino também avisa quando alguém aceita, recusa ou sai, e quando o seu acesso muda. Convites só saem do sino quando aceitos ou recusados.
+- Segurança: as permissões são conferidas no servidor (a interface só esconde o que a pessoa não pode usar), antes de ler qualquer upload; quem não tem acesso recebe 404, como se o servidor não existisse. Limite de 20 pessoas por servidor e 15 convites por hora por conta. Quem recebe o servidor não vê os dados da VPS do dono, e o servidor da VPS continua usando a chave SSH do dono.
+- Dados: `shares` em `data/servers.json` e `data/notifications.json`. API: `/api/servers/<id>/shares`, `/api/notifications`.
+
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.
