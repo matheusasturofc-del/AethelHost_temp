@@ -253,8 +253,9 @@ def _b64(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def begin(pid, redirect_base, next_url):
-    """Começa o login: devolve (endereço do provedor, cookie que amarra este navegador ao login)."""
+def begin(pid, redirect_base, next_url, link_user=None):
+    """Começa o login (ou, com link_user, a conexão de mais um login a essa conta):
+    devolve (endereço do provedor, cookie que amarra este navegador ao pedido)."""
     cfg = load_config()
     d = provider_def(pid, cfg)
     if not d or not is_configured(pid, cfg):
@@ -264,7 +265,8 @@ def begin(pid, redirect_base, next_url):
         now = time.time()
         for k in [k for k, v in _pending.items() if v["exp"] < now]:
             del _pending[k]
-        _pending[state] = {"provider": pid, "verifier": verifier, "bind": bind, "next": safe_next(next_url), "exp": now + PENDING_SECONDS}
+        _pending[state] = {"provider": pid, "verifier": verifier, "bind": bind, "next": safe_next(next_url), "link": link_user,
+                           "exp": now + PENDING_SECONDS}
     params = {"client_id": cfg["providers"][pid]["client_id"], "redirect_uri": f"{redirect_base}/auth/callback/{pid}",
               "response_type": "code", "scope": d["scope"], "state": state,
               "code_challenge": _b64(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256"}
@@ -274,8 +276,9 @@ def begin(pid, redirect_base, next_url):
     return d["authorize"] + sep + urllib.parse.urlencode(params), bind
 
 
-def finish(pid, code, state, bind_cookie, redirect_base):
-    """Termina o login: confere o state, troca o código pelo token, lê o perfil e cria a sessão."""
+def finish(pid, code, state, bind_cookie, redirect_base, current_user_id=None):
+    """Termina o login: confere o state, troca o código pelo token, lê o perfil e cria a sessão.
+    No modo "conectar" não cria sessão: liga o login novo à conta que já está logada (o token vem None)."""
     with LOCK:
         pend = _pending.pop(state or "", None)  # só vale uma vez
     if not pend or pend["provider"] != pid or pend["exp"] < time.time():
@@ -296,6 +299,11 @@ def finish(pid, code, state, bind_cookie, redirect_base):
     profile = _profile(d, access)
     if not profile["sub"]:
         raise LoginFailed("profile")
+    if pend.get("link"):
+        if current_user_id != pend["link"]:
+            raise LoginFailed("link_session")  # a pessoa trocou de conta no meio do caminho
+        user = link_identity(_users.get(pend["link"]), pid, profile)
+        return user, None, pend["next"]
     user = _upsert_user(pid, profile)
     return user, new_session(user["id"]), pend["next"]
 
@@ -324,6 +332,45 @@ def _upsert_user(pid, profile):
 
 def _hash(token):
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def link_identity(user, pid, profile):
+    """Liga mais um login (Google, Discord…) a uma conta. Se aquele login já é de outra conta, não liga: são duas contas
+    e quem decide juntar é a administradora (mesclar)."""
+    if not user:
+        raise LoginFailed("link_session")
+    with LOCK:
+        for u in _users.values():
+            if (pid, profile["sub"]) in identities(u):
+                if u is user:
+                    return user  # já estava ligado a esta mesma conta
+                raise LoginFailed("already_linked")
+        if pid in [p for p, _ in identities(user)]:
+            raise LoginFailed("already_connected")  # esta conta já tem um login desse serviço
+        user.setdefault("links", []).append({"provider": pid, "sub": profile["sub"]})
+        if not user.get("avatar") and profile.get("avatar"):
+            user["avatar"] = profile["avatar"]
+        _write(USERS_FILE, list(_users.values()))
+    return user
+
+
+def unlink_provider(user, pid):
+    """Tira um login da conta, desde que sobre pelo menos uma forma de entrar."""
+    with LOCK:
+        ids = identities(user)
+        if pid == "password":
+            raise ContentError(400, "A senha não se desconecta por aqui. Ela fica na aba Segurança.")
+        if pid not in [p for p, _ in ids]:
+            raise ContentError(404, "Esse login não está conectado a esta conta.")
+        remaining = [(p, s) for p, s in ids if p != pid]
+        if not remaining and not user.get("pw"):
+            raise ContentError(409, "Você precisa manter pelo menos uma forma de entrar.")
+        if not remaining:  # só sobra a senha: ela vira o login principal da conta
+            remaining = [("password", pw_email(user))]
+        user["provider"], user["sub"] = remaining[0]
+        user["links"] = [{"provider": p, "sub": s} for p, s in remaining[1:]]
+        _write(USERS_FILE, list(_users.values()))
+    return user
 
 
 def identities(user):
@@ -557,6 +604,8 @@ def public_user(user):
     for prov, _ in identities(user):
         if prov not in methods:
             methods.append(prov)
+    if user.get("pw") and "password" not in methods:
+        methods.append("password")  # quem criou uma senha na aba Segurança também entra por e-mail e senha
     return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
             "avatar": avatar_url(user), "banner": banner_of(user), "prefs": user.get("prefs") or {},
             "provider": user["provider"], "methods": methods, "created": user.get("created"),

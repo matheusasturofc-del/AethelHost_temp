@@ -28,6 +28,19 @@ async function api(method, path, body) {
   return data;
 }
 
+// Tela cinza meio transparente com "Aguarde..." enquanto algo demora (ex.: enviar o código por e-mail), para ninguém achar
+// que a mudança já foi feita. Uso: const r = await withWait(api("POST", ...)).
+async function withWait(promise) {
+  let el = document.getElementById("waitOverlay");
+  if (!el) {
+    el = h("div", { id: "waitOverlay", class: "wait-overlay", role: "alert", "aria-live": "assertive" },
+      h("div", { class: "wait-box" }, h("div", { class: "spinner" }), h("div", {}, "Aguarde...")));
+    document.body.append(el);
+  }
+  el.hidden = false;
+  try { return await promise; } finally { el.hidden = true; }
+}
+
 // Envia um arquivo (ex.: um .jar de mod) sem mexer no conteúdo.
 async function apiUpload(path, file) {
   let res;

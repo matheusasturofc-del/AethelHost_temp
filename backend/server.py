@@ -1484,6 +1484,12 @@ def api_account_banner_image(query, data):
     return 200, {"user": auth.self_user(user)}
 
 
+def api_account_unlink(query, body):
+    user = current_user()
+    auth.unlink_provider(user, str(body.get("provider", "")))
+    return 200, {"user": auth.self_user(user)}
+
+
 def api_account_prefs(query, body):
     user = current_user()
     prefs = dict(user.get("prefs") or {})
@@ -1865,6 +1871,7 @@ ROUTES = [
     ("POST", r"^/api/account/banner$", api_account_banner_set),
     ("POST", r"^/api/account/banner/image$", api_account_banner_image),
     ("POST", r"^/api/account/prefs$", api_account_prefs),
+    ("POST", r"^/api/account/unlink$", api_account_unlink),
     ("POST", r"^/api/account/password/start$", api_account_password_start),
     ("POST", r"^/api/account/email/start$", api_account_email_start),
     ("POST", r"^/api/account/verify$", api_account_verify),
@@ -2015,21 +2022,31 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(405, "Método não permitido.")
         if self.headers.get("Host", "").lower() != f"127.0.0.1:{PORT}":
             return self._redirect(BASE_URL + self.path)  # o login acontece sempre em 127.0.0.1
-        m = re.match(r"^/auth/(login|callback)/([a-z]{1,20})$", parsed.path)
+        m = re.match(r"^/auth/(login|callback|link)/([a-z]{1,20})$", parsed.path)
         if not m:
             raise ApiError(404, "Página não encontrada.")
         action, pid = m.groups()
         query = parse_qs(parsed.query)
+        me = current_user()
         try:
             if action == "login":
                 url, bind = auth.begin(pid, BASE_URL, _first(query, "next"))
                 return self._redirect(url, [auth.bind_cookie(bind)])
+            if action == "link":  # conectar mais um login à conta que já está logada (aba Conectar-se)
+                if not me:
+                    return self._redirect(f"{BASE_URL}/login.html?next=/settings.html")
+                url, bind = auth.begin(pid, BASE_URL, "/settings.html", link_user=me["id"])
+                return self._redirect(url, [auth.bind_cookie(bind)])
             if _first(query, "error"):
                 raise auth.LoginFailed("denied")
             _, token, next_url = auth.finish(pid, _first(query, "code"), _first(query, "state"),
-                                             auth.bind_from_cookie(self.headers.get("Cookie")), BASE_URL)
+                                             auth.bind_from_cookie(self.headers.get("Cookie")), BASE_URL, me["id"] if me else None)
+            if token is None:  # conexão feita: volta para a aba Conectar-se, sem trocar a sessão
+                return self._redirect(f"{BASE_URL}/settings.html?linked={pid}#connect", [auth.CLEAR_BIND])
             return self._redirect(BASE_URL + next_url, [auth.session_cookie(token), auth.CLEAR_BIND])
         except auth.LoginFailed as e:
+            if me:  # quem já está logado estava conectando um login: o erro aparece na aba Conectar-se
+                return self._redirect(f"{BASE_URL}/settings.html?link_error={e.code}#connect", [auth.CLEAR_BIND])
             return self._redirect(f"{BASE_URL}/login.html?error={e.code}", [auth.CLEAR_BIND])
 
     def _send_file(self, status, raw):

@@ -106,7 +106,7 @@
         ev.preventDefault();
         setError("");
         button.disabled = true;
-        try { done(await run()); } catch (e) { setError(e.message); } finally { button.disabled = false; }
+        try { done(await withWait(run())); } catch (e) { setError(e.message); } finally { button.disabled = false; }
       };
     }
 

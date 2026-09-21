@@ -23,6 +23,7 @@
       <a class="back" href="profile.html">← Perfil</a>
       <button class="active" data-tab="custom">Personalizar</button>
       <button data-tab="security">Segurança</button>
+      <button data-tab="connect">Conectar-se</button>
     </aside>
 
     <section>
@@ -126,6 +127,17 @@
       <div class="error" id="stEmailErr"></div>
     </section>
     </div>
+
+    <!-- Aba: Conectar-se (outros logins na mesma conta) -->
+    <div id="tab-connect" class="stack" hidden>
+    <section class="card">
+      <h2>Conectar-se</h2>
+      <p class="muted">Conecte outras formas de entrar na mesma conta. Assim você entra por qualquer uma delas e cai sempre nesta conta, sem criar outra.</p>
+      <div id="stConnectList"></div>
+      <div class="ok-msg" id="stConnectOk"></div>
+      <div class="error" id="stConnectErr"></div>
+    </section>
+    </div>
     </section>
   </main>
 
@@ -139,7 +151,7 @@
     let mailOn = true;
 
     // ---------- Abas (Personalizar | Segurança), como no painel do servidor ----------
-    const TABS = ["custom", "security"];
+    const TABS = ["custom", "security", "connect"];
     function showTab(tab) {
       if (!TABS.includes(tab)) tab = "custom";
       document.querySelectorAll(".side button[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
@@ -183,6 +195,7 @@
       $("stMailOff").hidden = mailOn;
       for (const f of [$("stPwForm"), $("stEmailForm")]) f.querySelectorAll("input, button").forEach((el) => { if (!mailOn) el.disabled = true; });
       paintTheme();
+      paintConnect();
     }
 
     // Faz uma ação, mostra o resultado e atualiza a conta.
@@ -280,7 +293,7 @@
         stepErr.textContent = "";
         again.disabled = true;
         try {
-          const r = await api("POST", "/account/resend", { challenge: state.challenge, lang: lang() });
+          const r = await withWait(api("POST", "/account/resend", { challenge: state.challenge, lang: lang() }));
           resendAt = Date.now() + r.resendIn * 1000;
           input.value = "";
         } catch (e) { dead(e); }
@@ -306,7 +319,7 @@
       $("stPwOk").textContent = $("stPwErr").textContent = "";
       $("stPwGo").disabled = true;
       try {
-        const state = await api("POST", "/account/password/start", { current: $("stPwCurrent").value, new: $("stPwNew").value, confirm: $("stPwConfirm").value, lang: lang() });
+        const state = await withWait(api("POST", "/account/password/start", { current: $("stPwCurrent").value, new: $("stPwNew").value, confirm: $("stPwConfirm").value, lang: lang() }));
         codeStep($("stPwCode"), $("stPwForm"), state, $("stPwOk"), $("stPwErr"), "Senha salva. Os seus outros aparelhos foram desconectados.");
       } catch (e) { $("stPwErr").textContent = e.message; } finally { $("stPwGo").disabled = false; }
     });
@@ -317,17 +330,86 @@
       $("stEmailOk").textContent = $("stEmailErr").textContent = "";
       $("stEmailGo").disabled = true;
       try {
-        const state = await api("POST", "/account/email/start", { current: $("stEmailPw").value, email: $("stEmailNew").value, confirm: $("stEmailConfirm").value, lang: lang() });
+        const state = await withWait(api("POST", "/account/email/start", { current: $("stEmailPw").value, email: $("stEmailNew").value, confirm: $("stEmailConfirm").value, lang: lang() }));
         codeStep($("stEmailCode"), $("stEmailForm"), state, $("stEmailOk"), $("stEmailErr"), "E-mail trocado. Avisamos o e-mail antigo.");
       } catch (e) { $("stEmailErr").textContent = e.message; } finally { $("stEmailGo").disabled = false; }
     });
+
+    // ---------- Conectar-se ----------
+    const MARK = { google: ["G", "#4285f4"], microsoft: ["M", "#00a4ef"], github: ["GH", "#24292f"], discord: ["D", "#5865f2"], custom: ["→", "#4b5563"], password: ["@", "#4ade80"] };
+    let providers = [];
+
+    // Mensagens quando a pessoa volta do serviço (o endereço traz ?linked=… ou ?link_error=…)
+    const LINK_ERRORS = {
+      already_linked: "Essa conta já está ligada a outra conta do AethelHost. Se as duas são suas, peça ao administrador para mesclá-las.",
+      already_connected: "Você já tem um login desse serviço conectado a esta conta.",
+      link_session: "A sua sessão mudou durante a conexão. Tente de novo.",
+      state: "Não foi possível confirmar a conexão (o link expirou ou foi aberto em outro navegador). Tente de novo.",
+      denied: "Você cancelou a conexão.",
+      provider_error: "O serviço não respondeu direito. Tente de novo em instantes.",
+      profile: "O serviço não informou os dados da sua conta.",
+      not_configured: "Esse login ainda não foi configurado.",
+    };
+    function linkResult() {
+      const q = new URLSearchParams(location.search);
+      if (q.get("linked")) $("stConnectOk").textContent = "Login conectado! Agora você entra por ele e cai nesta mesma conta.";
+      else if (q.get("link_error")) $("stConnectErr").textContent = LINK_ERRORS[q.get("link_error")] || LINK_ERRORS.provider_error;
+      if (q.get("linked") || q.get("link_error")) history.replaceState(null, "", location.pathname + "#connect");  // tira o ?… do endereço
+    }
+
+    function paintConnect() {
+      const connected = new Set(me.methods);
+      const rows = [];
+      for (const p of providers) {
+        if (p.id === "custom" && !p.configured && !connected.has("custom")) continue;  // "Outro" só aparece se existir
+        const on = connected.has(p.id);
+        const [letter, color] = MARK[p.id] || ["•", "#4b5563"];
+        let action;
+        if (on) {
+          action = me.methods.length > 1
+            ? h("button", { class: "btn btn-danger", type: "button", onclick: () => disconnect(p) }, "Desconectar")
+            : h("small", { class: "muted" }, "É a sua única forma de entrar");
+        } else if (p.configured) {
+          action = h("a", { class: "btn btn-primary", href: `/auth/link/${p.id}` }, "Conectar");
+        } else {
+          action = h("small", { class: "muted" }, "Indisponível (o administrador ainda não configurou)");
+        }
+        rows.push(h("div", { class: "conn-row" },
+          h("div", { class: "who" }, h("span", { class: "prov-mark", style: `background:${color}`, translate: "no" }, letter),
+            h("div", {}, h("strong", { translate: "no" }, p.label))),
+          on ? h("span", { class: "badge connected" }, "Conectado") : h("span", { class: "badge" }, "Não conectado"), action));
+      }
+      const hasPw = connected.has("password");
+      rows.push(h("div", { class: "conn-row" },
+        h("div", { class: "who" }, h("span", { class: "prov-mark", style: `background:${MARK.password[1]};color:#06210f`, translate: "no" }, "@"),
+          h("div", {}, h("strong", {}, "E-mail e senha"))),
+        hasPw ? h("span", { class: "badge connected" }, "Conectado") : h("span", { class: "badge" }, "Não conectado"),
+        h("button", { class: "btn" + (hasPw ? "" : " btn-primary"), type: "button", onclick: () => showTab("security") }, hasPw ? "Gerenciar na aba Segurança" : "Criar senha")));
+      $("stConnectList").replaceChildren(...rows);
+    }
+
+    async function disconnect(p) {
+      if (!confirm("Desconectar este login? Você não vai mais conseguir entrar por ele (as outras formas de entrar continuam funcionando).")) return;
+      $("stConnectOk").textContent = $("stConnectErr").textContent = "";
+      try {
+        me = (await api("POST", "/account/unlink", { provider: p.id })).user;
+        window.BH_USER = me;
+        paint();
+        $("stConnectOk").textContent = "Login desconectado.";
+      } catch (e) { $("stConnectErr").textContent = e.message; }
+    }
 
     (async () => {
       await window.BH_ME_READY;
       me = window.BH_USER;
       if (!me) return;
-      try { mailOn = !!((await api("GET", "/auth/providers")).password || {}).enabled; } catch { /* segue */ }
+      try {
+        const info = await api("GET", "/auth/providers");
+        mailOn = !!(info.password || {}).enabled;
+        providers = info.providers;
+      } catch { /* segue */ }
       paint();
+      linkResult();
     })();
     window.addEventListener("langchange", () => { if (me) paint(); });
   </script>
