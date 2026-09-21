@@ -26,7 +26,7 @@ RESEND_AFTER = 60
 MAX_SENDS = 4                 # envios por pedido (o primeiro + reenvios)
 FAIL_LIMIT, FAIL_WINDOW = 5, 15 * 60          # senhas erradas por e-mail
 SEND_PER_EMAIL, SEND_PER_ALL, SEND_WINDOW = 5, 60, 3600
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,20}$")
+USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,20}$")  # só minúsculas
 RESERVED = {"admin", "administrador", "administrator", "root", "system", "sistema", "suporte", "support", "moderador",
             "moderator", "staff", "null", "undefined", mail.SITE_NAME.lower()}
 WEAK = {"12345678", "123456789", "1234567890", "87654321", "password", "password1", "qwertyui", "qwertyuiop", "abc12345",
@@ -67,8 +67,10 @@ def check_password(password, email, username):
 
 
 def check_username(username):
+    if isinstance(username, str) and username != username.lower():
+        raise ContentError(400, "O nome de usuário só pode ter letras minúsculas (a-z).")
     if not isinstance(username, str) or not USERNAME_RE.match(username):
-        raise ContentError(400, "O nome de usuário precisa ter de 3 a 20 caracteres: letras, números, ponto, hífen ou _.")
+        raise ContentError(400, "O nome de usuário precisa ter de 3 a 20 caracteres: letras minúsculas, números, ponto, hífen ou _.")
     if username.lower() in RESERVED:
         raise ContentError(400, "Este nome de usuário não está disponível.")
 

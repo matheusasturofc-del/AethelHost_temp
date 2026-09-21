@@ -102,7 +102,7 @@ function renderSharing() {
 
 $("shForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const username = $("shUser").value.trim().replace(/^@/, "");
+  const username = $("shUser").value.trim().replace(/^@/, "").toLowerCase();
   if (!username) return;
   await shAct(api("POST", `${base}/shares`, { username, level: $("shLevel").value, files: $("shFiles").value }), "Convite enviado. Ele aparece no sino da pessoa e só vale quando ela aceitar.");
   if (!$("shErr").textContent) $("shUser").value = "";

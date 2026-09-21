@@ -92,6 +92,7 @@
     function formField(label, name, opts = {}) {
       const input = h("input", { type: opts.type || "text", name, autocomplete: opts.autocomplete || "off", maxlength: opts.max || 100, required: true,
         placeholder: opts.placeholder || "", spellcheck: false, autocapitalize: "off" });
+      if (opts.lower) input.addEventListener("input", () => { input.value = input.value.toLowerCase(); });  // nome de usuário: só minúsculas
       return { input, box: h("div", { class: "field" }, h("label", {}, label), input, opts.hint ? h("div", { class: "hint" }, opts.hint) : null) };
     }
 
@@ -144,7 +145,7 @@
       setError("");
       $("lgHint").hidden = true;
       const name = formField("Nome exibido", "name", { autocomplete: "name", max: 40, placeholder: "Como você quer aparecer" });
-      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", hint: "De 3 a 20 letras, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
+      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", lower: true, hint: "De 3 a 20 letras minúsculas, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
       const email = formField("E-mail", "email", { type: "email", autocomplete: "email", max: 254, hint: "Vamos enviar um código de 6 números para confirmar." });
       const pass = formField("Senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "De 8 a 128 caracteres." });
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Criar conta");
@@ -161,7 +162,7 @@
       $("lgHint").hidden = true;
       $("lgSetup").hidden = true;
       const name = formField("Nome exibido", "name", { autocomplete: "name", max: 40, placeholder: "Como você quer aparecer" });
-      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", hint: "De 3 a 20 letras, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
+      const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", lower: true, hint: "De 3 a 20 letras minúsculas, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
       name.input.value = (window.BH_USER && window.BH_USER.name) || "";
       user.input.value = window.BH_SUGGESTED || "";
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Continuar");

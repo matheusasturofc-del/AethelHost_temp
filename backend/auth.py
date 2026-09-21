@@ -85,6 +85,22 @@ def _write(path, data):
 
 _users = {u["id"]: u for u in _read(USERS_FILE, [])}
 _sessions = _read(SESSIONS_FILE, {})  # hash do token -> {user, exp}
+
+
+def _lowercase_usernames():
+    """Nomes de usuário só têm minúsculas: os que foram criados com maiúscula viram minúscula (a unicidade já ignorava maiúsculas,
+    então dois nomes nunca colidem)."""
+    changed = False
+    for u in _users.values():
+        name = u.get("username")
+        if name and name != name.lower():
+            u["username"] = name.lower()
+            changed = True
+    if changed:
+        _write(USERS_FILE, list(_users.values()))
+
+
+_lowercase_usernames()
 _pending = {}  # state -> dados do login em andamento (some sozinho em 10 minutos)
 on_first_user = None  # o servidor coloca aqui uma função chamada quando a primeira conta é criada
 

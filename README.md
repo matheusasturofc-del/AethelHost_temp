@@ -31,7 +31,7 @@ Use sempre `127.0.0.1` (não `localhost`): o AethelHost redireciona para ele, e 
 
 Na página de login aparecem os serviços configurados e, depois de um **ou**, o formulário de e-mail e senha, com **Criar conta** embaixo.
 
-- **Criar conta:** nome exibido, nome de usuário (único, sem diferenciar maiúsculas de minúsculas; 3 a 20 letras, números, ponto, hífen ou `_`), e-mail e senha (8 a 128 caracteres). Um código de 6 números vai para o e-mail e a conta só passa a existir depois de digitá-lo.
+- **Criar conta:** nome exibido, nome de usuário (único; 3 a 20 caracteres, **só letras minúsculas**, números, ponto, hífen ou `_`; nomes antigos com maiúscula viram minúscula ao iniciar), e-mail e senha (8 a 128 caracteres). Um código de 6 números vai para o e-mail e a conta só passa a existir depois de digitá-lo.
 - **Entrar:** e-mail e senha certos, e então o código de 6 números por e-mail (a cada login).
 - **O código** vale 10 minutos, 5 tentativas e uma vez só; "Reenviar" espera 1 minuto (no máximo 4 envios por pedido, 5 e-mails por endereço por hora, 60 por hora no total). 5 senhas erradas seguidas travam aquele e-mail por 15 minutos.
 - **Senha:** guardada só como hash scrypt com sal (em `data/users.json`), nunca em texto. A resposta de "senha errada" e "e-mail inexistente" é a mesma, e criar conta com um e-mail que já existe não revela isso na tela (a pessoa recebe um aviso por e-mail).
