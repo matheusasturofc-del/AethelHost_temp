@@ -31,6 +31,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
 
 import content  # noqa: E402
+import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
 import mail  # noqa: E402
@@ -1393,7 +1394,7 @@ def api_settings_gamerules(query, body, sid):
 # ---------------------------------------------------------------- Contas
 
 BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
-PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html"}
+PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html"}
 
 
 def _claim_legacy(user):
@@ -1431,10 +1432,95 @@ def api_auth_providers(query, body):
 
 def api_auth_me(query, body):
     user = current_user()
-    out = {"user": auth.public_user(user) if user else None}
+    out = {"user": auth.self_user(user) if user else None}
     if user and not user.get("username"):
         out["suggestedUsername"] = accounts.suggest_username(user)
     return 200, out
+
+
+# ---------------------------------------------------------------- editar o perfil (a própria conta)
+
+def api_account_name(query, body):
+    user = current_user()
+    auth.update_user(user, name=accounts.check_name(body.get("name")))
+    return 200, {"user": auth.self_user(user)}
+
+
+def _image(data, kind, max_bytes, max_side):
+    try:
+        return images.check(data, max_bytes, max_side)
+    except images.ImageError as e:
+        raise ApiError(400, str(e))
+
+
+def api_account_avatar_set(query, data):
+    user = current_user()
+    auth.save_image("avatar", user, data, _image(data, "avatar", 300_000, 1024))
+    return 200, {"user": auth.self_user(user)}
+
+
+def api_account_avatar_reset(query, body):
+    user = current_user()
+    auth.delete_image("avatar", user)
+    return 200, {"user": auth.self_user(user)}
+
+
+def api_account_banner_set(query, body):
+    """Escolhe um dos banners prontos (e tira a imagem própria, se tinha)."""
+    user = current_user()
+    preset = body.get("preset")
+    if preset not in auth.BANNER_PRESETS:
+        raise ApiError(400, "Banner desconhecido.")
+    auth.delete_image("banner", user)
+    auth.update_user(user, bannerPreset=preset)
+    return 200, {"user": auth.self_user(user)}
+
+
+def api_account_banner_image(query, data):
+    user = current_user()
+    auth.save_image("banner", user, data, _image(data, "banner", 2_000_000, 4000))
+    return 200, {"user": auth.self_user(user)}
+
+
+def api_account_prefs(query, body):
+    user = current_user()
+    prefs = dict(user.get("prefs") or {})
+    if body.get("theme") in ("dark", "light"):
+        prefs["theme"] = body["theme"]
+    auth.update_user(user, prefs=prefs)
+    return 200, {"user": auth.self_user(user)}
+
+
+def api_account_password_start(query, body):
+    return 200, accounts.start_password_change(current_user(), body)
+
+
+def api_account_email_start(query, body):
+    return 200, accounts.start_email_change(current_user(), body)
+
+
+def api_account_verify(query, body):
+    user = accounts.confirm_change(current_user(), body, getattr(CTX, "cookie", None))
+    return 200, {"ok": True, "user": auth.self_user(user)}
+
+
+def api_account_resend(query, body):
+    return 200, accounts.resend_change(current_user(), body)
+
+
+def _user_image(kind, uid):
+    path = auth.image_file(kind, uid) if auth.get_user(uid) else None
+    if not path:
+        raise ApiError(404, "Imagem não encontrada.")
+    return 200, Raw(body=path.read_bytes(), ctype="image/png" if path.suffix == ".png" else "image/jpeg", cache="private, max-age=3600")
+
+
+def api_user_avatar(query, body, uid):
+    return _user_image("avatar", uid)
+
+
+def api_user_banner(query, body, uid):
+    return _user_image("banner", uid)
 
 
 def api_auth_profile(query, body):
@@ -1500,7 +1586,7 @@ _invite_hits = {}  # dono -> horários dos últimos convites (limite: 15 por hor
 
 def _card(uid):
     u = auth.get_user(uid)
-    return {"id": u["id"], "name": u["name"], "username": u.get("username") or "", "avatar": u.get("avatar") or ""} if u else None
+    return {"id": u["id"], "name": u["name"], "username": u.get("username") or "", "avatar": auth.avatar_url(u)} if u else None
 
 
 def _share_levels(body, current=None):
@@ -1770,6 +1856,18 @@ def api_mail_test(query, body):
 
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
+    ("POST", r"^/api/account/name$", api_account_name),
+    ("POST", r"^/api/account/avatar$", api_account_avatar_set),
+    ("DELETE", r"^/api/account/avatar$", api_account_avatar_reset),
+    ("POST", r"^/api/account/banner$", api_account_banner_set),
+    ("POST", r"^/api/account/banner/image$", api_account_banner_image),
+    ("POST", r"^/api/account/prefs$", api_account_prefs),
+    ("POST", r"^/api/account/password/start$", api_account_password_start),
+    ("POST", r"^/api/account/email/start$", api_account_email_start),
+    ("POST", r"^/api/account/verify$", api_account_verify),
+    ("POST", r"^/api/account/resend$", api_account_resend),
+    ("GET", rf"^/api/users/{ID}/avatar$", api_user_avatar),
+    ("GET", rf"^/api/users/{ID}/banner$", api_user_banner),
     ("GET", r"^/api/notifications$", api_notifications),
     ("POST", r"^/api/notifications/read$", api_notifications_read),
     ("DELETE", rf"^/api/notifications/{ID}$", api_notification_delete),
@@ -1862,9 +1960,10 @@ NEED = {
 }
 PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test}  # não exigem login
-RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload}  # recebem o arquivo cru (octet-stream) em vez de JSON
+RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload, api_account_avatar_set, api_account_banner_image}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024
+RAW_LIMIT = {api_account_avatar_set: 400_000, api_account_banner_image: 2_500_000}  # fotos e banners são pequenos
 MAX_STREAM = 2 * 1024 * 1024 * 1024
 
 # Só estes arquivos do site são entregues (a pasta data/ e o .git nunca saem daqui).
@@ -2008,7 +2107,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(404, "Rota não encontrada.")
         fn, groups = route
         if fn not in PUBLIC and not current_user():
-            raise ApiError(401, "Faça login para continuar.")
+            raise ApiError(401, "Faça login para continuar.", {"needLogin": True})  # só este 401 significa "sessão acabou"
         CTX.need = NEED.get(fn, "owner")
         if groups and parsed.path.startswith("/api/servers/"):
             _pick(db_load(), groups[0])  # 404 se não tem acesso, 403 se o nível não basta
@@ -2025,7 +2124,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("Content-Type", "").split(";")[0].strip() != expected:
                 raise ApiError(415, f"Envie o conteúdo como {expected}.")
             length = int(self.headers.get("Content-Length") or 0)
-            if length > (MAX_STREAM if stream else MAX_UPLOAD if raw else 65536):
+            if length > (MAX_STREAM if stream else RAW_LIMIT.get(fn, MAX_UPLOAD) if raw else 65536):
                 raise ApiError(413, "Requisição grande demais.")
             if stream:
                 temp = body = self._save_stream(length)

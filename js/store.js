@@ -12,12 +12,13 @@ async function api(method, path, body) {
   } catch {
     throw new Error("Não consegui falar com o backend. Ele está rodando?");
   }
-  if (res.status === 401 && !location.pathname.endsWith("login.html")) {  // sessão acabou: volta para o login
+  let data = null;
+  try { data = await res.json(); } catch {}
+  // Só o 401 de "faça login" (needLogin) quer dizer que a sessão acabou. Outros 401 (senha atual errada…) são erros comuns.
+  if (res.status === 401 && data && data.needLogin && !location.pathname.endsWith("login.html")) {
     location.href = "login.html?next=" + encodeURIComponent(location.pathname + location.search);
     return new Promise(() => {});  // a página está saindo; não deixa o código seguinte mostrar erro
   }
-  let data = null;
-  try { data = await res.json(); } catch {}
   if (!res.ok) {
     const err = new Error((data && data.error) || `Erro ${res.status}`);
     err.status = res.status;

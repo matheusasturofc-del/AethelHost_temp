@@ -26,6 +26,9 @@ from content import ContentError
 CONFIG_FILE = DATA / "auth.json"
 USERS_FILE = DATA / "users.json"
 SESSIONS_FILE = DATA / "sessions.json"
+AVATARS = DATA / "avatars"
+BANNERS = DATA / "banners"
+BANNER_PRESETS = ("green", "blue", "purple", "orange", "red", "gray")  # o primeiro é o padrão
 SESSION_COOKIE = "bh_session"
 BIND_COOKIE = "bh_oauth"
 SESSION_SECONDS = 14 * 24 * 3600
@@ -60,7 +63,7 @@ BUILTIN = {
                 "userinfo": "https://discord.com/api/users/@me"},
 }
 ORDER = ["google", "microsoft", "github", "discord", "custom"]
-NEXT_RE = re.compile(r"^/(?:servers|create|panel|admin|profile|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
+NEXT_RE = re.compile(r"^/(?:servers|create|panel|admin|profile|settings|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$")
 
 
 # ---------------------------------------------------------------- arquivos
@@ -310,7 +313,9 @@ def _upsert_user(pid, profile):
             _users[user["id"]] = user
         if not user.get("username"):  # depois de escolher o perfil, o nome é da pessoa (o serviço não o sobrescreve mais)
             user["name"] = (profile.get("name") or "Sem nome")[:80]
-        user.update(email=(profile.get("email") or "")[:120], avatar=profile.get("avatar") or "", lastLogin=time.strftime("%Y-%m-%dT%H:%M:%S"))
+        if not user.get("emailCustom"):  # se a pessoa trocou o e-mail aqui, o do serviço não o sobrescreve mais
+            user["email"] = (profile.get("email") or "")[:120]
+        user.update(avatar=profile.get("avatar") or "", lastLogin=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(USERS_FILE, list(_users.values()))
     if fresh and user["admin"] and on_first_user:
         on_first_user(user)  # os servidores que já existiam passam a ser dela
@@ -452,6 +457,11 @@ def logout(header):
                 _write(SESSIONS_FILE, _sessions)
 
 
+def self_user(user):
+    """A conta vista por ela mesma: o que os outros não precisam saber (se tem senha)."""
+    return {**public_user(user), "hasPassword": bool(user.get("pw"))}
+
+
 def all_users():
     """Todas as contas, com o último login e quantas sessões ainda valem. Só para o painel do administrador."""
     now = time.time()
@@ -464,13 +474,92 @@ def all_users():
                 for u in _users.values()]
 
 
+def image_file(kind, user_id):
+    """Onde ficam a foto (kind='avatar') e a imagem do banner (kind='banner') de uma conta, se existirem."""
+    folder = AVATARS if kind == "avatar" else BANNERS
+    for ext in ("png", "jpg"):
+        p = folder / f"{user_id}.{ext}"
+        if p.is_file():
+            return p
+    return None
+
+
+def save_image(kind, user, data, image_kind):
+    folder = AVATARS if kind == "avatar" else BANNERS
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob(f"{user['id']}.*"):
+        old.unlink(missing_ok=True)
+    ext = "png" if image_kind == "png" else "jpg"
+    (folder / f"{user['id']}.{ext}").write_bytes(data)
+    update_user(user, **{("avatarV" if kind == "avatar" else "bannerImgV"): int(time.time())})
+
+
+def delete_image(kind, user):
+    folder = AVATARS if kind == "avatar" else BANNERS
+    if folder.is_dir():
+        for old in folder.glob(f"{user['id']}.*"):
+            old.unlink(missing_ok=True)
+    fields = {"avatarV": None} if kind == "avatar" else {"bannerImgV": None}
+    update_user(user, **fields)
+
+
+def avatar_url(user):
+    """A foto que aparece para os outros: a que a pessoa enviou, ou a do serviço (Google…)."""
+    if user.get("avatarV"):
+        return f"/api/users/{user['id']}/avatar?v={user['avatarV']}"
+    return user.get("avatar", "")
+
+
+def banner_of(user):
+    """{"preset": id} ou {"image": url}. O padrão é o verde com os ícones do AethelHost."""
+    if user.get("bannerImgV"):
+        return {"image": f"/api/users/{user['id']}/banner?v={user['bannerImgV']}"}
+    preset = user.get("bannerPreset")
+    return {"preset": preset if preset in BANNER_PRESETS else BANNER_PRESETS[0]}
+
+
+def set_password(user, pw_hash, login_email=None):
+    with LOCK:
+        user["pw"] = pw_hash
+        if login_email and not pw_email(user):
+            user["pwEmail"] = login_email
+        _write(USERS_FILE, list(_users.values()))
+
+
+def set_email(user, new_email):
+    """Troca o e-mail da conta e o de entrar com senha (se ela tem senha)."""
+    with LOCK:
+        if user["provider"] == "password":
+            user["sub"] = new_email
+        elif user.get("pw"):
+            user["pwEmail"] = new_email
+        for link in user.get("links", []):
+            if link["provider"] == "password":
+                link["sub"] = new_email
+        user["email"], user["emailCustom"] = new_email, True
+        _write(USERS_FILE, list(_users.values()))
+
+
+def logout_others(user_id, header):
+    """Encerra todas as sessões da conta, menos a que fez o pedido (usado depois de trocar a senha)."""
+    keep = _hash(_cookie_value(header, SESSION_COOKIE) or "")
+    with LOCK:
+        gone = [k for k, s in _sessions.items() if s["user"] == user_id and k != keep]
+        for k in gone:
+            del _sessions[k]
+        if gone:
+            _write(SESSIONS_FILE, _sessions)
+    return len(gone)
+
+
 def public_user(user):
     methods = []  # formas de entrar (sem repetir): google, password…
     for prov, _ in identities(user):
         if prov not in methods:
             methods.append(prov)
     return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
-            "avatar": user["avatar"], "provider": user["provider"], "methods": methods, "created": user.get("created"),
+            "avatar": avatar_url(user), "banner": banner_of(user), "prefs": user.get("prefs") or {},
+            "provider": user["provider"], "methods": methods, "created": user.get("created"),
             "admin": bool(user.get("admin")),
             "needsProfile": not user.get("username")}  # conta criada por um serviço: falta escolher nome exibido e usuário
 

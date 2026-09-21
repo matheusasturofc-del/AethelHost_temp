@@ -126,7 +126,7 @@ def _deliver(tid, ch, lang):
     _check_send_budget(ch["email"])
     if ch.get("exists"):
         code = None
-        subject, text = mail.code_message(lang, "exists", "")
+        subject, text = mail.code_message(lang, ch.get("exists_kind", "exists"), "")
         ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))  # nenhum código serve
     else:
         code = f"{secrets.randbelow(10 ** 6):06d}"
@@ -258,10 +258,9 @@ def resend(body):
     return {"ok": True, "resendIn": RESEND_AFTER}
 
 
-def verify(body):
-    """Confere o código. Devolve (conta, token da sessão) quando está certo."""
-    tid, ch = _get(body.get("challenge"))
-    code = re.sub(r"\D", "", str(body.get("code", "")))
+def _consume_code(tid, ch, code):
+    """Confere o código do pedido; se estiver certo, o pedido é gasto (vale uma vez só)."""
+    code = re.sub(r"\D", "", str(code or ""))
     if ch["tries"] >= MAX_TRIES:
         with _LOCK:
             _challenges.pop(tid, None)
@@ -276,6 +275,14 @@ def verify(body):
         raise ContentError(400, f"Código incorreto. Você ainda tem {left} {'tentativa' if left == 1 else 'tentativas'}.")
     with _LOCK:
         _challenges.pop(tid, None)
+
+
+def verify(body):
+    """Confere o código. Devolve (conta, token da sessão) quando está certo."""
+    tid, ch = _get(body.get("challenge"))
+    if ch["purpose"] not in ("login", "register"):
+        raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
+    _consume_code(tid, ch, body.get("code"))
     if ch["purpose"] == "login":
         user = auth.get_user(ch["user"])
         if not user:
@@ -289,3 +296,100 @@ def verify(body):
                                      "username": reg["username"], "pw": reg["pw"]})
     auth.touch_login(user)
     return user, auth.new_session(user["id"])
+
+
+# ---------------------------------------------------------------- trocar senha e e-mail (conta já logada)
+
+CHANGE_FAIL_LIMIT = 5
+
+
+def _check_current(user, password):
+    """A senha atual precisa estar certa; erros seguidos travam por um tempo (contra quem pegou uma sessão aberta)."""
+    key = f"chg:{user['id']}"
+    wait = _wait_for(key, CHANGE_FAIL_LIMIT, FAIL_WINDOW)
+    if wait:
+        raise ContentError(429, f"Muitas tentativas erradas. Tente de novo em {_wait_text(wait)}.")
+    if not isinstance(password, str) or not password or len(password) > 128 or not verify_password(password, user.get("pw") or _DUMMY):
+        _hit(key)
+        raise ContentError(401, "A senha atual está incorreta.")
+    with _LOCK:
+        _hits.pop(key, None)
+
+
+def start_password_change(user, body):
+    """Passo 1: senha atual + nova + confirmação. O código vai para o e-mail da conta."""
+    _need_mail()
+    has_pw = bool(user.get("pw"))
+    if has_pw:
+        _check_current(user, body.get("current"))
+    new, confirm = body.get("new"), body.get("confirm")
+    if not isinstance(new, str) or new != confirm:
+        raise ContentError(400, "A confirmação não é igual à nova senha.")
+    email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+    if not email:
+        raise ContentError(400, "Esta conta não tem e-mail para receber o código.")
+    check_password(new, email, user.get("username") or "")
+    if has_pw and verify_password(new, user["pw"]):
+        raise ContentError(400, "A nova senha precisa ser diferente da atual.")
+    other = find_password_user(email)
+    if not has_pw and other and other["id"] != user["id"]:
+        raise ContentError(409, "Já existe outra conta com senha usando este e-mail. Peça ao administrador para mesclar as contas.")
+    ch = {"purpose": "pwchange" if has_pw else "pwcreate", "email": email, "user": user["id"], "pw": hash_password(new)}
+    return _start(ch, _lang(body))
+
+
+def start_email_change(user, body):
+    """Passo 1: senha atual + novo e-mail + confirmação. O código vai para o e-mail NOVO (prova que ele é seu)."""
+    _need_mail()
+    if not user.get("pw"):
+        raise ContentError(409, "Crie uma senha primeiro: é ela que protege a troca de e-mail.")
+    _check_current(user, body.get("current"))
+    new = mail.normalize_email(body.get("email"))
+    if not new:
+        raise ContentError(400, "Esse e-mail não parece válido.")
+    if new != mail.normalize_email(body.get("confirm")):
+        raise ContentError(400, "Os dois e-mails precisam ser iguais.")
+    if new == (auth.pw_email(user) or mail.normalize_email(user.get("email"))):
+        raise ContentError(400, "Esse já é o e-mail da sua conta.")
+    other = find_password_user(new)
+    ch = {"purpose": "emailchange", "email": new, "user": user["id"], "exists": bool(other and other["id"] != user["id"]),
+          "exists_kind": "exists_change"}
+    return _start(ch, _lang(body))
+
+
+def _notify(email, lang, kind):
+    try:
+        subject, text = mail.notice_message(lang, kind)
+        mail.send(email, subject, text)
+    except Exception:  # noqa: BLE001 - o aviso é um extra: a mudança já foi feita
+        pass
+
+
+def confirm_change(user, body, cookie_header):
+    """Passo 2: o código certo aplica a mudança. Devolve a conta atualizada."""
+    tid, ch = _get(body.get("challenge"))
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange"):
+        raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
+    _consume_code(tid, ch, body.get("code"))
+    lang = _lang(body)
+    if ch["purpose"] in ("pwchange", "pwcreate"):
+        auth.set_password(user, ch["pw"], login_email=ch["email"])
+        auth.logout_others(user["id"], cookie_header)
+        _notify(ch["email"], lang, "pw_changed" if ch["purpose"] == "pwchange" else "pw_created")
+    else:
+        with auth.LOCK:  # confere de novo: outra conta pode ter ficado com esse e-mail nesse meio tempo
+            other = find_password_user(ch["email"])
+            if other and other["id"] != user["id"]:
+                raise ContentError(409, "Este e-mail acabou de ser usado por outra conta. Comece de novo.")
+            old = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+            auth.set_email(user, ch["email"])
+        if old and old != ch["email"]:
+            _notify(old, lang, "email_changed")
+    return user
+
+
+def resend_change(user, body):
+    tid, ch = _get(body.get("challenge"))
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange"):
+        raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
+    return resend(body)

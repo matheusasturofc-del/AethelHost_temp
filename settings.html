@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editar perfil — AethelHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container settings">
+    <div class="page-head" style="padding:0">
+      <h1 style="margin:0">Editar perfil</h1>
+      <a class="btn" href="profile.html">Ver perfil</a>
+    </div>
+
+    <!-- Perfil: banner, foto e nome -->
+    <section class="card profile-card">
+      <div class="banner" id="stBanner" aria-hidden="true"></div>
+      <div class="profile-body">
+        <div class="edit-head">
+          <span id="stAvatar"></span>
+          <div>
+            <strong id="stName" translate="no"></strong>
+            <div class="muted" id="stHandle" translate="no"></div>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:0">
+          <label class="btn">Trocar foto<input type="file" id="stAvatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+          <button class="btn" type="button" id="stAvatarReset">Remover foto</button>
+        </div>
+        <p class="muted small" style="margin:8px 0 0">PNG, JPEG, WebP ou GIF. A foto é recortada em quadrado. Sem foto própria, vale a do serviço de login (Google…).</p>
+
+        <h3 style="margin:22px 0 0">Banner</h3>
+        <div class="swatch-grid" id="stSwatches"></div>
+        <div class="btn-row" style="margin-top:0">
+          <label class="btn">Enviar imagem<input type="file" id="stBannerFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+        </div>
+        <p class="muted small" style="margin:8px 0 0">Escolha uma cor pronta (com os ícones do AethelHost) ou envie uma imagem sua. Ela é recortada em faixa larga.</p>
+
+        <form id="stNameForm" style="margin-top:22px">
+          <div class="field" style="margin:0 0 12px">
+            <label for="stNameInput">Nome exibido</label>
+            <input type="text" id="stNameInput" maxlength="40" autocomplete="name">
+          </div>
+          <div class="field" style="margin:0 0 12px">
+            <label>Nome de usuário</label>
+            <div class="muted" id="stUsername" translate="no"></div>
+            <div class="hint">O nome de usuário não muda (é por ele que os amigos convidam você).</div>
+          </div>
+          <button class="btn btn-primary" type="submit">Salvar nome</button>
+        </form>
+        <div class="ok-msg" id="stProfileOk"></div>
+        <div class="error" id="stProfileErr"></div>
+      </div>
+    </section>
+
+    <!-- Aparência -->
+    <section class="card">
+      <h2>Aparência</h2>
+      <p class="muted" style="margin-bottom:0">Escolha a cor de fundo do site. Fica guardada na sua conta e vale em qualquer aparelho.</p>
+      <div class="theme-picker">
+        <button class="theme-opt" type="button" data-theme-set="dark" aria-pressed="false"><span class="swatch dark"></span><strong>Escuro</strong></button>
+        <button class="theme-opt" type="button" data-theme-set="light" aria-pressed="false"><span class="swatch light"></span><strong>Branco</strong></button>
+      </div>
+    </section>
+
+    <!-- Senha -->
+    <section class="card" id="stPwCard">
+      <h2 id="stPwTitle">Trocar a senha</h2>
+      <p class="muted" id="stPwHelp">Para trocar, digite a senha atual, a nova e a confirmação. Depois enviamos um código de 6 números para o seu e-mail para você confirmar.</p>
+      <div class="notice" id="stMailOff" hidden>O envio de e-mail ainda não foi configurado pelo administrador, então não dá para trocar a senha nem o e-mail por enquanto.</div>
+      <form id="stPwForm">
+        <div class="field" id="stPwCurrentBox"><label for="stPwCurrent">Senha atual</label><input type="password" id="stPwCurrent" autocomplete="current-password" maxlength="128"></div>
+        <div class="two-col">
+          <div class="field"><label for="stPwNew">Nova senha</label><input type="password" id="stPwNew" autocomplete="new-password" maxlength="128"><div class="hint">De 8 a 128 caracteres.</div></div>
+          <div class="field"><label for="stPwConfirm">Confirmar nova senha</label><input type="password" id="stPwConfirm" autocomplete="new-password" maxlength="128"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="stPwShow"><span>Mostrar as senhas</span></label>
+        <button class="btn btn-primary" type="submit" id="stPwGo">Trocar senha</button>
+      </form>
+      <div id="stPwCode"></div>
+      <div class="ok-msg" id="stPwOk"></div>
+      <div class="error" id="stPwErr"></div>
+    </section>
+
+    <!-- E-mail -->
+    <section class="card" id="stEmailCard">
+      <h2>Trocar o e-mail</h2>
+      <p class="muted" style="margin-bottom:6px">O e-mail atual da conta é <b id="stEmailNow" translate="no"></b>.</p>
+      <p class="muted">Para trocar, digite a senha atual e o novo e-mail (duas vezes). O código de 6 números vai para o e-mail novo, para provar que ele é seu.</p>
+      <div class="notice" id="stEmailNeedPw" hidden>Crie uma senha primeiro (acima): é ela que protege a troca de e-mail.</div>
+      <form id="stEmailForm">
+        <div class="field"><label for="stEmailPw">Senha atual</label><input type="password" id="stEmailPw" autocomplete="current-password" maxlength="128"></div>
+        <div class="two-col">
+          <div class="field"><label for="stEmailNew">Novo e-mail</label><input type="email" id="stEmailNew" autocomplete="email" maxlength="254"></div>
+          <div class="field"><label for="stEmailConfirm">Confirmar novo e-mail</label><input type="email" id="stEmailConfirm" autocomplete="email" maxlength="254"></div>
+        </div>
+        <button class="btn btn-primary" type="submit" id="stEmailGo">Trocar e-mail</button>
+      </form>
+      <div id="stEmailCode"></div>
+      <div class="ok-msg" id="stEmailOk"></div>
+      <div class="error" id="stEmailErr"></div>
+    </section>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/profile-look.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const lang = () => ((document.documentElement.lang || "").startsWith("en") ? "en" : "pt");
+    let me = null;
+    let mailOn = true;
+
+    // ---------- Perfil ----------
+    function avatarNode(user, big) {
+      const initial = (user.name || "?").trim().charAt(0).toUpperCase();
+      const fallback = h("span", { class: "avatar" + (big ? " big" : ""), translate: "no" }, initial);
+      if (!user.avatar) return fallback;
+      const img = h("img", { class: "avatar" + (big ? " big" : ""), src: user.avatar, alt: "", referrerPolicy: "no-referrer" });
+      img.addEventListener("error", () => img.replaceWith(fallback));
+      return img;
+    }
+
+    function paint() {
+      paintBanner($("stBanner"), me);
+      $("stAvatar").replaceChildren(avatarNode(me, true));
+      $("stName").textContent = me.name;
+      $("stHandle").textContent = "@" + me.username;
+      $("stUsername").textContent = "@" + me.username;
+      if (document.activeElement !== $("stNameInput")) $("stNameInput").value = me.name;
+      $("stEmailNow").textContent = me.email || "—";
+      const chosen = me.banner.image ? "" : me.banner.preset;
+      $("stSwatches").replaceChildren(...BANNER_PRESETS.map((id) => h("button", { class: "b-swatch b-" + id, type: "button", "aria-pressed": String(id === chosen), title: id,
+        onclick: () => act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/banner", { preset: id }), "Banner atualizado.") })));
+      // senha: quem entra só pelo Google ainda não tem uma (então "criar" em vez de "trocar")
+      const has = me.hasPassword;
+      $("stPwTitle").textContent = has ? "Trocar a senha" : "Criar uma senha";
+      $("stPwHelp").textContent = has
+        ? "Para trocar, digite a senha atual, a nova e a confirmação. Depois enviamos um código de 6 números para o seu e-mail para você confirmar."
+        : "Você entra por um serviço (Google…) e ainda não tem senha. Crie uma para também poder entrar com e-mail e senha. Enviamos um código de 6 números para o seu e-mail para confirmar.";
+      $("stPwCurrentBox").hidden = !has;
+      $("stPwGo").textContent = has ? "Trocar senha" : "Criar senha";
+      $("stEmailNeedPw").hidden = has;
+      $("stEmailForm").hidden = !has;
+      $("stMailOff").hidden = mailOn;
+      for (const f of [$("stPwForm"), $("stEmailForm")]) f.querySelectorAll("input, button").forEach((el) => { if (!mailOn) el.disabled = true; });
+      paintTheme();
+    }
+
+    // Faz uma ação, mostra o resultado e atualiza a conta.
+    async function act(errBox, okBox, run, okText) {
+      errBox.textContent = okBox.textContent = "";
+      try {
+        const r = await run();
+        if (r && r.user) me = r.user;
+        else me = (await api("GET", "/auth/me")).user;
+        window.BH_USER = me;
+        paint();
+        if (okText) okBox.textContent = okText;
+        return r;
+      } catch (e) {
+        errBox.textContent = e.message;
+      }
+    }
+
+    // Foto e banner: recorta no navegador e envia.
+    $("stAvatarFile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      try {
+        let blob = await cropToBlob(file, 256, 256, "image/png");
+        if (blob.size > 290000) blob = await cropToBlob(file, 256, 256, "image/jpeg", 0.88);
+        const r = await act($("stProfileErr"), $("stProfileOk"), () => apiUpload("/account/avatar", blob), "Foto atualizada.");
+        if (r) setTimeout(() => location.reload(), 600);  // o topo da página também mostra a foto
+      } catch (e) { $("stProfileErr").textContent = e.message || "Não consegui usar essa imagem."; }
+    });
+    $("stAvatarReset").addEventListener("click", async () => {
+      const r = await act($("stProfileErr"), $("stProfileOk"), () => api("DELETE", "/account/avatar", {}), "Foto removida.");
+      if (r) setTimeout(() => location.reload(), 600);
+    });
+    $("stBannerFile").addEventListener("change", async (ev) => {
+      const file = ev.target.files[0];
+      ev.target.value = "";
+      if (!file) return;
+      try {
+        const blob = await cropToBlob(file, 1200, 300, "image/jpeg", 0.85);
+        await act($("stProfileErr"), $("stProfileOk"), () => apiUpload("/account/banner/image", blob), "Banner atualizado.");
+      } catch (e) { $("stProfileErr").textContent = e.message || "Não consegui usar essa imagem."; }
+    });
+    $("stNameForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/name", { name: $("stNameInput").value }), "Nome salvo.");
+    });
+
+    // ---------- Tema (fica na conta) ----------
+    function paintTheme() {
+      document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeSet === BH_THEME.get())));
+    }
+    document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", async () => {
+      BH_THEME.set(b.dataset.themeSet);
+      paintTheme();
+      try { await api("POST", "/account/prefs", { theme: b.dataset.themeSet }); } catch { /* fica só neste navegador */ }
+    }));
+
+    // ---------- Código de 6 números (senha e e-mail) ----------
+    // Mostra o passo do código dentro de `box`. Quando o código está certo, chama done().
+    function codeStep(box, form, state, okBox, errBox, okText) {
+      let resendAt = Date.now() + state.resendIn * 1000;
+      let timer = null;
+      const input = h("input", { class: "code-input", type: "text", inputMode: "numeric", autocomplete: "one-time-code", maxlength: 7, placeholder: "000000", spellcheck: false });
+      const confirm = h("button", { class: "btn btn-primary", type: "submit" }, "Confirmar");
+      const again = h("button", { class: "btn", type: "button", disabled: true }, "Reenviar código");
+      const stepErr = h("div", { class: "error" });
+      const close = () => { clearInterval(timer); box.replaceChildren(); form.hidden = false; };
+      const dead = (e) => { stepErr.textContent = e.message; if (e.status === 410 || (e.status === 429 && !/^Espere/.test(e.message))) setTimeout(close, 3000); };
+      const el = h("form", { class: "code-step", onsubmit: async (ev) => {
+        ev.preventDefault();
+        stepErr.textContent = "";
+        confirm.disabled = true;
+        try {
+          const r = await api("POST", "/account/verify", { challenge: state.challenge, code: input.value, lang: lang() });
+          clearInterval(timer);
+          box.replaceChildren();
+          form.hidden = false;
+          form.reset();
+          me = r.user; window.BH_USER = me; paint();
+          okBox.textContent = okText;
+        } catch (e) { dead(e); input.select(); } finally { confirm.disabled = false; }
+      } },
+        h("div", {}, "Enviamos um código de 6 números para este e-mail:"),
+        h("div", { style: "margin-top:4px" }, h("b", { translate: "no" }, state.email)),
+        input, confirm,
+        h("div", { class: "btn-row", style: "justify-content:center" }, again, h("button", { class: "btn", type: "button", onclick: close }, "Cancelar")),
+        stepErr,
+        h("p", { class: "muted small", style: "margin:10px 0 0" }, "O código vale por 10 minutos. Olhe também a caixa de spam."));
+      input.addEventListener("input", () => {
+        input.value = input.value.replace(/[^\d ]/g, "");
+        if (input.value.replace(/\D/g, "").length === 6) el.requestSubmit();
+      });
+      again.addEventListener("click", async () => {
+        stepErr.textContent = "";
+        again.disabled = true;
+        try {
+          const r = await api("POST", "/account/resend", { challenge: state.challenge, lang: lang() });
+          resendAt = Date.now() + r.resendIn * 1000;
+          input.value = "";
+        } catch (e) { dead(e); }
+      });
+      const tick = () => {
+        const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+        again.disabled = left > 0;
+        again.textContent = left > 0 ? `Reenviar código (${left}s)` : "Reenviar código";
+      };
+      tick();
+      timer = setInterval(tick, 500);
+      form.hidden = true;
+      box.replaceChildren(el);
+      input.focus();
+    }
+
+    // Senha
+    $("stPwShow").addEventListener("change", (ev) => {
+      for (const id of ["stPwCurrent", "stPwNew", "stPwConfirm"]) $(id).type = ev.target.checked ? "text" : "password";
+    });
+    $("stPwForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      $("stPwOk").textContent = $("stPwErr").textContent = "";
+      $("stPwGo").disabled = true;
+      try {
+        const state = await api("POST", "/account/password/start", { current: $("stPwCurrent").value, new: $("stPwNew").value, confirm: $("stPwConfirm").value, lang: lang() });
+        codeStep($("stPwCode"), $("stPwForm"), state, $("stPwOk"), $("stPwErr"), "Senha salva. Os seus outros aparelhos foram desconectados.");
+      } catch (e) { $("stPwErr").textContent = e.message; } finally { $("stPwGo").disabled = false; }
+    });
+
+    // E-mail
+    $("stEmailForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      $("stEmailOk").textContent = $("stEmailErr").textContent = "";
+      $("stEmailGo").disabled = true;
+      try {
+        const state = await api("POST", "/account/email/start", { current: $("stEmailPw").value, email: $("stEmailNew").value, confirm: $("stEmailConfirm").value, lang: lang() });
+        codeStep($("stEmailCode"), $("stEmailForm"), state, $("stEmailOk"), $("stEmailErr"), "E-mail trocado. Avisamos o e-mail antigo.");
+      } catch (e) { $("stEmailErr").textContent = e.message; } finally { $("stEmailGo").disabled = false; }
+    });
+
+    (async () => {
+      await window.BH_ME_READY;
+      me = window.BH_USER;
+      if (!me) return;
+      try { mailOn = !!((await api("GET", "/auth/providers")).password || {}).enabled; } catch { /* segue */ }
+      paint();
+    })();
+    window.addEventListener("langchange", () => { if (me) paint(); });
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+</body>
+</html>

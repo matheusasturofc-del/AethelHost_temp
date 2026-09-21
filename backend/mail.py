@@ -137,12 +137,38 @@ def code_message(lang, purpose, code):
         return (f"{SITE_NAME}: você já tem uma conta",
                 f"Alguém (esperamos que você) tentou criar uma conta no {SITE_NAME} com este e-mail, mas ela já existe.\n\n"
                 f"É só entrar com o seu e-mail e a sua senha. Se não foi você, ignore esta mensagem.")
+    if purpose == "exists_change":
+        if en:
+            return (f"{SITE_NAME}: this email is already in use",
+                    f"Someone tried to use this email on another {SITE_NAME} account, but it already belongs to an account.\n\n"
+                    f"If it was you, nothing else is needed. If it wasn't, ignore this message.")
+        return (f"{SITE_NAME}: este e-mail já está em uso",
+                f"Alguém tentou usar este e-mail em outra conta do {SITE_NAME}, mas ele já pertence a uma conta.\n\n"
+                f"Se foi você, não precisa fazer mais nada. Se não foi, ignore esta mensagem.")
     if en:
-        why = "to finish creating your account" if purpose == "register" else "to sign in"
+        why = {"register": "to finish creating your account", "pwchange": "to change your password", "pwcreate": "to create your password",
+               "emailchange": "to confirm your new email"}.get(purpose, "to sign in")
         return (f"{code} is your {SITE_NAME} code",
                 f"Your {SITE_NAME} verification code {why} is:\n\n    {code}\n\nIt expires in 10 minutes. "
                 f"If it wasn't you, ignore this email and don't share the code with anyone.")
-    why = "para terminar de criar a sua conta" if purpose == "register" else "para entrar"
+    why = {"register": "para terminar de criar a sua conta", "pwchange": "para trocar a sua senha", "pwcreate": "para criar a sua senha",
+           "emailchange": "para confirmar o seu novo e-mail"}.get(purpose, "para entrar")
     return (f"{code} é o seu código do {SITE_NAME}",
             f"O seu código de verificação do {SITE_NAME} {why} é:\n\n    {code}\n\nEle vale por 10 minutos. "
             f"Se não foi você, ignore este e-mail e não passe o código para ninguém.")
+
+
+def notice_message(lang, kind):
+    """(assunto, texto) dos avisos depois de uma mudança na conta (sem código)."""
+    en = lang == "en"
+    texts = {
+        "pw_changed": (("Your password was changed", "Your password on {site} was just changed. Your other devices were signed out.\n\nIf it wasn't you, sign in and change it again right away."),
+                       ("Sua senha foi alterada", "A senha da sua conta no {site} acabou de ser alterada. Os seus outros aparelhos foram desconectados.\n\nSe não foi você, entre e troque a senha de novo agora mesmo.")),
+        "pw_created": (("A password was added to your account", "A password was just added to your {site} account. You can now sign in with your email and password.\n\nIf it wasn't you, sign in and change it right away."),
+                       ("Uma senha foi criada na sua conta", "Uma senha acabou de ser criada na sua conta do {site}. Agora você também pode entrar com o e-mail e a senha.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
+        "email_changed": (("Your email was changed", "The email on your {site} account was just changed to another address.\n\nIf it wasn't you, contact the administrator."),
+                          ("Seu e-mail foi alterado", "O e-mail da sua conta no {site} acabou de ser trocado por outro endereço.\n\nSe não foi você, fale com o administrador.")),
+    }
+    en_pair, pt_pair = texts[kind]
+    subject, body = en_pair if en else pt_pair
+    return f"{SITE_NAME}: {subject}", body.format(site=SITE_NAME)

@@ -74,6 +74,16 @@ Na aba **Acesso e Compartilhamento** de um servidor, o dono escreve o **nome de 
 - Segurança: as permissões são conferidas no servidor (a interface só esconde o que a pessoa não pode usar), antes de ler qualquer upload; quem não tem acesso recebe 404, como se o servidor não existisse. Limite de 20 pessoas por servidor e 15 convites por hora por conta. Quem recebe o servidor não vê os dados da VPS do dono, e o servidor da VPS continua usando a chave SSH do dono.
 - Dados: `shares` em `data/servers.json` e `data/notifications.json`. API: `/api/servers/<id>/shares`, `/api/notifications`.
 
+## Editar perfil (`settings.html`)
+
+No menu do seu nome (topo): **Editar perfil**. Nessa página:
+
+- **Foto:** troque por uma imagem sua (PNG, JPEG, WebP ou GIF; o navegador recorta em quadrado 256×256 antes de enviar) ou volte para a do serviço de login (Google…). **Banner:** escolha uma das 6 cores prontas (com os ícones do AethelHost) ou envie uma imagem (recortada em 1200×300). **Nome exibido:** editável. O nome de usuário não muda.
+- **Tema** Escuro/Branco fica guardado na conta e vale em qualquer aparelho.
+- **Trocar a senha:** senha atual + nova + confirmação → um código de 6 números vai para o e-mail da conta → ao digitá-lo a senha muda, os *outros* aparelhos são desconectados e um aviso vai por e-mail. Quem entra só pelo Google/GitHub/Discord vê **Criar uma senha** (sem senha atual) e passa a poder entrar também com e-mail e senha.
+- **Trocar o e-mail:** senha atual + novo e-mail (duas vezes) → o código vai para o e-mail **novo** (prova que é seu) → ao digitá-lo o e-mail muda e o e-mail antigo recebe um aviso. Exige ter senha. Se o e-mail novo já é de outra conta, a resposta é a mesma (ninguém descobre quem tem conta) e a dona recebe um aviso.
+- Segurança: 5 senhas atuais erradas seguidas travam por 15 minutos; fotos/banners são conferidos pelo conteúdo (só PNG/JPEG de verdade, com limite de tamanho e de dimensões); tudo só afeta a conta logada. Arquivos em `data/avatars/` e `data/banners/`. API: `/api/account/*`, `/api/users/<id>/avatar|banner`.
+
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.

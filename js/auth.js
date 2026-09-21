@@ -1,7 +1,7 @@
 // Conta do usuário: menu no topo (nome, foto e Sair) e proteção das páginas. Depende de store.js (api, h).
 
 (() => {
-  const PROTECTED = ["servers.html", "create.html", "panel.html", "admin.html", "profile.html"];
+  const PROTECTED = ["servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html"];
   const page = location.pathname.split("/").pop() || "index.html";
 
   function avatar(user) {
@@ -101,6 +101,7 @@
     const pop = h("div", { class: "user-pop", role: "menu", hidden: true },
       h("div", { class: "who" }, h("b", { translate: "no" }, user.name), user.username ? h("span", { translate: "no" }, "@" + user.username) : null),
       h("a", { href: "profile.html", role: "menuitem" }, "Ver perfil"),
+      h("a", { href: "settings.html", role: "menuitem" }, "Editar perfil"),
       user.admin ? h("a", { href: "admin.html", role: "menuitem" }, "Administração") : null,
       h("button", { class: "danger", type: "button", role: "menuitem", onclick: async () => {
         try { await api("POST", "/auth/logout"); } catch { /* sai mesmo assim */ }
@@ -128,6 +129,8 @@
       window.BH_SUGGESTED = me.suggestedUsername || "";
     } catch { /* backend fora do ar: cada página mostra o próprio aviso */ }
     window.BH_USER = user;
+    // O tema escolhido fica na conta: vale em qualquer aparelho em que a pessoa entrar
+    if (user && user.prefs && user.prefs.theme && window.BH_THEME && BH_THEME.get() !== user.prefs.theme) BH_THEME.set(user.prefs.theme);
     if (user && user.needsProfile && PROTECTED.includes(page)) {  // conta criada por Google, GitHub…: falta escolher nome exibido e usuário
       location.replace("login.html?profile=1&next=" + encodeURIComponent("/" + page + location.search));
       return;

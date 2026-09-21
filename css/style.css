@@ -547,3 +547,30 @@ code { background: var(--bg); border: 1px solid var(--border); border-radius: 6p
 body.role-basic .full-only { display: none !important; }
 body:not(.role-owner) .owner-only { display: none !important; }
 body.files-read .files-write, body.files-none .files-write { display: none !important; }
+
+/* ===== Banners prontos e editar perfil ===== */
+.banner.b-blue { background: linear-gradient(135deg, #12263a 0%, #14202f 50%, #1b2029 100%); }
+.banner.b-purple { background: linear-gradient(135deg, #2a1a3a 0%, #1e1830 50%, #1b2029 100%); }
+.banner.b-orange { background: linear-gradient(135deg, #3a2612 0%, #2c1f14 50%, #1b2029 100%); }
+.banner.b-red { background: linear-gradient(135deg, #3a1616 0%, #2b1719 50%, #1b2029 100%); }
+.banner.b-gray { background: linear-gradient(135deg, #2a2f38 0%, #21252c 50%, #1b2029 100%); }
+.banner.has-img { background-size: cover; background-position: center; }
+.banner.has-img::before { display: none; }
+.settings { max-width: 760px; margin: 32px auto 80px; display: grid; gap: 20px; }
+.settings h2 { margin: 0 0 4px; }
+.swatch-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 14px; }
+.b-swatch { position: relative; width: 84px; height: 44px; border-radius: 10px; border: 2px solid var(--border); padding: 0; cursor: pointer; overflow: hidden; }
+.b-swatch::before { content: ""; position: absolute; inset: 0; background: url("../assets/icon.svg") 0 0 / 16px 16px space; opacity: 0.3; }
+.b-swatch[aria-pressed="true"] { border-color: var(--accent); }
+.b-swatch:hover { border-color: var(--border-strong); }
+.b-swatch.b-green { background: linear-gradient(135deg, #1a2a22, #1b2029); }
+.b-swatch.b-blue { background: linear-gradient(135deg, #12263a, #1b2029); }
+.b-swatch.b-purple { background: linear-gradient(135deg, #2a1a3a, #1b2029); }
+.b-swatch.b-orange { background: linear-gradient(135deg, #3a2612, #1b2029); }
+.b-swatch.b-red { background: linear-gradient(135deg, #3a1616, #1b2029); }
+.b-swatch.b-gray { background: linear-gradient(135deg, #2a2f38, #1b2029); }
+.edit-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.edit-head .avatar.big { width: 72px; height: 72px; font-size: 30px; border-width: 3px; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.code-step { border: 1px solid var(--accent); border-radius: 12px; padding: 16px; margin-top: 12px; text-align: center; }
+.code-step .code-input { max-width: 260px; margin: 8px auto 12px; display: block; }
