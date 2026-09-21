@@ -469,6 +469,7 @@ const I18N_EXACT = {
   "Enviado! Olhe a caixa de entrada (e o spam).": "Sent! Check your inbox (and spam).",
   "Salvo. Agora dá para entrar com e-mail e senha.": "Saved. You can now sign in with email and password.",
   "E-mail e senha": "Email & password",
+  "O Gmail só aceita a senha de app: 16 letras, que o Google mostra em 4 grupos de 4. Crie uma em myaccount.google.com/apppasswords e cole aqui (não use a senha normal da conta).": "Gmail only accepts an app password: 16 letters, which Google shows in 4 groups of 4. Create one at myaccount.google.com/apppasswords and paste it here (don't use the account's normal password).",
   "O nome de usuário só pode ter letras minúsculas (a-z).": "The username can only have lowercase letters (a-z).",
   "Ver perfil": "View profile",
   "Perfil — AethelHost": "Profile — AethelHost",

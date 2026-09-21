@@ -73,7 +73,13 @@ def save(body):
     if security == "none" and host not in LOOPBACK:
         raise ContentError(400, "Sem criptografia só é aceito para o seu próprio computador (testes).")
     username = str(body.get("username", "")).strip()[:200]
-    password = str(body.get("password", ""))[:300] or (old.get("password", "") if old.get("username") == username else "")
+    password = str(body.get("password", ""))[:300]
+    if host.lower().endswith(("gmail.com", "googlemail.com")) and password:
+        # O Google mostra a senha de app em 4 grupos de 4 letras: os espaços saem, e ela precisa ter as 16 letras.
+        password = re.sub(r"\s+", "", password)
+        if not re.fullmatch(r"[A-Za-z]{16}", password):
+            raise ContentError(400, "O Gmail só aceita a senha de app: 16 letras, que o Google mostra em 4 grupos de 4. Crie uma em myaccount.google.com/apppasswords e cole aqui (não use a senha normal da conta).")
+    password = password or (old.get("password", "") if old.get("username") == username else "")
     sender = normalize_email(body.get("from") or username)
     if not sender:
         raise ContentError(400, "Informe o e-mail de quem envia (o remetente).")
