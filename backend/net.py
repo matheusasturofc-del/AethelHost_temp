@@ -4,7 +4,7 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 ALLOWED_HOSTS = {
     "launchermeta.mojang.com", "piston-meta.mojang.com", "piston-data.mojang.com", "launcher.mojang.com",
@@ -17,6 +17,7 @@ ALLOWED_HOSTS = {
     "files.minecraftforge.net", "maven.minecraftforge.net",
     "maven.neoforged.net",
     "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com",  # programa do playit (túnel)
+    "challenges.cloudflare.com",  # captcha (Turnstile)
 }
 USER_AGENT = "AethelHost/0.2 (projeto pessoal)"
 
@@ -49,6 +50,15 @@ def get_json(url, timeout=30):
 def get_text(url, timeout=30, limit=4096):
     with open_url(url, timeout) as r:
         return r.read(limit).decode("utf-8", "replace")
+
+
+def post_form(url, fields, timeout=30):
+    """POST application/x-www-form-urlencoded (ex.: verificar um captcha). Devolve o JSON da resposta."""
+    check_url(url)
+    data = urlencode(fields).encode("ascii")
+    req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded"})
+    with _opener.open(req, timeout=timeout) as r:
+        return json.load(r)
 
 
 def download(url, dest, hash=None, max_bytes=300_000_000, timeout=60):

@@ -37,6 +37,7 @@
 
   <script src="js/store.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/captcha.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
     const next = new URLSearchParams(location.search).get("next") || "";
@@ -101,14 +102,15 @@
     }
 
     // Envia um formulário: trava o botão, mostra o erro e chama `done` com a resposta.
-    function submitter(button, run, done) {
+    function submitter(button, run, done, onError) {
       return async (ev) => {
         ev.preventDefault();
         setError("");
         button.disabled = true;
-        try { done(await withWait(run())); } catch (e) { setError(e.message); } finally { button.disabled = false; }
+        try { done(await withWait(run())); } catch (e) { setError(e.message); if (onError) onError(e); } finally { button.disabled = false; }
       };
     }
+
 
     function show(title, sub, ...nodes) {
       clearInterval(resendTimer);
@@ -148,11 +150,12 @@
       const user = formField("Nome de usuário", "username", { autocomplete: "username", max: 20, placeholder: "ex.: steve_2026", lower: true, hint: "De 3 a 20 letras minúsculas, números, ponto, hífen ou _. É único: ninguém mais pode usar o mesmo." });
       const email = formField("E-mail", "email", { type: "email", autocomplete: "email", max: 254, hint: "Vamos enviar um código de 6 números para confirmar." });
       const pass = formField("Senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "De 8 a 128 caracteres." });
+      const cap = captchaField();
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Criar conta");
       show("Criar conta", "Preencha os dados abaixo. Você confirma o e-mail no próximo passo.",
         h("form", { class: "login-form", onsubmit: submitter(go,
-          () => api("POST", "/auth/password/register", { name: name.input.value, username: user.input.value, email: email.input.value, password: pass.input.value, lang: langCode() }),
-          (r) => viewCode(r)) }, name.box, user.box, email.box, pass.box, showPasswordToggle(pass.input), go),
+          () => api("POST", "/auth/password/register", { name: name.input.value, username: user.input.value, email: email.input.value, password: pass.input.value, lang: langCode(), captcha: cap.getToken() }),
+          (r) => viewCode(r), () => cap.reset()) }, name.box, user.box, email.box, pass.box, showPasswordToggle(pass.input), cap.box, go),
         h("p", { class: "muted small center" }, "Já tem conta? ", h("button", { class: "linkbtn", type: "button", onclick: viewLogin }, "Entrar")));
     }
 
@@ -169,16 +172,17 @@
       const needPw = !!window.BH_NEEDS_PASSWORD;
       const pass = needPw ? formField("Senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "Uma senha só do AethelHost (não use a senha do Google). De 8 a 128 caracteres." }) : null;
       const again = needPw ? formField("Confirmar a senha", "confirm", { type: "password", autocomplete: "new-password", max: 128 }) : null;
+      const cap = captchaField();
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Continuar");
       const profileCode = { verify: "/account/verify", resend: "/account/resend", back: viewProfile };  // "Voltar" leva de volta ao perfil (a pessoa já está logada)
       show("Complete o seu perfil", needPw
           ? "Escolha como você quer aparecer, o seu nome de usuário e uma senha. Você faz isso uma vez só."
           : "Escolha como você quer aparecer e o seu nome de usuário. Você faz isso uma vez só.",
         h("form", { class: "login-form", onsubmit: submitter(go,
-          () => api("POST", "/auth/profile", { name: name.input.value, username: user.input.value, lang: langCode(),
+          () => api("POST", "/auth/profile", { name: name.input.value, username: user.input.value, lang: langCode(), captcha: cap.getToken(),
                                                ...(needPw ? { password: pass.input.value, confirm: again.input.value } : {}) }),
-          (r) => (r && r.challenge ? viewCode(r, profileCode) : goNext())) },
-          name.box, user.box, ...(needPw ? [pass.box, again.box, showPasswordToggle(pass.input, again.input)] : []), go),
+          (r) => (r && r.challenge ? viewCode(r, profileCode) : goNext()), () => cap.reset()) },
+          name.box, user.box, ...(needPw ? [pass.box, again.box, showPasswordToggle(pass.input, again.input)] : []), cap.box, go),
         h("p", { class: "muted small center" }, h("button", { class: "linkbtn", type: "button", onclick: async () => { try { await api("POST", "/auth/logout", {}); } catch { /* sai mesmo assim */ } location.href = "index.html"; } }, "Sair desta conta")));
       name.input.focus();
     }
@@ -247,7 +251,38 @@
       try { cfg = (await api("GET", "/auth/config")).providers; } catch { return; }
       let mailCfg = null;
       try { mailCfg = await api("GET", "/auth/mail"); } catch { /* sem o bloco do e-mail */ }
-      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+      let captchaCfg = null;
+      try { captchaCfg = await api("GET", "/auth/captcha"); } catch { /* sem o bloco do captcha */ }
+      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...(captchaCfg ? [captchaBlock(captchaCfg)] : []),
+        ...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+    }
+
+    const CAPTCHA_HELP = [
+      ["Abra dash.cloudflare.com/?to=/:account/turnstile (gratuito; não precisa ter o domínio na Cloudflare) e clique em \"Add site\".", "Open dash.cloudflare.com/?to=/:account/turnstile (free; you don't need your domain on Cloudflare) and click \"Add site\"."],
+      ["Em \"Domains\" adicione 127.0.0.1 e localhost (para testar neste PC) e, quando tiver, o domínio de verdade do site. Tipo de widget: Managed.", "Under \"Domains\" add 127.0.0.1 and localhost (to test on this PC) and, once you have one, your real site domain. Widget type: Managed."],
+      ["Copie a \"Site Key\" e a \"Secret Key\" e cole abaixo.", "Copy the \"Site Key\" and \"Secret Key\" and paste them below."],
+    ];
+
+    function captchaBlock(c) {
+      const lang = en() ? 1 : 0;
+      const field = (label, name, value, opts = {}) => h("div", { class: "field" }, h("label", {}, label),
+        h("input", { type: opts.secret ? "password" : "text", name, value: value ?? "", placeholder: opts.placeholder || "", autocomplete: "off", spellcheck: false }));
+      const msg = h("div", { class: "ok-msg" }, saved === "captcha" ? "Salvo. O captcha já está ativo na criação de conta e de servidor." : "");
+      const form = h("form", { class: "setup-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        msg.className = "ok-msg"; msg.textContent = "";
+        try { await api("POST", "/auth/captcha", Object.fromEntries(new FormData(ev.target))); saved = "captcha"; await loadProviders(); }
+        catch (e) { msg.className = "error"; msg.textContent = e.message; }
+      } },
+        field("Site Key", "siteKey", c.siteKey),
+        field("Secret Key", "secretKey", "", { secret: true, placeholder: c.hasSecret ? "•••••••• (já salva; deixe vazio para manter)" : "" }),
+        h("div", { class: "btn-row" },
+          h("button", { class: "btn btn-primary", type: "submit" }, "Salvar"),
+          c.configured ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => { await api("POST", "/auth/captcha", { clear: true }); saved = null; await loadProviders(); } }, "Remover") : null));
+      return h("details", { class: "setup-block", open: saved === "captcha" },
+        h("summary", {}, "Captcha (Cloudflare Turnstile)", c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
+        h("ol", { class: "steps", translate: "no" }, CAPTCHA_HELP.map((s) => h("li", {}, s[lang]))),
+        form, msg);
     }
 
     const MAIL_HELP = [
@@ -328,6 +363,7 @@
     }
 
     (async () => {
+      await loadCaptchaKey();
       const code = new URLSearchParams(location.search).get("error");
       if (code) $("lgError").textContent = (ERRORS[code] || ERRORS.provider_error)[en() ? 1 : 0];
       if (window.BH_ME_READY) await window.BH_ME_READY;

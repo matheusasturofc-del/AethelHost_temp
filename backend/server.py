@@ -34,6 +34,7 @@ import content  # noqa: E402
 import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
+import captcha  # noqa: E402
 import mail  # noqa: E402
 import mailtemplate  # noqa: E402
 import notify  # noqa: E402
@@ -483,6 +484,11 @@ def ssh_error(text):
     return "Falha na conexão SSH: " + (t.splitlines()[-1] if t else "sem detalhes")
 
 
+def ssh_permanent(message):
+    """Erros que uma nova tentativa não resolve (precisam de ação da pessoa, não é uma queda de rede)."""
+    return "recusou a chave SSH" in message or "identidade da VPS mudou" in message
+
+
 def ssh_cmd(vps, remote):
     key_file, known_hosts = key_paths(vps["owner"])
     return [
@@ -524,10 +530,13 @@ def ssh_stream(vps, script, on_line, limit=1200):
         raise RuntimeError("O cliente SSH (ssh.exe) não foi encontrado neste PC.")
     watchdog = threading.Timer(limit, p.kill)  # não deixa uma instalação travada para sempre
     watchdog.start()
+    last, write_failed = [], False
     try:
-        p.stdin.write(script.encode("utf-8"))
-        p.stdin.close()
-        last = []
+        try:
+            p.stdin.write(script.encode("utf-8"))
+            p.stdin.close()
+        except OSError:
+            write_failed = True  # a conexão caiu bem no começo do envio; o que sobrar do stdout explica o motivo
         for raw in p.stdout:
             line = raw.decode("utf-8", "replace").rstrip()
             last = (last + [line])[-5:]
@@ -535,7 +544,7 @@ def ssh_stream(vps, script, on_line, limit=1200):
         code = p.wait()
     finally:
         watchdog.cancel()
-    if code == 255:
+    if write_failed or code == 255:
         raise RuntimeError(ssh_error("\n".join(last)))
     return code
 
@@ -684,7 +693,16 @@ class RemoteRuntime(Runtime):
             jar = spec_for(server["software"], server["version"])
             if jar.get("note"):
                 self.log(jar["note"])
-            code = ssh_stream(self.vps, remote_setup_script(server, need, jar), self._setup_line)
+            script = remote_setup_script(server, need, jar)
+            for attempt in (1, 2, 3):
+                try:
+                    code = ssh_stream(self.vps, script, self._setup_line)
+                    break
+                except RuntimeError as e:
+                    if attempt == 3 or ssh_permanent(str(e)):
+                        raise
+                    self.log(f"{e} Tentando de novo…", "warn")
+                    time.sleep(5)
             if code != 0:
                 raise RuntimeError("A preparação da VPS falhou. Veja as mensagens acima.")
         except Exception as e:
@@ -918,6 +936,7 @@ def api_list(query, body):
 
 
 def api_create(query, body):
+    captcha.require(body.get("captcha"))
     name = clean_text(body, "name", 3, 30, "Nome")
     subtitle = clean_motd(body)
     ip = str(body.get("ip", ""))
@@ -1533,6 +1552,7 @@ def api_user_banner(query, body, uid):
 
 
 def api_auth_profile(query, body):
+    captcha.require(body.get("captcha"))
     user = current_user()
     pending = accounts.start_profile(user, body)
     if pending:  # com senha: falta o código do e-mail (POST /api/account/verify)
@@ -1831,6 +1851,7 @@ def api_public_set(query, body, sid):
 
 
 def api_pw_register(query, body):
+    captcha.require(body.get("captcha"))
     return 200, accounts.register(body)
 
 
@@ -1868,6 +1889,21 @@ def api_mail_test(query, body):
     return 200, {"ok": True}
 
 
+def api_captcha_get(query, body):
+    _require_setup()
+    return 200, captcha.config_view()
+
+
+def api_captcha_save(query, body):
+    _require_setup()
+    return 200, captcha.save(body)
+
+
+def api_captcha_config(query, body):
+    """Chave pública do captcha, para qualquer visitante montar o widget (nada, se não estiver configurado)."""
+    return 200, captcha.public_config()
+
+
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
     ("POST", r"^/api/account/name$", api_account_name),
@@ -1900,6 +1936,9 @@ ROUTES = [
     ("GET", r"^/api/auth/mail$", api_mail_get),
     ("POST", r"^/api/auth/mail$", api_mail_save),
     ("POST", r"^/api/auth/mail/test$", api_mail_test),
+    ("GET", r"^/api/captcha/config$", api_captcha_config),
+    ("GET", r"^/api/auth/captcha$", api_captcha_get),
+    ("POST", r"^/api/auth/captcha$", api_captcha_save),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("POST", r"^/api/admin/merge$", api_admin_merge),
     ("GET", r"^/api/tunnel$", api_tunnel),
@@ -1974,7 +2013,8 @@ NEED = {
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
 }
 PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
-          api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test}  # não exigem login
+          api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
+          api_captcha_config, api_captcha_get, api_captcha_save}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload, api_account_avatar_set, api_account_banner_image}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024

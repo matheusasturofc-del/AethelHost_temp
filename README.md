@@ -47,6 +47,15 @@ Na página de login aparecem os serviços configurados e, depois de um **ou**, o
 - Ainda **não há limites por conta** (quantidade de servidores, RAM). Tudo roda no seu PC.
 - Testes/scripts: `AETHELHOST_DATA` (pasta de dados) e `AETHELHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais (os nomes antigos `BLOCKHOST_*` ainda funcionam). Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `AETHELHOST_COOKIE`.
 
+### Captcha (criar conta e criar servidor)
+
+Para dificultar contas e servidores criados por robôs, dá para ligar o **Cloudflare Turnstile** nos dois formulários: criar conta por e-mail e senha, completar o perfil na primeira entrada por Google/GitHub/Discord/etc., e criar servidor.
+
+- **Configurar (o administrador, uma vez):** em `login.html` → **Configurar logins e e-mail** → bloco **Captcha (Cloudflare Turnstile)**. Crie um site grátis em dash.cloudflare.com/?to=/:account/turnstile (não precisa ter o domínio na Cloudflare), adicione `127.0.0.1` e `localhost` aos domínios (e o domínio de verdade quando tiver um), widget **Managed**, e cole a **Site Key** e a **Secret Key**. Fica em `data/captcha.json` (a chave secreta nunca volta para o navegador).
+- **Sem configurar, nada muda:** os formulários funcionam normalmente, sem captcha nenhum.
+- O captcha só é conferido no servidor (`POST` para a Cloudflare, `backend/captcha.py`); o token do widget é de uso único.
+- API: `GET /api/captcha/config` (chave pública, para montar o widget), `GET`/`POST /api/auth/captcha` (configurar, só o administrador).
+
 ## Painel do administrador
 
 O administrador (a primeira conta) ganha o link **Administração** no topo (`admin.html`): totais (contas, servidores, ligados agora, jogadores online, RAM em uso neste PC), uma lista de todas as contas (nome, e-mail, serviço de login, data de entrada, último login, sessões abertas) e, dentro de cada uma, os servidores dela com plano, software, versão, RAM, porta, se tem endereço público, se está ligado e quantos jogadores. Tem busca por conta, e-mail ou servidor e atualiza sozinho a cada 5 segundos. Servidores cujo dono não existe mais aparecem numa lista à parte. É só leitura por enquanto (`GET /api/admin/overview`, só para o administrador; para os outros a API responde 403).

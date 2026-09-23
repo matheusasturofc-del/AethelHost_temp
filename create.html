@@ -126,6 +126,7 @@
             </ul>
           </label>
         </div>
+        <div id="captchaMount"></div>
         <div class="actions">
           <button class="btn" type="button" id="back2">Voltar</button>
           <button class="btn btn-primary" type="button" id="next2">Criar servidor</button>
@@ -179,6 +180,7 @@
 
   <script src="js/store.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/captcha.js"></script>
   <script src="js/look.js"></script>
   <script src="js/ui.js"></script>
   <script>
@@ -218,6 +220,13 @@
     });
 
     const currentPlan = () => document.querySelector('input[name="plan"]:checked').value;
+
+    // ---- Captcha (aparece uma vez, no passo 2; o token continua valendo ao ir para o passo 3 da VPS) ----
+    let cap = { box: null, getToken: () => "", reset: () => {} };
+    loadCaptchaKey().then(() => {
+      cap = captchaField();
+      if (cap.box) $("captchaMount").replaceChildren(cap.box);
+    });
 
     // ---- Software e versões (o backend consulta os sites oficiais e diz o que este PC consegue rodar) ----
     let meta = null;
@@ -353,6 +362,7 @@
         version: $("version").value,
         plan: currentPlan(),
         eula: $("eula").checked,
+        captcha: cap.getToken(),
       };
       if (body.plan === "vps") {
         body.vps = {
@@ -371,6 +381,7 @@
         location.href = "panel.html?id=" + encodeURIComponent(server.id);
       } catch (e) {
         $("formErr").textContent = e.message;
+        cap.reset();
         $("next2").disabled = $("finish").disabled = false;
       }
     }
