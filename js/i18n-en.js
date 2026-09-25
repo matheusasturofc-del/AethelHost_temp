@@ -696,6 +696,8 @@ const I18N_EXACT = {
 
   // ---- painel: opções (configurações do jogo e gamerules)
   "Geral": "General",
+  "Configuração": "Settings",
+  "Dados": "Data",
   "Configurações do jogo": "Game settings",
   "Regras do jogo (gamerules)": "Game rules (gamerules)",
   "Buscar configuração ou regra…": "Search setting or rule…",
