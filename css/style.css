@@ -605,3 +605,56 @@ body.files-read .files-write, body.files-none .files-write { display: none !impo
 .dlg-actions .btn { min-width: 120px; justify-content: center; }
 @keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dlg-pop { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* ===== Painel do servidor no estilo Aternos: menu lateral com ícones e um cartão grande de status ===== */
+.panel { grid-template-columns: 250px 1fr; align-items: start; }
+.side { position: sticky; top: 16px; gap: 2px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+.side .back { margin: 0 0 6px; padding: 8px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+.side .back:hover { background: var(--surface-2); color: var(--text); }
+.side button { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 10px; border-left: 3px solid transparent; font-size: 15px; }
+.side button .ico { width: 20px; height: 20px; flex: none; opacity: 0.85; }
+.side button.active { background: rgba(74, 222, 128, 0.12); border-left-color: var(--accent); color: var(--accent); }
+.side button.active .ico { opacity: 1; }
+:root[data-theme="light"] .side button.active { background: rgba(22, 163, 74, 0.12); }
+
+.panel-head h1 { font-size: 32px; letter-spacing: -0.02em; }
+.hdr-icon { width: 76px; height: 76px; border-radius: 12px; border: 2px solid var(--border-strong); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.panel-top { gap: 20px; margin-bottom: 4px; }
+
+.status-hero { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 18px 28px; padding: 28px 30px; margin-bottom: 16px;
+  border-left: 6px solid var(--danger); position: relative; overflow: hidden; }
+.status-hero[data-state="online"] { border-left-color: var(--ok); background: linear-gradient(90deg, rgba(34, 197, 94, 0.13), transparent 65%), var(--surface); }
+.status-hero[data-state="starting"], .status-hero[data-state="stopping"] { border-left-color: var(--warn);
+  background: repeating-linear-gradient(135deg, rgba(251, 191, 36, 0.10) 0 14px, transparent 14px 28px), var(--surface); background-size: 56px 56px; animation: hero-stripes 1.2s linear infinite; }
+@keyframes hero-stripes { to { background-position: 56px 0; } }
+.status-hero .status { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; gap: 14px; }
+.status-hero .status::before { width: 16px; height: 16px; }
+.status-hero .status.online::before { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); animation: hero-pulse 1.8s ease-out infinite; }
+@keyframes hero-pulse { 70% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+.sh-sub { margin-top: 4px; color: var(--muted); font-size: 16px; }
+.addr-pill { display: inline-flex; align-items: center; gap: 10px; margin-top: 16px; padding: 4px 4px 4px 16px; border-radius: 999px;
+  background: var(--bg); border: 1px solid var(--border-strong); font: 600 15px ui-monospace, Consolas, monospace; max-width: 100%; }
+.addr-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addr-pill .btn { padding: 5px 14px; font-size: 13px; border-radius: 999px; }
+#power { min-width: 210px; height: 68px; padding: 0 28px; font-size: 21px; font-weight: 800; border-radius: 16px; gap: 12px; letter-spacing: 0.01em; }
+#power.btn-primary { box-shadow: 0 8px 22px rgba(74, 222, 128, 0.25); }
+#power.btn-primary::before { content: "\25B6"; font-size: 16px; }
+#power.btn-danger { border-width: 2px; }
+#power.btn-danger::before { content: "\25A0"; font-size: 16px; }
+.sh-msg { grid-column: 1 / -1; margin: 0; }
+.sh-msg:empty { display: none; }
+
+.info-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.info { padding: 16px 18px; border-radius: 14px; border-left: 4px solid var(--accent); }
+.info small { text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.info strong { font-size: 21px; }
+
+@media (max-width: 800px) {
+  .panel { grid-template-columns: 1fr; }
+  .side { position: static; flex-direction: row; overflow-x: auto; padding: 8px; }
+  .side button { border-left: 0; border-bottom: 3px solid transparent; padding: 9px 12px; }
+  .side button.active { border-bottom-color: var(--accent); }
+  .status-hero { grid-template-columns: 1fr; padding: 22px 20px; }
+  #power { width: 100%; }
+  .status-hero .status { font-size: 30px; }
+}
