@@ -697,6 +697,7 @@ const I18N_EXACT = {
   // ---- painel: opções (configurações do jogo e gamerules)
   "Geral": "General",
   "Recolher o menu": "Collapse menu",
+  "Recolher o servidor": "Collapse server",
   "Configuração": "Settings",
   "Dados": "Data",
   "Configurações do jogo": "Game settings",

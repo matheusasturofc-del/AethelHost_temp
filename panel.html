@@ -22,8 +22,15 @@
     <aside class="side">
       <a class="back" href="servers.html">← Servidores</a>
       <div class="side-server" id="sideServer" data-state="offline">
-        <div class="ss-text"><div class="ss-name" id="sideName"></div><div class="ss-id" id="sideId" translate="no"></div></div>
+        <img class="ss-img" id="sideIcon" alt="">
+        <div class="ss-text">
+          <div class="ss-name" id="sideName"></div>
+          <div class="ss-state" id="sideState">Offline</div>
+          <div class="ss-addr" id="sideAddr" translate="no"></div>
+          <div class="ss-id" id="sideId" translate="no"></div>
+        </div>
         <div class="ss-icon" id="sideIconState" role="img" aria-label="Status"></div>
+        <div class="ss-toggle" id="sideServerToggle" role="button" tabindex="0" aria-label="Recolher o servidor" title="Recolher o servidor">&#9662;</div>
       </div>
       <button class="active" data-tab="server"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg><span>Servidor</span></button>
       <button data-tab="options"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span>Opções</span></button>
@@ -432,6 +439,7 @@
       if (server.iconVersion !== shownIcon) {
         const url = iconUrl(server);
         $("hdrIcon").src = url;
+        $("sideIcon").src = url;
         $("optIcon").src = url;
         if (optEditor) optEditor.setIcon(url);
         setFavicon(url, "image/png");  // a aba do navegador mostra a capa do servidor
@@ -459,7 +467,9 @@
       st.className = "status " + rt.state;
       $("sideServer").dataset.state = rt.state;
       $("sideIconState").title = STATUS_LABEL[rt.state];
+      $("sideState").textContent = STATUS_LABEL[rt.state] + (rt.state === "online" ? ` · ${rt.players.length}/${server.maxPlayers}` : "");
       $("sideName").textContent = server.name;
+      $("sideAddr").textContent = server.address;
       $("sideId").textContent = "#" + server.id;
       $("playersCount").textContent = rt.players.length ? String(rt.players.length) : "";
 
@@ -504,6 +514,14 @@
     (() => {
       const panel = document.querySelector("main.panel");
       try { if (localStorage.getItem("bh_side") === "1") panel.classList.add("side-collapsed"); } catch { /* sem armazenamento */ }
+      const card = $("sideServer");
+      try { if (localStorage.getItem("bh_side_server") === "1") card.classList.add("compact"); } catch { /* sem armazenamento */ }
+      const toggleCard = () => {
+        const on = card.classList.toggle("compact");
+        try { localStorage.setItem("bh_side_server", on ? "1" : "0"); } catch { /* sem armazenamento */ }
+      };
+      $("sideServerToggle").addEventListener("click", toggleCard);
+      $("sideServerToggle").addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleCard(); } });
       $("sideCollapse").addEventListener("click", () => {
         const on = panel.classList.toggle("side-collapsed");
         try { localStorage.setItem("bh_side", on ? "1" : "0"); } catch { /* sem armazenamento */ }

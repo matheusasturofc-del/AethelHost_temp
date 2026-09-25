@@ -667,3 +667,31 @@ main.server-panel > section { min-width: 0; width: 100%; max-width: 1120px; marg
   main.server-panel > .side { flex-direction: row; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
   main.server-panel > section { padding: 20px 16px 50px; }
 }
+
+/* Cartão do servidor no menu lateral: maior, com ícone, estado e endereço; dá para recolher (só o nome e o status) */
+.server-panel .side-server { position: relative; gap: 14px; padding: 20px 18px 18px; }
+.server-panel .side-server .ss-img { width: 64px; height: 64px; border-radius: 10px; image-rendering: pixelated; flex: none;
+  background: var(--surface-2); border: 2px solid rgba(255, 255, 255, 0.14); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); }
+.server-panel .side-server .ss-name { font-size: 20px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
+.server-panel .side-server .ss-state { margin-top: 4px; font-size: 14px; font-weight: 700; color: var(--danger); }
+.server-panel .side-server[data-state="online"] .ss-state { color: var(--ok); }
+.server-panel .side-server[data-state="starting"] .ss-state, .server-panel .side-server[data-state="stopping"] .ss-state { color: var(--warn); }
+.server-panel .side-server .ss-addr { margin-top: 6px; font: 600 12px ui-monospace, Consolas, monospace; color: var(--side-text); opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-panel .side-server .ss-icon { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; }
+.server-panel .side-server .ss-icon::after { inset: 8px; }
+.server-panel .side-server[data-state="online"] .ss-icon::after, .server-panel .side-server[data-state="starting"] .ss-icon::after,
+.server-panel .side-server[data-state="stopping"] .ss-icon::after { inset: 6px; border-width: 2px; }
+.server-panel .ss-toggle { position: absolute; right: 12px; bottom: 8px; width: 24px; height: 20px; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; color: var(--side-muted); cursor: pointer; font-size: 14px; user-select: none; }
+.server-panel .ss-toggle:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.server-panel .side-server.compact { padding: 12px 44px 12px 18px; gap: 10px; }
+.server-panel .side-server.compact .ss-img, .server-panel .side-server.compact .ss-addr, .server-panel .side-server.compact .ss-id { display: none; }
+.server-panel .side-server.compact .ss-name { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.server-panel .side-server.compact .ss-state { margin-top: 2px; font-size: 13px; }
+.server-panel .side-server.compact .ss-icon { top: 10px; }
+.server-panel .side-server.compact .ss-toggle { bottom: 4px; }
+.server-panel .side-server.compact .ss-toggle { transform: rotate(180deg); }
+.server-panel.side-collapsed .side-server .ss-img, .server-panel.side-collapsed .side-server .ss-toggle { display: none; }
+.server-panel.side-collapsed .side-server, .server-panel.side-collapsed .side-server.compact { padding: 14px 0; }
+.server-panel.side-collapsed .side-server .ss-icon { position: static; transform: none; }
+@media (max-width: 800px) { .server-panel .side-server { display: none; } }
