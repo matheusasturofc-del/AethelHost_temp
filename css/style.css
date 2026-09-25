@@ -695,3 +695,42 @@ main.server-panel > section { min-width: 0; width: 100%; max-width: 1120px; marg
 .server-panel.side-collapsed .side-server, .server-panel.side-collapsed .side-server.compact { padding: 14px 0; }
 .server-panel.side-collapsed .side-server .ss-icon { position: static; transform: none; }
 @media (max-width: 800px) { .server-panel .side-server { display: none; } }
+
+/* ===== Celular ===== */
+.user-pop .only-mobile { display: none; }
+@media (max-width: 640px) {
+  .container { padding-left: 14px; padding-right: 14px; }
+  .topbar .container { height: 56px; gap: 8px; }
+  .brand { font-size: 17px; }
+  .brand .logo { width: 26px; height: 26px; margin-right: 6px; }
+  .topnav { gap: 6px; }
+  .topnav > a[href="servers.html"] { display: none; }  /* no celular "Servidores" fica dentro do menu do perfil */
+  .user-pop .only-mobile { display: block; }
+  .lang-btn span { padding: 3px 7px; font-size: 11px; }
+  .bell { width: 34px; height: 34px; }
+  .user-btn { padding: 2px 8px 2px 3px; gap: 5px; }
+  .notif-pop { position: fixed; left: 8px; right: 8px; top: 62px; width: auto; max-width: none; }
+  input, select, textarea { font-size: 16px; }  /* o iPhone dá zoom em campos menores que 16px */
+  .page-head { flex-wrap: wrap; gap: 10px; }
+  .actions { flex-wrap: wrap; }
+  .actions .btn { flex: 1 1 140px; }
+  .ribbon { right: -44px; }
+}
+@media (max-width: 800px) {
+  .server-panel .side { scrollbar-width: none; scroll-snap-type: x proximity; }
+  .server-panel .side::-webkit-scrollbar { display: none; }
+  .server-panel .side button { scroll-snap-align: center; flex: none; }
+}
+@media (max-width: 640px) {
+  .cmd-row { flex-wrap: wrap; }
+  .cmd-row input { flex: 1 1 150px; min-width: 0; }
+  .cmd-row .btn { flex: 1 1 auto; }
+  .row { flex-wrap: wrap; gap: 10px; }
+  .row-actions { flex-wrap: wrap; width: 100%; }
+  .row-actions .btn { flex: 1 1 auto; }
+}
+@media (max-width: 640px) {
+  .card { padding: 18px 16px; }
+  .narrow { max-width: 100%; }
+  h1 { font-size: 26px; }
+}

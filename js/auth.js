@@ -100,6 +100,7 @@
     }
     const pop = h("div", { class: "user-pop", role: "menu", hidden: true },
       h("div", { class: "who" }, h("b", { translate: "no" }, user.name), user.username ? h("span", { translate: "no" }, "@" + user.username) : null),
+      h("a", { class: "only-mobile", href: "servers.html", role: "menuitem" }, "Servidores"),
       h("a", { href: "profile.html", role: "menuitem" }, "Ver perfil"),
       h("a", { href: "settings.html", role: "menuitem" }, "Editar perfil"),
       user.admin ? h("a", { href: "admin.html", role: "menuitem" }, "Administração") : null,

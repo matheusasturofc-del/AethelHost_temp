@@ -661,6 +661,7 @@
         box.scrollTop = box.scrollHeight;
         if (btn.dataset.tab !== "players") clearInterval(plTimer);  // a lista de jogadores só atualiza enquanto está aberta
         openTabData(btn.dataset.tab);
+        btn.scrollIntoView({ block: "nearest", inline: "center" });  // no celular o menu rola de lado: mantém a aba ativa à vista
       });
     });
 
