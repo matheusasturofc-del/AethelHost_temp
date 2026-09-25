@@ -26,11 +26,12 @@ import uuid
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar config, net, software, content
 
 import content  # noqa: E402
+import drive  # noqa: E402
 import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
@@ -1373,6 +1374,65 @@ def api_backups(query, body, sid):
                  "state": _state(sid)}
 
 
+def _drive_name(server, backup):
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", server["name"]).strip("-") or "servidor"
+    return f"{slug}-{backup}"
+
+
+def _drive_send(server, backup):
+    """Começa a enviar um backup ao Drive da conta que está logada (em segundo plano)."""
+    me = current_user()
+    if not drive.linked(me["id"]):
+        raise ApiError(409, "Vincule o Google Drive primeiro.")
+    if _remote(server):
+        remote_name = remote._backup_name(backup)
+        get = lambda: (remote.download_backup(server, remote_name)[0], True)
+    else:
+        path = manage.backup_path(server["id"], backup)
+        get = lambda: (path, False)
+    drive.start_upload(me["id"], f"{server['id']}/{backup}", get, _drive_name(server, backup))
+
+
+def api_backup_drive_get(query, body, sid):
+    """Estado dos envios deste servidor e o que já está no Drive (só se a conta tem Drive vinculado)."""
+    server = _manage_server(sid)
+    me = current_user()
+    out = {"linked": drive.linked(me["id"]), "uploads": {}, "remote": {}}
+    prefix = f"{sid}/"
+    for (uid, key), j in list(drive.JOBS.items()):
+        if uid == me["id"] and key.startswith(prefix):
+            out["uploads"][key[len(prefix):]] = j
+    if out["linked"]:
+        try:
+            files = drive.list_files(me["id"])
+            out["remote"] = files
+            out["prefix"] = _drive_name(server, "")
+        except content.ContentError as e:
+            out["error"] = e.message
+            out["linked"] = drive.linked(me["id"])
+    return 200, out
+
+
+def api_backup_drive_send(query, body, sid):
+    server = _manage_server(sid)
+    _drive_send(server, str(body.get("name", "")))
+    return 202, {"started": True}
+
+
+def api_drive_get(query, body):
+    return 200, drive.status(current_user()["id"], BASE_URL if (current_user() or {}).get("admin") else None)
+
+
+def api_drive_unlink(query, body):
+    drive.unlink(current_user()["id"])
+    return 200, drive.status(current_user()["id"])
+
+
+def api_drive_settings(query, body):
+    drive.set_auto(current_user()["id"], body.get("auto") is True)
+    return 200, drive.status(current_user()["id"])
+
+
 def api_backup_create(query, body, sid):
     server = _manage_server(sid)
     make = (lambda: remote.create_backup(server, "manual")) if _remote(server) else (lambda: manage.create_backup(sid, "manual"))
@@ -1401,7 +1461,15 @@ def api_backup_create(query, body, sid):
         name = make()
     if not name:
         raise ApiError(400, "Ainda não há mundo para guardar: ligue o servidor uma vez.")
-    return 200, {"name": name}
+    sent = False
+    entry = drive.entry(current_user()["id"])
+    if entry and entry.get("auto"):  # "enviar backups automaticamente" ligado: já manda para o Drive
+        try:
+            _drive_send(server, name)
+            sent = True
+        except (ApiError, content.ContentError):
+            pass
+    return 200, {"name": name, "drive": sent}
 
 
 def api_backup_restore(query, body, sid):
@@ -2040,6 +2108,11 @@ ROUTES = [
     ("GET", rf"^/api/servers/{ID}/worlds/download$", api_world_download),
     ("POST", rf"^/api/servers/{ID}/worlds/upload$", api_world_upload),
     ("GET", rf"^/api/servers/{ID}/backups$", api_backups),
+    ("GET", rf"^/api/servers/{ID}/backups/drive$", api_backup_drive_get),
+    ("POST", rf"^/api/servers/{ID}/backups/drive$", api_backup_drive_send),
+    ("GET", r"^/api/drive$", api_drive_get),
+    ("POST", r"^/api/drive/unlink$", api_drive_unlink),
+    ("POST", r"^/api/drive/settings$", api_drive_settings),
     ("POST", rf"^/api/servers/{ID}/backups/create$", api_backup_create),
     ("POST", rf"^/api/servers/{ID}/backups/restore$", api_backup_restore),
     ("POST", rf"^/api/servers/{ID}/backups/delete$", api_backup_delete),
@@ -2056,6 +2129,7 @@ NEED = {
                            api_content_list, api_content_search, api_content_install, api_content_upload, api_content_toggle, api_content_delete,
                            api_worlds, api_world_use, api_world_create, api_world_delete, api_world_download, api_world_upload,
                            api_backups, api_backup_create, api_backup_restore, api_backup_delete, api_backup_download,
+                           api_backup_drive_get, api_backup_drive_send,
                            api_settings, api_settings_properties, api_settings_gamerules)},
     **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
@@ -2115,6 +2189,9 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(405, "Método não permitido.")
         if self.headers.get("Host", "").lower() != f"127.0.0.1:{PORT}":
             return self._redirect(BASE_URL + self.path)  # o login acontece sempre em 127.0.0.1
+        md = re.match(r"^/auth/drive/(start|callback)$", parsed.path)
+        if md:
+            return self._drive_route(md.group(1), parsed)
         m = re.match(r"^/auth/(login|callback|link)/([a-z]{1,20})$", parsed.path)
         if not m:
             raise ApiError(404, "Página não encontrada.")
@@ -2141,6 +2218,32 @@ class Handler(BaseHTTPRequestHandler):
             if me:  # quem já está logado estava conectando um login: o erro aparece na aba Conectar-se
                 return self._redirect(f"{BASE_URL}/settings.html?link_error={e.code}#connect", [auth.CLEAR_BIND])
             return self._redirect(f"{BASE_URL}/login.html?error={e.code}", [auth.CLEAR_BIND])
+
+    def _drive_route(self, action, parsed):
+        """/auth/drive/start vai ao Google pedir acesso ao Drive; /auth/drive/callback é para onde ele devolve."""
+        query = parse_qs(parsed.query)
+        me = current_user()
+        if not me:
+            return self._redirect(f"{BASE_URL}/login.html")
+
+        def back(server_id, **params):  # volta para a aba Backups do servidor de onde a pessoa saiu
+            if re.fullmatch(r"[0-9a-f]{12}", server_id or ""):
+                return f"{BASE_URL}/panel.html?" + urlencode({"id": server_id, "tab": "backups", **params})
+            return f"{BASE_URL}/servers.html?" + urlencode(params)
+
+        try:
+            if action == "start":
+                url, bind = drive.begin(me["id"], BASE_URL, _first(query, "server"))
+                return self._redirect(url, [auth.bind_cookie(bind)])
+            if _first(query, "error"):
+                raise drive.DriveLinkFailed("denied", drive.server_of(_first(query, "state")))
+            sid = drive.finish(_first(query, "code"), _first(query, "state"), auth.bind_from_cookie(self.headers.get("Cookie")),
+                               BASE_URL, me["id"])
+            return self._redirect(back(sid, drive="linked"), [auth.CLEAR_BIND])
+        except drive.DriveLinkFailed as e:
+            return self._redirect(back(e.server, drive_error=e.code), [auth.CLEAR_BIND])
+        except content.ContentError:
+            return self._redirect(back(_first(query, "server"), drive_error="not_configured"), [auth.CLEAR_BIND])
 
     def _send_file(self, status, raw):
         """Envia um arquivo do disco aos poucos (mundos e backups podem ter centenas de MB)."""

@@ -150,6 +150,15 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 - Mudanças em arquivos, mundos, mods e propriedades só com o servidor desligado.
 - As abas ficam nesta ordem: Servidor, Opções, Console, Jogadores, Software, Mods/Plugins (não aparece no Vanilla), Mundos, Arquivos e Backups.
 
+## Google Drive nos backups
+
+Na aba **Backups** cada conta pode **vincular o próprio Google Drive** e guardar cópias dos backups lá: botão **Enviar ao Drive** em cada backup (com o andamento em %, e o selo **No Drive** com link quando termina) e a opção **Enviar os backups manuais para o Drive automaticamente**. Os arquivos vão para a pasta **AethelHost Backups** do Drive da pessoa (nome `<servidor>-<backup>`). Funciona no plano Grátis e na VPS (na VPS o backup é baixado da VPS para este PC e enviado).
+
+- **O que o AethelHost enxerga:** só o acesso `drive.file` (arquivos que ele mesmo criou). O resto do Drive fica fora do alcance dele. Cada conta usa o **próprio** Drive: quem recebeu um servidor compartilhado precisa vincular o dele.
+- **Configurar (o administrador, uma vez):** usa o mesmo aplicativo do login com Google (ID e chave secreta já cadastrados em Configurar logins). No Google Cloud, do mesmo projeto: (1) ative a **Google Drive API**; (2) na tela de permissão OAuth, adicione o escopo `.../auth/drive.file`; (3) em "URIs de redirecionamento autorizados" adicione `http://127.0.0.1:8080/auth/drive/callback` (o botão mostra esse endereço para o administrador). Se o aplicativo estiver em modo de **teste**, o Google expira a permissão em 7 dias: publique o aplicativo ("Em produção") para valer sem prazo.
+- **Segurança:** o vínculo usa OAuth2 com PKCE e `state` amarrado ao navegador; o token de longo prazo fica em `data/drive.json` (só o dono do arquivo lê) e nunca volta para o navegador. Se o Google cancelar a permissão, o vínculo some e o site pede para vincular de novo. Desvincular avisa o Google para invalidar o token; o que já está no Drive continua lá.
+- API: `GET /api/drive`, `POST /api/drive/unlink`, `POST /api/drive/settings`, `GET`/`POST /api/servers/<id>/backups/drive`; navegador: `/auth/drive/start`, `/auth/drive/callback`. Testes: `AETHELHOST_DRIVE_TEST_BASE=http://127.0.0.1:<porta>` troca o Google por um de mentira.
+
 ## Idioma
 
 O idioma padrão é o **inglês** (quem abre o site pela primeira vez o vê em inglês, sem piscar em português antes). O botão **PT | EN** no topo troca a interface entre inglês e português e lembra a escolha no navegador (quem já tem uma escolha guardada, mesmo que automática, continua com ela). O dicionário está em `js/i18n-en.js`; para achar textos novos que ainda faltam, rode `python tools/extract_strings.py`.
