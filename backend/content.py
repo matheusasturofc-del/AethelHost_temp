@@ -8,7 +8,8 @@ import zipfile
 from urllib.parse import quote, urlencode
 
 from config import SERVERS_DIR
-from net import download, get_json
+from errors import ContentError
+from net import check_url, download, get_json
 from software import SOFTWARE
 
 MODRINTH = "https://api.modrinth.com/v2"
@@ -16,13 +17,6 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+() \-]{0,120}\.jar$")
 PROJECT_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 MAX_JAR = 64 * 1024 * 1024
 LOCK = threading.Lock()
-
-
-class ContentError(Exception):
-    def __init__(self, status, message):
-        super().__init__(message)
-        self.status = status
-        self.message = message
 
 
 def kind_of(server):
@@ -70,11 +64,30 @@ def _paths(server, name):
     return folder / name, folder / (name + ".disabled")
 
 
+def _remote(server):
+    return server.get("plan") == "vps"
+
+
+def _rem():
+    import remote  # só aqui: remote usa manage, que usa este módulo
+    return remote
+
+
 def list_items(server):
     folder = folder_of(server)
     meta = _read_meta(server)
     items = []
-    if folder.is_dir():
+    if _remote(server):
+        for fname, size in sorted(_rem().content_list(server, kind_of(server)), key=lambda x: x[0].lower()):
+            if fname.endswith(".jar.disabled"):
+                base, enabled = fname[:-len(".disabled")], False
+            elif fname.endswith(".jar"):
+                base, enabled = fname, True
+            else:
+                continue
+            info = meta.get(base, {})
+            items.append({"name": base, "size": size, "enabled": enabled, "title": info.get("title"), "version": info.get("version")})
+    elif folder.is_dir():
         for p in sorted(folder.iterdir(), key=lambda p: p.name.lower()):
             if not p.is_file():
                 continue
@@ -92,6 +105,15 @@ def list_items(server):
 
 def toggle(server, name):
     on, off = _paths(server, name)
+    if _remote(server):
+        kind = kind_of(server)
+        if _rem().content_exists(server, kind, name):
+            _rem().content_rename(server, kind, name, name + ".disabled")
+        elif _rem().content_exists(server, kind, name + ".disabled"):
+            _rem().content_rename(server, kind, name + ".disabled", name)
+        else:
+            raise ContentError(404, "Arquivo não encontrado.")
+        return
     if on.exists():
         on.rename(off)
     elif off.exists():
@@ -102,13 +124,16 @@ def toggle(server, name):
 
 def delete(server, name):
     on, off = _paths(server, name)
-    found = False
-    for p in (on, off):
-        if p.exists():
-            p.unlink()
-            found = True
-    if not found:
-        raise ContentError(404, "Arquivo não encontrado.")
+    if _remote(server):
+        _rem().content_delete(server, kind_of(server), [name, name + ".disabled"])
+    else:
+        found = False
+        for p in (on, off):
+            if p.exists():
+                p.unlink()
+                found = True
+        if not found:
+            raise ContentError(404, "Arquivo não encontrado.")
     with LOCK:
         meta = _read_meta(server)
         if meta.pop(name, None) is not None:
@@ -122,6 +147,9 @@ def save_upload(server, filename, data):
         raise ContentError(400, "Isso não parece um arquivo .jar válido.")
     name = safe_name(filename)
     on, off = _paths(server, name)
+    if _remote(server):
+        _rem().content_write(server, kind_of(server), name, data)
+        return name
     on.parent.mkdir(parents=True, exist_ok=True)
     off.unlink(missing_ok=True)  # o novo substitui uma cópia desativada
     tmp = on.with_name(name + ".part")
@@ -186,8 +214,13 @@ def _install_one(server, project, meta, result, seen, depth):
         return
     seen.add(pid)
     folder = folder_of(server)
-    if any(m.get("project") == pid and ((folder / n).exists() or (folder / (n + ".disabled")).exists())
-           for n, m in meta.items()):
+    if _remote(server):
+        present = {n for n, _ in _rem().content_list(server, kind_of(server))}
+        already = any(m.get("project") == pid and (n in present or n + ".disabled" in present) for n, m in meta.items())
+    else:
+        already = any(m.get("project") == pid and ((folder / n).exists() or (folder / (n + ".disabled")).exists())
+                      for n, m in meta.items())
+    if already:
         result["skipped"].append(title)
         return
     version = _pick_version(pid, server)
@@ -200,8 +233,12 @@ def _install_one(server, project, meta, result, seen, depth):
     hashes = file["hashes"]
     digest = ("sha512", hashes["sha512"]) if "sha512" in hashes else ("sha1", hashes["sha1"])
     on, off = _paths(server, name)
-    download(file["url"], on, digest, max_bytes=MAX_JAR)
-    off.unlink(missing_ok=True)
+    if _remote(server):
+        check_url(file["url"])
+        _rem().content_fetch(server, kind_of(server), name, file["url"], digest, MAX_JAR)
+    else:
+        download(file["url"], on, digest, max_bytes=MAX_JAR)
+        off.unlink(missing_ok=True)
     meta[name] = {"project": pid, "title": title, "version": version["version_number"]}
     result["installed"].append(title)
     if depth < 3:

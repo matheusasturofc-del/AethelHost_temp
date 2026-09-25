@@ -518,7 +518,8 @@
       box.textContent = "Conectando…";
       $("vpsCheck").disabled = true;
       try {
-        const { info, needJava } = await api("POST", `${base}/vps/check`);
+        const { info, needJava, server: fresh } = await api("POST", `${base}/vps/check`);
+        if (fresh) { server = fresh; if (typeof meta !== "undefined" && meta) fillRam(meta); }
         const java = Number(info.JAVA) >= needJava ? `Java ${info.JAVA}` : `Java ${Number(info.JAVA) || "não instalado"} (será instalado o ${needJava})`;
         const parts = [`Conectou! ${info.OS} (${info.ARCH}), ${info.MEM} MB de RAM`, java, `tmux: ${info.TMUX === "yes" ? "ok" : "será instalado"}`];
         box.textContent = parts.join(" · ");
@@ -629,13 +630,18 @@
         h("h3", {}, s.label),
         h("div", { class: "kind" }, s.kind === "mods" ? "Aceita mods" : s.kind === "plugins" ? "Aceita plugins" : "Sem mods nem plugins"),
         h("p", { class: "plan-desc" }, s.desc))));
-      const opts = meta.ramOptions.includes(server.ramMb) ? meta.ramOptions : [...meta.ramOptions, server.ramMb].sort((a, b) => a - b);
-      $("swRam").replaceChildren(...opts.map((m) => h("option", { value: m, selected: m === server.ramMb }, `${m / 1024} GB`)));
-      $("ramHint").textContent = `Seu PC tem ${(meta.systemRamMb / 1024).toFixed(1)} GB. Oferecemos até 75% dele para o Windows não travar. Mods pesados pedem mais memória.`;
-      if (server.plan === "vps") {
-        $("swRam").closest(".field").hidden = true;  // na VPS a memória é calculada lá
-      }
+      fillRam(meta);
       await loadSwVersions(server.software, server.version);
+    }
+
+    function fillRam(meta) {
+      const onVps = server.plan === "vps";
+      const list = onVps ? server.vpsRamOptions : meta.ramOptions;
+      const opts = list.includes(server.ramMb) ? list : [...list, server.ramMb].sort((a, b) => a - b);
+      $("swRam").replaceChildren(...opts.map((m) => h("option", { value: m, selected: m === server.ramMb }, m >= 1024 ? `${m / 1024} GB` : `${m} MB`)));
+      $("ramHint").textContent = onVps
+        ? "Até 80% da memória da VPS. Clique em \"Testar conexão\" (na aba Servidor) para o AethelHost medir a memória dela e liberar mais opções. Mods pesados pedem mais memória."
+        : `Seu PC tem ${(meta.systemRamMb / 1024).toFixed(1)} GB. Oferecemos até 75% dele para o Windows não travar. Mods pesados pedem mais memória.`;
     }
 
     async function loadSwVersions(sw, keep) {
@@ -706,9 +712,7 @@
       $("ctMain").hidden = !data.supported;
       $("ctNotice").hidden = data.supported;
       if (!data.supported) {
-        $("ctNotice").textContent = server.plan !== "free"
-          ? "Mods e plugins na VPS ainda não estão disponíveis. Use o plano Grátis."
-          : "O Vanilla não aceita mods nem plugins. Na aba Software, escolha Paper ou Purpur (plugins) ou Fabric (mods).";
+        $("ctNotice").textContent = "O Vanilla não aceita mods nem plugins. Na aba Software, escolha Paper ou Purpur (plugins) ou Fabric, Forge, NeoForge ou Quilt (mods).";
         return;
       }
       $("ctFilterHint").textContent = `Só aparecem itens compatíveis com ${server.softwareLabel} ${server.version}.`;

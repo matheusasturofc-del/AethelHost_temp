@@ -270,11 +270,10 @@ def use_world(sid, name):
     set_properties(root(sid) / "server.properties", {"level-name": name})
 
 
-def create_world(sid, name, seed, wtype, version_tuple):
+def world_properties(name, seed, wtype, version_tuple):
+    """As linhas do server.properties que criam um mundo novo (valida nome, tipo e semente)."""
     if not WORLD_RE.match(name or ""):
         raise bad("Nome do mundo: use de 1 a 32 letras, números, _ ou -.")
-    if (root(sid) / name).exists() or name in world_names(sid):
-        raise bad("Já existe um mundo ou pasta com esse nome.", 409)
     types = {"normal": "normal", "flat": "flat", "large_biomes": "large_biomes", "amplified": "amplified"}
     if wtype not in types:
         raise bad("Tipo de mundo inválido.")
@@ -283,9 +282,15 @@ def create_world(sid, name, seed, wtype, version_tuple):
         raise bad("A semente (seed) aceita até 60 caracteres.")
     modern = version_tuple >= (1, 16)  # a partir da 1.16 o tipo vem com "minecraft:"
     level_type = f"minecraft\\:{types[wtype]}" if modern else {"normal": "DEFAULT", "flat": "FLAT", "large_biomes": "LARGEBIOMES", "amplified": "AMPLIFIED"}[wtype]
+    return {"level-name": name, "level-seed": seed, "level-type": level_type}
+
+
+def create_world(sid, name, seed, wtype, version_tuple):
+    props = world_properties(name, seed, wtype, version_tuple)
+    if (root(sid) / name).exists() or name in world_names(sid):
+        raise bad("Já existe um mundo ou pasta com esse nome.", 409)
     root(sid).mkdir(parents=True, exist_ok=True)
-    set_properties(root(sid) / "server.properties", {"level-name": name, "level-seed": seed, "level-type": level_type},
-                   raw=("level-type",))
+    set_properties(root(sid) / "server.properties", props, raw=("level-type",))
 
 
 def delete_world(sid, name):

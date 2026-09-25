@@ -40,7 +40,10 @@ import mailtemplate  # noqa: E402
 import notify  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
+import remote  # noqa: E402
+import sshx  # noqa: E402
 import tunnel  # noqa: E402
+from sshx import ensure_key, ssh_cmd, ssh_permanent, ssh_script, ssh_stream  # noqa: E402
 from config import BACKUPS_DIR, DATA, JARS_DIR, ROOT, SERVERS_DIR  # noqa: E402
 from props import COLOR_CODE_RE, motd_to_properties, prop_escape, read_properties, set_properties  # noqa: E402
 from software import (INSTALLERS, SOFTWARE, ensure_jar, mc_releases, prefetch_java, prepare_launch,  # noqa: E402
@@ -54,6 +57,8 @@ DOMAIN = "aethelhost.net"  # nome provisório
 FIRST_MC_PORT = 25565
 MAX_PLAYERS = 20
 DEFAULT_RAM_MB = 1024
+MAX_VPS_SERVERS = 10  # servidores em VPS por conta
+MAX_VPS_HOSTS = 3  # VPS diferentes por conta
 IDLE_LIMIT = 5 * 3600  # plano grátis fecha após 5h sem jogadores
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
@@ -62,6 +67,7 @@ HOST_RE = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]*$", re.I)
 JOIN_RE = re.compile(r"\]: (\w{1,16}) joined the game$")
 LEAVE_RE = re.compile(r"\]: (\w{1,16}) left the game$")
+LIST_RE = re.compile(r"\]: There are \d+ of a max of \d+ players online:\s*(.*)$")  # resposta do comando "list"
 
 
 class ApiError(Exception):
@@ -377,6 +383,9 @@ class Runtime:
                 self.players.discard(m.group(1))
                 if not self.players:
                     self.idle_since = time.time()
+            elif m := LIST_RE.search(line):
+                self.players = {n.strip() for n in m.group(1).split(",") if n.strip()}
+                self.idle_since = None if self.players else (self.idle_since or time.time())
 
     def _watch(self):
         for raw in self.proc.stdout:
@@ -436,118 +445,7 @@ class Runtime:
 
 
 # ---------------------------------------------------------------- VPS (SSH)
-
-def key_paths(owner):
-    """Cada conta tem a sua própria chave SSH: uma conta nunca consegue usar a VPS de outra."""
-    folder = DATA / "keys" / owner
-    return folder / "aethelhost_ed25519", folder / "known_hosts"
-
-
-def ensure_key(owner):
-    """Chave SSH da conta. A privada nunca sai deste PC: você só copia a pública."""
-    key_file, _ = key_paths(owner)
-    pub = Path(str(key_file) + ".pub")
-    if not key_file.exists() or not pub.exists():
-        key_file.parent.mkdir(parents=True, exist_ok=True)
-        key_file.unlink(missing_ok=True)
-        pub.unlink(missing_ok=True)
-        try:
-            r = subprocess.run(
-                ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "aethelhost", "-f", str(key_file)],
-                capture_output=True, timeout=30, creationflags=NO_WINDOW,
-            )
-        except FileNotFoundError:
-            raise ApiError(500, "O ssh-keygen não foi encontrado neste PC.")
-        if r.returncode != 0:
-            raise ApiError(500, "Não consegui gerar a chave SSH: " + r.stderr.decode("utf-8", "replace").strip()[:200])
-        if os.name == "nt":  # o ssh do Windows recusa chave que outros usuários possam ler
-            subprocess.run(
-                ["icacls", str(key_file), "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '')}:F"],
-                capture_output=True, creationflags=NO_WINDOW,
-            )
-    return pub.read_text(encoding="utf-8").strip()
-
-
-def ssh_error(text):
-    t, low = text.strip(), text.lower()
-    if "permission denied" in low:
-        return ("A VPS recusou a chave SSH. Adicione a chave pública do AethelHost ao arquivo "
-                "~/.ssh/authorized_keys do usuário informado.")
-    if "host key verification failed" in low or "identification has changed" in low:
-        return "A identidade da VPS mudou (VPS reinstalada?). Se foi você, apague a linha dela em data/keys/known_hosts."
-    if "timed out" in low or "no route to host" in low:
-        return "Não consegui alcançar a VPS. Confira o IP, a porta SSH e o firewall do provedor."
-    if "connection refused" in low:
-        return "A VPS recusou a conexão. O SSH está rodando nessa porta?"
-    if "could not resolve" in low:
-        return "Não encontrei esse endereço. Confira o IP ou domínio da VPS."
-    return "Falha na conexão SSH: " + (t.splitlines()[-1] if t else "sem detalhes")
-
-
-def ssh_permanent(message):
-    """Erros que uma nova tentativa não resolve (precisam de ação da pessoa, não é uma queda de rede)."""
-    return "recusou a chave SSH" in message or "identidade da VPS mudou" in message
-
-
-def ssh_cmd(vps, remote):
-    key_file, known_hosts = key_paths(vps["owner"])
-    return [
-        "ssh", "-i", str(key_file), "-p", str(vps["port"]),
-        "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-        "-o", "StrictHostKeyChecking=accept-new",  # confia na 1ª conexão e avisa se a VPS mudar depois
-        "-o", f"UserKnownHostsFile={known_hosts.as_posix()}",
-        "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
-        f"{vps['user']}@{vps['host']}", remote,
-    ]
-
-
-def ssh_script(vps, script, timeout=60):
-    """Roda um script bash na VPS. Devolve (código, saída); RuntimeError se não conseguir conectar."""
-    ensure_key(vps["owner"])
-    try:
-        r = subprocess.run(
-            ssh_cmd(vps, "bash -s"), input=script.encode("utf-8"), capture_output=True,
-            timeout=timeout, creationflags=NO_WINDOW,
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("A VPS demorou demais para responder.")
-    except FileNotFoundError:
-        raise RuntimeError("O cliente SSH (ssh.exe) não foi encontrado neste PC.")
-    if r.returncode == 255:  # 255 é o código do próprio ssh quando não conecta
-        raise RuntimeError(ssh_error(r.stderr.decode("utf-8", "replace")))
-    return r.returncode, r.stdout.decode("utf-8", "replace")
-
-
-def ssh_stream(vps, script, on_line, limit=1200):
-    """Como ssh_script, mas entrega cada linha assim que chega (para instalações demoradas)."""
-    ensure_key(vps["owner"])
-    try:
-        p = subprocess.Popen(
-            ssh_cmd(vps, "bash -s"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, creationflags=NO_WINDOW,
-        )
-    except FileNotFoundError:
-        raise RuntimeError("O cliente SSH (ssh.exe) não foi encontrado neste PC.")
-    watchdog = threading.Timer(limit, p.kill)  # não deixa uma instalação travada para sempre
-    watchdog.start()
-    last, write_failed = [], False
-    try:
-        try:
-            p.stdin.write(script.encode("utf-8"))
-            p.stdin.close()
-        except OSError:
-            write_failed = True  # a conexão caiu bem no começo do envio; o que sobrar do stdout explica o motivo
-        for raw in p.stdout:
-            line = raw.decode("utf-8", "replace").rstrip()
-            last = (last + [line])[-5:]
-            on_line(line)
-        code = p.wait()
-    finally:
-        watchdog.cancel()
-    if write_failed or code == 255:
-        raise RuntimeError(ssh_error("\n".join(last)))
-    return code
-
+# As funções de SSH ficam em sshx.py; aqui ficam os scripts que rodam na VPS e o servidor remoto.
 
 JAVA_MAJOR_SH = r'''java_major() {
   command -v java >/dev/null 2>&1 || { echo 0; return; }
@@ -625,7 +523,7 @@ setprop() {
 }
 setprop server-port "$PORT"
 setprop motd "$MOTD"
-setprop max-players "$MAXP"
+grep -q '^max-players=' server.properties || setprop max-players "$MAXP"  # depois disso a aba Opções manda
 
 open_port() {
   if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -q "Status: active"; then
@@ -643,11 +541,46 @@ open_port() {
 open_port || true
 
 MEM=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)
-XMX=$((MEM * 6 / 10))
-if [ "$XMX" -gt 1024 ]; then XMX=1024; fi
+XMX=$RAMMB
+LIMIT=$((MEM * 85 / 100))
+if [ "$XMX" -gt "$LIMIT" ]; then
+  XMX=$LIMIT
+  say "Aviso: a VPS tem só ${MEM} MB; usando ${XMX} MB (o pedido era ${RAMMB} MB)."
+fi
+if [ "$XMX" -lt 384 ]; then XMX=384; fi
+
+LAUNCH="-jar '$JAR_NAME' nogui"
+if [ "$INSTALLER" = 1 ]; then
+  WANT="$SW $VERSION $JAR_NAME"
+  find_launch() {
+    if [ "$SW" = quilt ]; then
+      [ -f quilt-server-launch.jar ] && echo "-jar quilt-server-launch.jar nogui"
+      return 0
+    fi
+    A=$(ls -1 libraries/net/neoforged/neoforge/*/unix_args.txt libraries/net/minecraftforge/forge/*/unix_args.txt 2>/dev/null | tail -n 1)
+    if [ -n "$A" ]; then echo "@$A nogui"; return 0; fi
+    F=$(ls -1 forge-*.jar 2>/dev/null | grep -v installer | tail -n 1)
+    [ -n "$F" ] && echo "-jar $F nogui"
+    return 0
+  }
+  L=$(find_launch)
+  if [ "$(cat aethelhost-install.json 2>/dev/null)" != "$WANT" ] || [ -z "$L" ]; then
+    say "Instalando $SW $VERSION (só na primeira vez; pode levar alguns minutos)..."
+    if [ "$SW" = quilt ]; then
+      java -jar "$JAR_NAME" install server "$VERSION" --download-server --install-dir="$DIR" </dev/null 2>&1 || { echo "ERRO: o instalador terminou com erro."; exit 1; }
+    else
+      java -jar "$JAR_NAME" --installServer </dev/null 2>&1 || { echo "ERRO: o instalador terminou com erro."; exit 1; }
+    fi
+    L=$(find_launch)
+    if [ -z "$L" ]; then echo "ERRO: a instalação terminou, mas não achei o arquivo para ligar o servidor."; exit 1; fi
+    printf '%s' "$WANT" > aethelhost-install.json
+  fi
+  LAUNCH="$L"
+fi
+
 rm -f logs/latest.log
 say "Iniciando o servidor (Java $(java_major), ${XMX} MB)..."
-tmux new-session -d -s "$SESSION" -c "$DIR" "exec java -Xms128M -Xmx${XMX}M -jar '$JAR_NAME' nogui"
+tmux new-session -d -s "$SESSION" -c "$DIR" "exec java -Xms128M -Xmx${XMX}M $LAUNCH"
 echo "BH_STARTED"
 '''
 
@@ -662,6 +595,8 @@ def remote_setup_script(server, need, jar):
         f"JAR_URL={q(jar['url'])}\nJAR_NAME={q(jar['name'])}\n"
         f"JAR_ALGO={q(jar['hash'][0] if jar['hash'] else '')}\nJAR_HASH={q(jar['hash'][1] if jar['hash'] else '')}\n"
         f"MOTD={q(motd)}\nICON_B64={q(icon)}\n"
+        f"RAMMB={int(server.get('ramMb') or DEFAULT_RAM_MB)}\nSW={q(server['software'])}\nVERSION={q(server['version'])}\n"
+        f"INSTALLER={1 if jar.get('installer') else 0}\n"
     )
     return head + JAVA_MAJOR_SH + SETUP_BODY
 
@@ -688,8 +623,6 @@ class RemoteRuntime(Runtime):
         try:
             need = required_java(server["version"])
             self.log(f"Conectando à VPS {self.vps['host']}…")
-            if server["software"] in INSTALLERS:
-                raise RuntimeError(f"{SOFTWARE[server['software']]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
             jar = spec_for(server["software"], server["version"])
             if jar.get("note"):
                 self.log(jar["note"])
@@ -714,6 +647,31 @@ class RemoteRuntime(Runtime):
             self.log("O servidor já estava rodando na VPS. Reconectado ao console.")
         self.session_up = True
         self._tail("500" if self._adopted else "+1")
+
+    def adopt(self, server):
+        """Depois de reiniciar o AethelHost: se o servidor ainda está rodando na VPS (tmux), volta a acompanhar o console."""
+        with self.lock:
+            if self.state != "offline":
+                return
+            self.state = "online"
+            self.plan = server["plan"]
+            self.gamerules = dict(server.get("gamerules") or {})
+            self.players.clear()
+        self.vps = {**server["vps"], "owner": server["owner"]}
+        self.session_up, self.gone, self._adopted = True, False, True
+        self.log("Reconectado a um servidor que já estava rodando na VPS.")
+        threading.Thread(target=self._adopt_run, daemon=True).start()
+
+    def _adopt_run(self):
+        threading.Timer(6, self._ask_players).start()
+        self._tail("500")
+
+    def _ask_players(self):
+        try:
+            if self.state == "online":
+                self.command("list", echo=False)
+        except (ApiError, RuntimeError):
+            pass
 
     def _tail(self, start_at):
         threading.Thread(target=self._poll_session, daemon=True).start()
@@ -825,6 +783,23 @@ def monitor():
                 traceback.print_exc()
 
 
+def adopt_vps_servers():
+    """Servidores em VPS continuam rodando lá quando o AethelHost reinicia: vê quais ainda estão no ar e reconecta."""
+    seen = {}
+    for server in db_load():
+        if server["plan"] != "vps":
+            continue
+        key = (server["owner"], server["vps"]["host"], server["vps"]["port"], server["vps"]["user"])
+        try:
+            if key not in seen:
+                _, out = ssh_script({**server["vps"], "owner": server["owner"]}, 'tmux ls 2>/dev/null | cut -d: -f1', 25)
+                seen[key] = set(out.split())
+            if f"bh-{server['id']}" in seen[key]:
+                runtime(server).adopt(server)
+        except (RuntimeError, content.ContentError, OSError):
+            seen[key] = seen.get(key, set())  # VPS fora do ar agora: o servidor aparece desligado até alguém abrir o painel
+
+
 def shutdown_all():
     """Desliga os servidores deste PC. Os da VPS continuam rodando lá, no tmux."""
     local = [rt for rt in RUNTIMES.values() if not isinstance(rt, RemoteRuntime)]
@@ -868,6 +843,7 @@ def view(server):
         "publicName": f"{server['ip']}.{DOMAIN}",
         "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
         "maxPlayers": _max_players(server),
+        "vpsRamOptions": vps_ram_options(server) if server["plan"] == "vps" else None,
         "softwareLabel": SOFTWARE[server["software"]]["label"],
         "contentKind": content.kind_of(server),
         "iconVersion": icon_version(server["id"]),
@@ -952,8 +928,6 @@ def api_create(query, body):
         raise ApiError(400, f"O {SOFTWARE[software]['label']} não tem a versão {version}.")
     if plan not in ("free", "vps"):
         raise ApiError(400, "Plano inválido.")
-    if plan == "vps" and software in INSTALLERS:
-        raise ApiError(400, f"{SOFTWARE[software]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
 
     vps = None
     if plan == "free":
@@ -966,12 +940,19 @@ def api_create(query, body):
         port = v.get("port")
         if not HOST_RE.match(host) or not USER_RE.match(user) or not isinstance(port, int) or not 1 <= port <= 65535:
             raise ApiError(400, "Dados da VPS inválidos.")
+        sshx.check_host(host)  # nada de localhost nem rede interna
         vps = {"provider": str(v.get("provider", "Outro"))[:40], "host": host, "port": port, "user": user}
 
     with DB_LOCK:
         servers = db_load()
         if any(s["ip"] == ip for s in servers):
             raise ApiError(409, "Este endereço já está em uso. Escolha outro.")
+        if plan == "vps":
+            mine = [s for s in servers if s["plan"] == "vps" and s["owner"] == current_user()["id"]]
+            if len(mine) >= MAX_VPS_SERVERS:
+                raise ApiError(429, f"Limite de {MAX_VPS_SERVERS} servidores em VPS por conta.")
+            if vps["host"] not in {s["vps"]["host"] for s in mine} and len({s["vps"]["host"] for s in mine}) >= MAX_VPS_HOSTS:
+                raise ApiError(429, f"Limite de {MAX_VPS_HOSTS} VPS diferentes por conta.")
         # Neste PC a porta também precisa estar livre; na VPS basta não repetir a de outro servidor da mesma VPS.
         if plan == "vps":
             used = {s["port"] for s in servers if s["plan"] == "vps" and s["vps"]["host"] == vps["host"]}
@@ -1014,6 +995,17 @@ def _require_offline(sid, what):
         raise ApiError(409, f"Desligue o servidor antes de {what}.")
 
 
+VPS_RAM_STEPS = (1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 32768)
+
+
+def vps_ram_options(server):
+    """RAM oferecida numa VPS: até 80% da memória dela (medida em "Testar conexão"); antes disso, só 1 e 2 GB."""
+    mem = (server.get("vps") or {}).get("memMb")
+    if not mem:
+        return [1024, 2048]
+    return [m for m in VPS_RAM_STEPS if m <= mem * 0.8] or [512 if mem < 1024 else 1024]
+
+
 def api_software_set(query, body, sid):
     """Troca software, versão e/ou RAM. Só com o servidor desligado; guarda um backup do mundo antes."""
     with DB_LOCK:
@@ -1027,10 +1019,9 @@ def api_software_set(query, body, sid):
             raise ApiError(400, "Software inválido.")
         if not valid_version(sw, version):
             raise ApiError(400, f"O {SOFTWARE[sw]['label']} não tem a versão {version}.")
-        if not isinstance(ram, int) or (ram not in ram_options() and ram != server["ramMb"]):
-            raise ApiError(400, "Quantidade de RAM inválida para este PC.")
-        if server["plan"] == "vps" and sw in INSTALLERS:
-            raise ApiError(400, f"{SOFTWARE[sw]['label']} ainda não funciona no plano VPS. Use Vanilla, Paper, Purpur ou Fabric.")
+        allowed_ram = vps_ram_options(server) if server["plan"] == "vps" else ram_options()
+        if not isinstance(ram, int) or (ram not in allowed_ram and ram != server["ramMb"]):
+            raise ApiError(400, "Quantidade de RAM inválida para " + ("esta VPS." if server["plan"] == "vps" else "este PC."))
 
         changed = (sw, version) != (server["software"], server["version"])
         backup = None
@@ -1042,10 +1033,21 @@ def api_software_set(query, body, sid):
                 raise ApiError(409, "Voltar para uma versão mais antiga pode corromper o mundo.",
                                {"needConfirm": True})
             backup = manage.create_backup(sid, "antes-de-mudar-software")
-        had_content = changed and any(
-            f.name.endswith((".jar", ".jar.disabled"))
-            for kind in ("mods", "plugins") for f in (SERVERS_DIR / sid / kind).glob("*") if f.is_file()
-        )
+        elif changed and server["plan"] == "vps":
+            try:
+                backup = remote.create_backup(server, "antes-de-mudar-software")
+            except (RuntimeError, content.ContentError):
+                backup = None  # sem conexão agora: a troca continua (o mundo na VPS não é mexido)
+        if server["plan"] == "vps":
+            try:
+                had_content = changed and any(remote.content_list(server, kind) for kind in ("mods", "plugins"))
+            except (RuntimeError, content.ContentError):
+                had_content = False
+        else:
+            had_content = changed and any(
+                f.name.endswith((".jar", ".jar.disabled"))
+                for kind in ("mods", "plugins") for f in (SERVERS_DIR / sid / kind).glob("*") if f.is_file()
+            )
         server.update(software=sw, version=version, ramMb=ram)
         db_save(servers)
     return 200, {**view(server), "backup": backup, "warnContent": had_content}
@@ -1053,8 +1055,6 @@ def api_software_set(query, body, sid):
 
 def _content_server(sid, mutate=False):
     server = find_server(sid)
-    if server["plan"] != "free":
-        raise ApiError(501, "Mods e plugins na VPS ainda não estão disponíveis. Use o plano Grátis.")
     if not content.kind_of(server):
         raise ApiError(400, "O Vanilla não aceita mods nem plugins. Em Software, escolha Paper, Purpur ou Fabric.")
     if mutate:
@@ -1065,7 +1065,7 @@ def _content_server(sid, mutate=False):
 def api_content_list(query, body, sid):
     server = find_server(sid)
     kind = content.kind_of(server)
-    if server["plan"] != "free" or not kind:
+    if not kind:
         return 200, {"kind": kind, "items": [], "supported": False}
     return 200, {"kind": kind, "items": content.list_items(server), "supported": True}
 
@@ -1184,16 +1184,30 @@ def api_vps_check(query, body, sid):
     except RuntimeError as e:
         raise ApiError(502, str(e))
     info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
-    return 200, {"info": info, "needJava": required_java(server["version"])}
+    try:
+        mem = int(info.get("MEM", "0"))
+    except ValueError:
+        mem = 0
+    if mem > 0:
+        with DB_LOCK:
+            servers = db_load()
+            for s in servers:
+                if s["plan"] == "vps" and s["owner"] == server["owner"] and s["vps"]["host"] == server["vps"]["host"]:
+                    s["vps"]["memMb"] = mem
+            db_save(servers)
+        server = find_server(sid)
+    return 200, {"info": info, "needJava": required_java(server["version"]), "server": view(server)}
 
 
 # ---------------------------------------------------------------- Jogadores, arquivos, mundos e backups
+# No plano Grátis tudo acontece na pasta deste PC (manage.py, options.py). Na VPS as mesmas telas usam remote.py (SSH).
 
 def _manage_server(sid):
-    server = find_server(sid)
-    if server["plan"] != "free":
-        raise ApiError(501, "Esta aba ainda não está disponível na VPS. Use o plano Grátis.")
-    return server
+    return find_server(sid)
+
+
+def _remote(server):
+    return server["plan"] == "vps"
 
 
 def _state(sid):
@@ -1206,15 +1220,15 @@ def _first(query, key):
 
 
 def api_players(query, body, sid):
-    if find_server(sid)["plan"] != "free":
-        return 200, {"supported": False}
+    server = find_server(sid)
     rt = RUNTIMES.get(sid)
     snap = rt.snapshot() if rt else {"state": "offline", "players": []}
-    return 200, {"supported": True, "state": snap["state"], "online": snap["players"], **manage.get_players(sid)}
+    lists = remote.get_players(server) if _remote(server) else manage.get_players(sid)
+    return 200, {"supported": True, "state": snap["state"], "online": snap["players"], **lists}
 
 
 def api_players_action(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     action = str(body.get("action", ""))
     name, reason = manage.check_player_action(action, body.get("name"), body.get("reason"))
     state = _state(sid)
@@ -1225,58 +1239,70 @@ def api_players_action(query, body, sid):
         raise ApiError(409, "Espere o servidor terminar de iniciar ou de parar.")
     if action == "kick":
         raise ApiError(409, "Só dá para expulsar quem está online: ligue o servidor.")
-    manage.offline_change(sid, action, name, reason)
+    if _remote(server):
+        remote.offline_change(server, action, name, reason)
+    else:
+        manage.offline_change(sid, action, name, reason)
     return 200, {"mode": "file"}
 
 
 def api_files_list(query, body, sid):
-    if find_server(sid)["plan"] != "free":
-        return 200, {"supported": False}
-    return 200, {"supported": True, **manage.list_dir(sid, _first(query, "path"))}
+    server = find_server(sid)
+    data = remote.list_dir(server, _first(query, "path")) if _remote(server) else manage.list_dir(sid, _first(query, "path"))
+    return 200, {"supported": True, **data}
 
 
 def api_files_read(query, body, sid):
-    _manage_server(sid)
-    return 200, manage.read_text(sid, _first(query, "path"))
+    server = _manage_server(sid)
+    return 200, (remote.read_text(server, _first(query, "path")) if _remote(server) else manage.read_text(sid, _first(query, "path")))
 
 
 def api_files_write(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "editar arquivos")
-    manage.write_text(sid, str(body.get("path", "")), body.get("content", ""))
+    (remote.write_text(server, str(body.get("path", "")), body.get("content", "")) if _remote(server)
+     else manage.write_text(sid, str(body.get("path", "")), body.get("content", "")))
     return 200, {"ok": True}
 
 
 def api_files_upload(query, data, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "enviar arquivos")
-    manage.save_upload(sid, _first(query, "dir"), _first(query, "name"), data)
+    if _remote(server):
+        remote.save_upload(server, _first(query, "dir"), _first(query, "name"), data)
+    else:
+        manage.save_upload(sid, _first(query, "dir"), _first(query, "name"), data)
     return 200, {"ok": True}
 
 
 def api_files_mkdir(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "criar pastas")
-    manage.make_dir(sid, str(body.get("path", "")), str(body.get("name", "")))
+    (remote.make_dir(server, str(body.get("path", "")), str(body.get("name", ""))) if _remote(server)
+     else manage.make_dir(sid, str(body.get("path", "")), str(body.get("name", ""))))
     return 200, {"ok": True}
 
 
 def api_files_delete(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "apagar arquivos")
-    manage.delete_path(sid, str(body.get("path", "")))
+    (remote.delete_path(server, str(body.get("path", ""))) if _remote(server) else manage.delete_path(sid, str(body.get("path", ""))))
     return 200, {"ok": True}
 
 
 def api_files_rename(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "renomear arquivos")
-    manage.rename_path(sid, str(body.get("path", "")), str(body.get("name", "")))
+    (remote.rename_path(server, str(body.get("path", "")), str(body.get("name", ""))) if _remote(server)
+     else manage.rename_path(sid, str(body.get("path", "")), str(body.get("name", ""))))
     return 200, {"ok": True}
 
 
 def api_files_download(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
+    if _remote(server):
+        dest, filename, ctype = remote.download(server, _first(query, "path"))
+        return 200, Raw(path=dest, ctype=ctype or "application/octet-stream", filename=filename, delete_after=True)
     target = manage.safe_path(sid, _first(query, "path"))
     if target.is_dir():
         label = target.name or "servidor"
@@ -1286,54 +1312,57 @@ def api_files_download(query, body, sid):
 
 
 def api_worlds(query, body, sid):
-    if find_server(sid)["plan"] != "free":
-        return 200, {"supported": False}
-    return 200, {"supported": True, "worlds": manage.list_worlds(sid)}
+    server = find_server(sid)
+    return 200, {"supported": True, "worlds": remote.list_worlds(server) if _remote(server) else manage.list_worlds(sid)}
 
 
 def api_world_use(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "trocar de mundo")
-    manage.use_world(sid, str(body.get("name", "")))
+    (remote.use_world(server, str(body.get("name", ""))) if _remote(server) else manage.use_world(sid, str(body.get("name", ""))))
     return 200, {"ok": True}
 
 
 def api_world_create(query, body, sid):
     server = _manage_server(sid)
     _require_offline(sid, "criar um mundo")
-    manage.create_world(sid, str(body.get("name", "")), body.get("seed", ""), str(body.get("type", "normal")),
-                        vkey(server["version"]))
+    fn = remote.create_world if _remote(server) else manage.create_world
+    fn(server if _remote(server) else sid, str(body.get("name", "")), body.get("seed", ""), str(body.get("type", "normal")),
+       vkey(server["version"]))
     return 200, {"ok": True}
 
 
 def api_world_delete(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "apagar um mundo")
-    manage.delete_world(sid, str(body.get("name", "")))
+    (remote.delete_world(server, str(body.get("name", ""))) if _remote(server) else manage.delete_world(sid, str(body.get("name", ""))))
     return 200, {"ok": True}
 
 
 def api_world_download(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     name = _first(query, "name")
+    if _remote(server):
+        return 200, Raw(path=remote.world_download(server, name), ctype="application/gzip", filename=f"{name}.tar.gz", delete_after=True)
     return 200, Raw(path=manage.world_zip(sid, name), ctype="application/zip", filename=f"{name}.zip", delete_after=True)
 
 
 def api_world_upload(query, zip_path, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "enviar um mundo")
-    manage.upload_world(sid, _first(query, "name"), zip_path)
+    (remote.upload_world(server, _first(query, "name"), zip_path) if _remote(server) else manage.upload_world(sid, _first(query, "name"), zip_path))
     return 200, {"ok": True}
 
 
 def api_backups(query, body, sid):
-    if find_server(sid)["plan"] != "free":
-        return 200, {"supported": False}
-    return 200, {"supported": True, "backups": manage.list_backups(sid), "state": _state(sid)}
+    server = find_server(sid)
+    return 200, {"supported": True, "backups": remote.list_backups(server) if _remote(server) else manage.list_backups(sid),
+                 "state": _state(sid)}
 
 
 def api_backup_create(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
+    make = (lambda: remote.create_backup(server, "manual")) if _remote(server) else (lambda: manage.create_backup(sid, "manual"))
     state = _state(sid)
     if state in ("starting", "stopping"):
         raise ApiError(409, "Espere o servidor terminar de iniciar ou de parar.")
@@ -1349,48 +1378,55 @@ def api_backup_create(query, body, sid):
                 if time.time() > deadline:
                     raise ApiError(504, "O servidor demorou para salvar o mundo. Tente de novo.")
                 time.sleep(0.5)
-            name = manage.create_backup(sid, "manual")
+            name = make()
         finally:
             try:
                 rt.command("save-on")
             except ApiError:
                 pass
     else:
-        name = manage.create_backup(sid, "manual")
+        name = make()
     if not name:
         raise ApiError(400, "Ainda não há mundo para guardar: ligue o servidor uma vez.")
     return 200, {"name": name}
 
 
 def api_backup_restore(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "restaurar um backup")
-    return 200, manage.restore_backup(sid, str(body.get("name", "")))
+    return 200, (remote.restore_backup(server, str(body.get("name", ""))) if _remote(server) else manage.restore_backup(sid, str(body.get("name", ""))))
 
 
 def api_backup_delete(query, body, sid):
-    _manage_server(sid)
-    manage.delete_backup(sid, str(body.get("name", "")))
+    server = _manage_server(sid)
+    (remote.delete_backup(server, str(body.get("name", ""))) if _remote(server) else manage.delete_backup(sid, str(body.get("name", ""))))
     return 200, {"ok": True}
 
 
 def api_backup_download(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
+    if _remote(server):
+        dest, name = remote.download_backup(server, _first(query, "name"))
+        return 200, Raw(path=dest, ctype="application/gzip", filename=name, delete_after=True)
     f = manage.backup_path(sid, _first(query, "name"))
     return 200, Raw(path=f, ctype="application/zip", filename=f.name)
 
 
 def api_settings(query, body, sid):
     server = find_server(sid)
-    if server["plan"] != "free":
-        return 200, {"supported": False}
+    if _remote(server):
+        remote.pull_for_settings(server)
     return 200, {"supported": True, "state": _state(sid), **options.get_settings(server)}
 
 
 def api_settings_properties(query, body, sid):
-    _manage_server(sid)
+    server = _manage_server(sid)
     _require_offline(sid, "editar as configurações do jogo")
+    if _remote(server):
+        remote.pull(server, ("server.properties",))
     options.set_property_changes(sid, body.get("changes"))
+    if _remote(server):
+        remote.push_properties(server)
     return 200, {"ok": True}
 
 
@@ -1399,8 +1435,6 @@ def api_settings_gamerules(query, body, sid):
     with DB_LOCK:
         servers = db_load()
         server = _pick(servers, sid)
-        if server["plan"] != "free":
-            raise ApiError(501, "Esta aba ainda não está disponível na VPS. Use o plano Grátis.")
         clean = options.check_rule_changes(server, body.get("changes"))
         server["gamerules"] = {**(server.get("gamerules") or {}), **clean}
         db_save(servers)
@@ -2303,6 +2337,7 @@ def main():
     migrate_legacy_names()
     manage.cleanup_tmp()
     threading.Thread(target=monitor, daemon=True).start()
+    threading.Thread(target=adopt_vps_servers, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:
