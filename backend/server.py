@@ -42,6 +42,7 @@ import notify  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
 import remote  # noqa: E402
+import sms  # noqa: E402
 import sshx  # noqa: E402
 import tunnel  # noqa: E402
 from sshx import ensure_key, ssh_cmd, ssh_permanent, ssh_script, ssh_stream  # noqa: E402
@@ -1628,7 +1629,8 @@ def _require_setup():
 
 def api_auth_providers(query, body):
     return 200, {"providers": auth.list_providers(), "canSetup": auth.setup_allowed(current_user()),
-                 "password": {"enabled": mail.is_configured()}}  # e-mail e senha só funcionam com o envio de e-mail configurado
+                 "password": {"enabled": mail.is_configured()},  # e-mail e senha só funcionam com o envio de e-mail configurado
+                 "sms": {"enabled": sms.is_configured()}}
 
 
 def api_auth_me(query, body):
@@ -1705,6 +1707,33 @@ def api_account_password_start(query, body):
 
 def api_account_email_start(query, body):
     return 200, accounts.start_email_change(current_user(), body)
+
+
+def api_account_phone_start(query, body):
+    return 200, accounts.start_phone_change(current_user(), body)
+
+
+def api_account_phone_remove(query, body):
+    return 200, {"ok": True, "user": auth.self_user(accounts.remove_phone(current_user(), body))}
+
+
+def api_sms_get(query, body):
+    _require_setup()
+    return 200, sms.config_view()
+
+
+def api_sms_save(query, body):
+    _require_setup()
+    return 200, sms.save(body)
+
+
+def api_sms_test(query, body):
+    _require_setup()
+    to = sms.normalize_phone(body.get("to"))
+    if not to:
+        raise ApiError(400, "Informe um número válido, como +55 11 91234-5678.")
+    sms.send(to, "AethelHost: o envio de SMS está funcionando.")
+    return 200, {"ok": True}
 
 
 def api_account_verify(query, body):
@@ -2039,6 +2068,15 @@ def api_pw_login(query, body):
     return 200, accounts.login(body)
 
 
+def api_pw_forgot(query, body):
+    captcha.require(body.get("captcha"))  # enviar e-mail/SMS de graça para qualquer um é um convite ao abuso
+    return 200, accounts.start_reset(body)
+
+
+def api_pw_reset(query, body):
+    return 200, accounts.finish_reset(body)
+
+
 def api_pw_resend(query, body):
     return 200, accounts.resend(body)
 
@@ -2095,6 +2133,13 @@ ROUTES = [
     ("POST", r"^/api/account/unlink$", api_account_unlink),
     ("POST", r"^/api/account/password/start$", api_account_password_start),
     ("POST", r"^/api/account/email/start$", api_account_email_start),
+    ("POST", r"^/api/account/phone/start$", api_account_phone_start),
+    ("POST", r"^/api/account/phone/remove$", api_account_phone_remove),
+    ("GET", r"^/api/auth/sms$", api_sms_get),
+    ("POST", r"^/api/auth/sms$", api_sms_save),
+    ("POST", r"^/api/auth/sms/test$", api_sms_test),
+    ("POST", r"^/api/auth/password/forgot$", api_pw_forgot),
+    ("POST", r"^/api/auth/password/reset$", api_pw_reset),
     ("POST", r"^/api/account/verify$", api_account_verify),
     ("POST", r"^/api/account/resend$", api_account_resend),
     ("GET", rf"^/api/users/{ID}/avatar$", api_user_avatar),
@@ -2202,7 +2247,8 @@ NEED = {
 }
 PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
-          api_captcha_config, api_captcha_get, api_captcha_save}  # não exigem login
+          api_captcha_config, api_captcha_get, api_captcha_save, api_pw_forgot, api_pw_reset,
+          api_sms_get, api_sms_save, api_sms_test}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload, api_account_avatar_set, api_account_banner_image}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024

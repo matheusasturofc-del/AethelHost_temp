@@ -18,6 +18,7 @@ import unicodedata
 
 import auth
 import mail
+import sms
 from content import ContentError
 
 CODE_TTL = 600
@@ -26,6 +27,7 @@ RESEND_AFTER = 60
 MAX_SENDS = 4                 # envios por pedido (o primeiro + reenvios)
 FAIL_LIMIT, FAIL_WINDOW = 5, 15 * 60          # senhas erradas por e-mail
 SEND_PER_EMAIL, SEND_PER_ALL, SEND_WINDOW = 5, 60, 3600
+SMS_PER_TARGET, SMS_PER_ALL = 3, 30  # SMS custa dinheiro: limite bem menor que o de e-mails
 USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,20}$")  # só minúsculas
 RESERVED = {"admin", "administrador", "administrator", "root", "system", "sistema", "suporte", "support", "moderador",
             "moderator", "staff", "null", "undefined", mail.SITE_NAME.lower()}
@@ -122,9 +124,32 @@ def _purge():
 
 
 def _deliver(tid, ch, lang):
-    """Gera um código novo e o envia (ou, se o e-mail já tem conta, envia o aviso). Só conta como envio se der certo."""
+    """Gera um código novo e o envia por e-mail ou SMS (ou, se o e-mail já tem conta, envia o aviso). Só conta como envio se der certo.
+    `fake`: o e-mail/celular não é de nenhuma conta (recuperar senha): não sai nada, mas a resposta e os limites são iguais."""
+    if ch.get("channel") == "sms":
+        key = f"sms:{ch.get('email') or ch['phone']}"
+        for k, limit in ((key, SMS_PER_TARGET), ("sms:*", SMS_PER_ALL)):
+            wait = _wait_for(k, limit, SEND_WINDOW)
+            if wait:
+                raise ContentError(429, f"Muitos SMS enviados. Tente de novo em {_wait_text(wait)}.")
+        if ch.get("fake"):
+            ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))
+        else:
+            code = f"{secrets.randbelow(10 ** 6):06d}"
+            sms.send(ch["phone"], sms.code_text(lang, ch["purpose"], code))
+            ch["code_hash"] = _code_hash(tid, code)
+            _hit("sms:*")
+        _hit(key)
+        ch.update(sent_at=time.time(), tries=0, sends=ch.get("sends", 0) + 1, exp=time.time() + CODE_TTL)
+        return
     _check_send_budget(ch["email"])
     html = None
+    if ch.get("fake"):
+        ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))  # nenhum código serve
+        _hit(f"send:{ch['email']}")
+        _hit("send:*")
+        ch.update(sent_at=time.time(), tries=0, sends=ch.get("sends", 0) + 1, exp=time.time() + CODE_TTL)
+        return
     if ch.get("exists"):
         subject, text = mail.code_message(lang, ch.get("exists_kind", "exists"), "")
         ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))  # nenhum código serve
@@ -145,7 +170,9 @@ def _start(ch, lang):
     with _LOCK:
         _purge()
         _challenges[tid] = ch
-    return {"challenge": token, "email": mail.mask_email(ch["email"]), "resendIn": RESEND_AFTER}
+    channel = ch.get("channel", "email")
+    target = mail.mask_email(ch["email"]) if channel == "email" else (sms.mask_phone(ch["phone"]) if ch["purpose"] == "phoneadd" else "")
+    return {"challenge": token, "email": target, "channel": channel, "target": target, "resendIn": RESEND_AFTER}
 
 
 def _need_mail():
@@ -397,6 +424,78 @@ def start_email_change(user, body):
     return _start(ch, _lang(body))
 
 
+# ---------------------------------------------------------------- esqueci a senha (código por e-mail ou por SMS)
+
+def start_reset(body):
+    """Passo 1: e-mail da conta + como receber o código (e-mail ou SMS). A resposta é a mesma exista ou não a conta (e tenha ou
+    não celular), para ninguém descobrir quem tem conta."""
+    email = mail.normalize_email(body.get("email"))
+    if not email:
+        raise ContentError(400, "Esse e-mail não parece válido.")
+    channel = "sms" if body.get("channel") == "sms" else "email"
+    if channel == "email":
+        _need_mail()
+    elif not sms.is_configured():
+        raise ContentError(503, "O envio de SMS ainda não foi configurado pelo administrador.")
+    user = find_password_user(email)
+    ch = {"purpose": "reset", "channel": channel, "email": email, "user": user["id"] if user else None,
+          "fake": not user or (channel == "sms" and not user.get("phone"))}
+    if channel == "sms":
+        ch["phone"] = (user or {}).get("phone") or "+10000000000"
+    return _start(ch, _lang(body))
+
+
+def finish_reset(body):
+    """Passo 2: código + nova senha. Vale uma vez; desconecta todos os aparelhos e avisa por e-mail."""
+    tid, ch = _get(body.get("challenge"))
+    if ch["purpose"] != "reset":
+        raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
+    new = body.get("password")
+    if not isinstance(new, str) or new != body.get("confirm"):
+        raise ContentError(400, "A confirmação não é igual à nova senha.")
+    user = auth.get_user(ch["user"]) if ch.get("user") else None
+    check_password(new, ch["email"], (user or {}).get("username") or "")
+    new_hash = hash_password(new)  # o custo é o mesmo exista ou não a conta
+    _consume_code(tid, ch, body.get("code"))  # (com `fake` nenhum código serve: mesmas mensagens e mesmas tentativas)
+    if not user:
+        raise ContentError(410, "A conta não existe mais.")
+    auth.set_password(user, new_hash, login_email=ch["email"])
+    auth.logout_all(user["id"])
+    with _LOCK:
+        _hits.pop(f"fail:{ch['email']}", None)
+        _hits.pop(f"chg:{user['id']}", None)
+    _notify(ch["email"], _lang(body), "pw_changed")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- celular de recuperação
+
+def start_phone_change(user, body):
+    """Cadastrar ou trocar o celular: pede a senha atual e manda um SMS de confirmação para o número novo."""
+    if not sms.is_configured():
+        raise ContentError(503, "O envio de SMS ainda não foi configurado pelo administrador.")
+    if not user.get("pw"):
+        raise ContentError(409, "Crie uma senha primeiro: é ela que protege o celular de recuperação.")
+    _check_current(user, body.get("current"))
+    phone = sms.normalize_phone(body.get("phone"))
+    if not phone:
+        raise ContentError(400, "Esse número não parece válido. Use o formato internacional, como +55 11 91234-5678.")
+    if phone == user.get("phone"):
+        raise ContentError(400, "Esse já é o celular da sua conta.")
+    return _start({"purpose": "phoneadd", "channel": "sms", "phone": phone, "user": user["id"]}, _lang(body))
+
+
+def remove_phone(user, body):
+    _check_current(user, body.get("current"))
+    if not user.get("phone"):
+        raise ContentError(409, "Sua conta não tem celular cadastrado.")
+    auth.set_phone(user, None)
+    email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+    if email:
+        _notify(email, _lang(body), "phone_removed")
+    return user
+
+
 def _notify(email, lang, kind):
     try:
         subject, text = mail.notice_message(lang, kind)
@@ -408,11 +507,16 @@ def _notify(email, lang, kind):
 def confirm_change(user, body, cookie_header):
     """Passo 2: o código certo aplica a mudança. Devolve a conta atualizada."""
     tid, ch = _get(body.get("challenge"))
-    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw"):
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw", "phoneadd"):
         raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
     _consume_code(tid, ch, body.get("code"))
     lang = _lang(body)
-    if ch["purpose"] == "profilepw":  # primeira entrada por um serviço: agora o perfil e a senha valem
+    if ch["purpose"] == "phoneadd":
+        auth.set_phone(user, ch["phone"])
+        email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+        if email:
+            _notify(email, lang, "phone_changed")
+    elif ch["purpose"] == "profilepw":  # primeira entrada por um serviço: agora o perfil e a senha valem
         prof = ch["profile"]
         with auth.LOCK:
             if user.get("username"):
@@ -442,6 +546,6 @@ def confirm_change(user, body, cookie_header):
 
 def resend_change(user, body):
     tid, ch = _get(body.get("challenge"))
-    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw"):
+    if ch.get("user") != user["id"] or ch["purpose"] not in ("pwchange", "pwcreate", "emailchange", "profilepw", "phoneadd"):
         raise ContentError(410, "O código expirou ou o pedido não existe mais. Comece de novo.")
     return resend(body)

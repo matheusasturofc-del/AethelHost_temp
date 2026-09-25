@@ -506,7 +506,9 @@ def logout(header):
 
 def self_user(user):
     """A conta vista por ela mesma: o que os outros não precisam saber (se tem senha)."""
-    return {**public_user(user), "hasPassword": bool(user.get("pw"))}
+    import sms  # aqui para não criar ciclo
+    return {**public_user(user), "hasPassword": bool(user.get("pw")), "hasPhone": bool(user.get("phone")),
+            "phoneMask": sms.mask_phone(user["phone"]) if user.get("phone") else ""}
 
 
 def all_users():
@@ -571,6 +573,26 @@ def set_password(user, pw_hash, login_email=None):
         if login_email and not pw_email(user):
             user["pwEmail"] = login_email
         _write(USERS_FILE, list(_users.values()))
+
+
+def set_phone(user, phone):
+    """Celular de recuperação (só depois de confirmado por SMS). None remove."""
+    with LOCK:
+        if phone:
+            user["phone"] = phone
+        else:
+            user.pop("phone", None)
+        _write(USERS_FILE, list(_users.values()))
+
+
+def logout_all(user_id):
+    """Encerra TODAS as sessões da conta (depois de recuperar a senha)."""
+    with LOCK:
+        gone = [k for k, s in _sessions.items() if s["user"] == user_id]
+        for k in gone:
+            del _sessions[k]
+        if gone:
+            _write(SESSIONS_FILE, _sessions)
 
 
 def set_email(user, new_email):

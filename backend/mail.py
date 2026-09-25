@@ -224,12 +224,12 @@ def code_message(lang, purpose, code):
                 f"Se foi você, não precisa fazer mais nada. Se não foi, ignore esta mensagem.")
     if en:
         why = {"register": "to finish creating your account", "profilepw": "to finish creating your account", "pwchange": "to change your password", "pwcreate": "to create your password",
-               "emailchange": "to confirm your new email"}.get(purpose, "to sign in")
+               "emailchange": "to confirm your new email", "reset": "to reset your password"}.get(purpose, "to sign in")
         return (f"{code} is your {SITE_NAME} code",
                 f"Your {SITE_NAME} verification code {why} is:\n\n    {code}\n\nIt expires in 10 minutes. "
                 f"If it wasn't you, ignore this email and don't share the code with anyone.")
     why = {"register": "para terminar de criar a sua conta", "profilepw": "para terminar de criar a sua conta", "pwchange": "para trocar a sua senha", "pwcreate": "para criar a sua senha",
-           "emailchange": "para confirmar o seu novo e-mail"}.get(purpose, "para entrar")
+           "emailchange": "para confirmar o seu novo e-mail", "reset": "para redefinir a sua senha"}.get(purpose, "para entrar")
     return (f"{code} é o seu código do {SITE_NAME}",
             f"O seu código de verificação do {SITE_NAME} {why} é:\n\n    {code}\n\nEle vale por 10 minutos. "
             f"Se não foi você, ignore este e-mail e não passe o código para ninguém.")
@@ -243,6 +243,10 @@ def notice_message(lang, kind):
                        ("Sua senha foi alterada", "A senha da sua conta no {site} acabou de ser alterada. Os seus outros aparelhos foram desconectados.\n\nSe não foi você, entre e troque a senha de novo agora mesmo.")),
         "pw_created": (("A password was added to your account", "A password was just added to your {site} account. You can now sign in with your email and password.\n\nIf it wasn't you, sign in and change it right away."),
                        ("Uma senha foi criada na sua conta", "Uma senha acabou de ser criada na sua conta do {site}. Agora você também pode entrar com o e-mail e a senha.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
+        "phone_changed": (("Your recovery phone was changed", "The recovery phone on your {site} account was just changed.\n\nIf it wasn't you, sign in and change your password right away."),
+                          ("Seu celular de recuperação foi alterado", "O celular de recuperação da sua conta no {site} acabou de ser alterado.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
+        "phone_removed": (("Your recovery phone was removed", "The recovery phone was just removed from your {site} account.\n\nIf it wasn't you, sign in and change your password right away."),
+                          ("Seu celular de recuperação foi removido", "O celular de recuperação acabou de ser removido da sua conta no {site}.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
         "email_changed": (("Your email was changed", "The email on your {site} account was just changed to another address.\n\nIf it wasn't you, contact the administrator."),
                           ("Seu e-mail foi alterado", "O e-mail da sua conta no {site} acabou de ser trocado por outro endereço.\n\nSe não foi você, fale com o administrador.")),
     }

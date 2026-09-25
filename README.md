@@ -47,6 +47,16 @@ Na página de login aparecem os serviços configurados e, depois de um **ou**, o
 - Ainda **não há limites por conta** (quantidade de servidores, RAM). Tudo roda no seu PC.
 - Testes/scripts: `AETHELHOST_DATA` (pasta de dados) e `AETHELHOST_PORT` (porta) permitem subir uma instância isolada sem tocar nos servidores reais (os nomes antigos `BLOCKHOST_*` ainda funcionam). Scripts que chamam a API (`tools/gen_gamerules.py`) precisam do cookie em `AETHELHOST_COOKIE`.
 
+### Esqueci a senha (por e-mail ou por SMS) e celular de recuperação
+
+Na tela de entrar, **Esqueci a senha** pede o e-mail da conta e como receber o código: **por e-mail** ou **por SMS** (a opção de SMS só aparece se o administrador configurou o envio). Com o código de 6 números a pessoa escolhe a nova senha; os outros aparelhos são desconectados e chega um aviso por e-mail.
+
+- **Celular de recuperação:** em **Editar perfil → Segurança → Celular de recuperação** a pessoa cadastra o número (com DDD; sem `+`, 10 ou 11 números viram Brasil `+55`; para outro país comece com `+`). É preciso a **senha atual**, e o número só vale depois de confirmado por um **SMS com código**. Trocar ou remover também exige a senha atual, e o e-mail da conta recebe um aviso. A tela mostra só o final do número (`+55*******5678`).
+- **Só conta com senha do AethelHost:** quem entra apenas por Google/GitHub/Discord não tem senha para redefinir (e é a senha que protege o celular). Essas contas usam o botão do serviço.
+- **Sem revelar quem tem conta:** a resposta é a mesma exista ou não a conta (ou tenha ou não celular), e um código errado dá as mesmas mensagens e tentativas nos dois casos. O código vale 10 minutos, 5 tentativas e uma vez; reenviar espera 1 minuto. Limites: 5 e-mails por endereço por hora e, como SMS custa dinheiro, **3 SMS por hora por conta e 30 no total**. O captcha (se configurado) também vale nesse pedido, para ninguém usar o site para mandar e-mails ou SMS em massa.
+- **Configurar o SMS (o administrador, uma vez):** em `login.html` → **Configurar logins e e-mail** → bloco **SMS**. O AethelHost envia pela **Twilio** (crie a conta em twilio.com; há um teste grátis): cole o **Account SID** (começa com `AC`), o **Auth Token** e o número de envio (ou o SID de um *Messaging Service*, `MG…`), salve e use **Enviar SMS de teste**. Numa conta de teste da Twilio só dá para enviar para números verificados. Fica em `data/sms.json` (o token nunca volta para o navegador). O **modo de teste** não envia nada: mostra o código no terminal do AethelHost e o grava em `data/sms_outbox.jsonl` (serve para experimentar no seu PC).
+- API: `POST /api/auth/password/forgot` (`{email, channel: "email"|"sms"}`), `POST /api/auth/password/reset` (`{challenge, code, password, confirm}`), `POST /api/account/phone/start` e `/api/account/phone/remove`, `GET`/`POST /api/auth/sms` (administrador). Testes: `AETHELHOST_SMS_TEST_BASE=http://127.0.0.1:<porta>` troca a Twilio por uma de mentira.
+
 ### Captcha (criar conta e criar servidor)
 
 Para dificultar contas e servidores criados por robôs, dá para ligar o **Cloudflare Turnstile** nos dois formulários: criar conta por e-mail e senha, completar o perfil na primeira entrada por Google/GitHub/Discord/etc., e criar servidor.

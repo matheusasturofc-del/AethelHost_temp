@@ -734,3 +734,5 @@ main.server-panel > section { min-width: 0; width: 100%; max-width: 1120px; marg
   .narrow { max-width: 100%; }
   h1 { font-size: 26px; }
 }
+.login-form + p.muted { margin-top: 16px; }
+.login-form .field > label.check { font-weight: 400; font-size: 15px; color: var(--text); margin: 6px 0 0; }

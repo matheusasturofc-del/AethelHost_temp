@@ -126,6 +126,26 @@
       <div class="ok-msg" id="stEmailOk"></div>
       <div class="error" id="stEmailErr"></div>
     </section>
+
+    <!-- Celular de recuperação -->
+    <section class="card" id="stPhoneCard">
+      <h2>Celular de recuperação</h2>
+      <p class="muted" style="margin-bottom:6px" id="stPhoneNow"></p>
+      <p class="muted">Cadastre um celular para poder receber por SMS o código do "Esqueci a senha", além do e-mail. Digite a senha atual e o número (com DDD; para outro país, comece com +). Enviamos um SMS para confirmar que o número é seu.</p>
+      <div class="notice" id="stPhoneOff" hidden>O envio de SMS ainda não foi configurado pelo administrador, então não dá para cadastrar o celular por enquanto.</div>
+      <div class="notice" id="stPhoneNeedPw" hidden>Crie uma senha primeiro (acima): é ela que protege o celular de recuperação.</div>
+      <form id="stPhoneForm">
+        <div class="field"><label for="stPhonePw">Senha atual</label><input type="password" id="stPhonePw" autocomplete="current-password" maxlength="128"></div>
+        <div class="field"><label for="stPhoneNew">Celular</label><input type="tel" id="stPhoneNew" autocomplete="tel" maxlength="24" placeholder="+55 11 91234-5678"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" type="submit" id="stPhoneGo">Cadastrar celular</button>
+          <button class="btn btn-danger" type="button" id="stPhoneRemove" hidden>Remover celular</button>
+        </div>
+      </form>
+      <div id="stPhoneCode"></div>
+      <div class="ok-msg" id="stPhoneOk"></div>
+      <div class="error" id="stPhoneErr"></div>
+    </section>
     </div>
 
     <!-- Aba: Conectar-se (outros logins na mesma conta) -->
@@ -149,6 +169,7 @@
     const lang = () => ((document.documentElement.lang || "").startsWith("en") ? "en" : "pt");
     let me = null;
     let mailOn = true;
+    let smsOn = false;
 
     // ---------- Abas (Personalizar | Segurança), como no painel do servidor ----------
     const TABS = ["custom", "security", "connect"];
@@ -194,8 +215,20 @@
       $("stEmailForm").hidden = !has;
       $("stMailOff").hidden = mailOn;
       for (const f of [$("stPwForm"), $("stEmailForm")]) f.querySelectorAll("input, button").forEach((el) => { if (!mailOn) el.disabled = true; });
+      paintPhone();
       paintTheme();
       paintConnect();
+    }
+
+    function paintPhone() {
+      const has = me.hasPassword;
+      $("stPhoneNow").replaceChildren(...(me.hasPhone ? ["O celular de recuperação atual é ", h("b", { translate: "no" }, me.phoneMask), "."] : ["Você ainda não cadastrou um celular."]));
+      $("stPhoneOff").hidden = smsOn;
+      $("stPhoneNeedPw").hidden = has;
+      $("stPhoneForm").hidden = !has;
+      $("stPhoneGo").textContent = me.hasPhone ? "Trocar celular" : "Cadastrar celular";
+      $("stPhoneRemove").hidden = !me.hasPhone;
+      $("stPhoneForm").querySelectorAll("input, button").forEach((el) => { el.disabled = !smsOn; });
     }
 
     // Faz uma ação, mostra o resultado e atualiza a conta.
@@ -279,12 +312,12 @@
           okBox.textContent = okText;
         } catch (e) { dead(e); input.select(); } finally { confirm.disabled = false; }
       } },
-        h("div", {}, "Enviamos um código de 6 números para este e-mail:"),
+        h("div", {}, state.channel === "sms" ? "Enviamos um SMS com um código de 6 números para este celular:" : "Enviamos um código de 6 números para este e-mail:"),
         h("div", { style: "margin-top:4px" }, h("b", { translate: "no" }, state.email)),
         input, confirm,
         h("div", { class: "btn-row", style: "justify-content:center" }, again, h("button", { class: "btn", type: "button", onclick: close }, "Cancelar")),
         stepErr,
-        h("p", { class: "muted small", style: "margin:10px 0 0" }, "O código vale por 10 minutos. Olhe também a caixa de spam."));
+        h("p", { class: "muted small", style: "margin:10px 0 0" }, state.channel === "sms" ? "O código vale por 10 minutos." : "O código vale por 10 minutos. Olhe também a caixa de spam."));
       input.addEventListener("input", () => {
         input.value = input.value.replace(/[^\d ]/g, "");
         if (input.value.replace(/\D/g, "").length === 6) el.requestSubmit();
@@ -309,6 +342,24 @@
       box.replaceChildren(el);
       input.focus();
     }
+
+    // Celular de recuperação
+    $("stPhoneForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      $("stPhoneOk").textContent = $("stPhoneErr").textContent = "";
+      $("stPhoneGo").disabled = true;
+      try {
+        const state = await withWait(api("POST", "/account/phone/start", { current: $("stPhonePw").value, phone: $("stPhoneNew").value, lang: lang() }));
+        codeStep($("stPhoneCode"), $("stPhoneForm"), state, $("stPhoneOk"), $("stPhoneErr"), "Celular cadastrado. Avisamos você por e-mail.");
+      } catch (e) { $("stPhoneErr").textContent = e.message; } finally { $("stPhoneGo").disabled = !smsOn; }
+    });
+    $("stPhoneRemove").addEventListener("click", async () => {
+      $("stPhoneOk").textContent = $("stPhoneErr").textContent = "";
+      if (!$("stPhonePw").value) { $("stPhoneErr").textContent = "Digite a senha atual para remover o celular."; $("stPhonePw").focus(); return; }
+      if (!(await confirmBox("Remover o celular de recuperação? Você continuará recebendo o código de \"Esqueci a senha\" por e-mail.", { title: "Você tem certeza?", ok: "Remover", danger: true }))) return;
+      const r = await act($("stPhoneErr"), $("stPhoneOk"), () => api("POST", "/account/phone/remove", { current: $("stPhonePw").value, lang: lang() }), "Celular removido. Avisamos você por e-mail.");
+      if (r) $("stPhonePw").value = "";
+    });
 
     // Senha
     $("stPwShow").addEventListener("change", (ev) => {
@@ -406,6 +457,7 @@
       try {
         const info = await api("GET", "/auth/providers");
         mailOn = !!(info.password || {}).enabled;
+        smsOn = !!(info.sms || {}).enabled;
         providers = info.providers;
       } catch { /* segue */ }
       paint();

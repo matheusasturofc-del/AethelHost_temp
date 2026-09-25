@@ -76,6 +76,7 @@
     const INITIAL = { google: ["G", "#4285f4"], microsoft: ["M", "#00a4ef"], github: ["GH", "#24292f"], discord: ["D", "#5865f2"], custom: ["→", "#4b5563"] };
     let providers = [];
     let pwEnabled = false;
+    let smsEnabled = false;
     let canSetup = false;
     let resendTimer = null;
     const NEXT_OK = /^\/(?:servers|create|panel|admin|profile|settings|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$/;  // só páginas do próprio site
@@ -133,6 +134,7 @@
         nodes.push(h("form", { class: "login-form", onsubmit: submitter(go,
           () => api("POST", "/auth/password/login", { email: email.input.value, password: pass.input.value, lang: langCode() }),
           (r) => viewCode(r)) }, email.box, pass.box, showPasswordToggle(pass.input), go));
+        nodes.push(h("p", { class: "muted small center" }, h("button", { class: "linkbtn", type: "button", onclick: viewForgot }, "Esqueci a senha")));
         nodes.push(h("p", { class: "muted small center" }, "Ainda não tem conta? ",
           h("button", { class: "linkbtn", type: "button", onclick: viewRegister }, "Criar conta")));
       }
@@ -140,6 +142,73 @@
       $("lgHint").hidden = !none;
       $("lgHint").textContent = none ? (canSetup ? "Nenhum login foi configurado ainda. Configure um abaixo para poder entrar." : "Nenhum login foi configurado ainda. Peça ao administrador para configurar.") : "";
       show("Entrar no AethelHost", "Entre com um serviço que você já usa ou com o seu e-mail.", ...nodes);
+    }
+
+    // ---- tela: esqueci a senha (o código vai por e-mail ou por SMS)
+    function viewForgot() {
+      setError("");
+      $("lgHint").hidden = true;
+      const email = formField("E-mail da conta", "email", { type: "email", autocomplete: "username", max: 254 });
+      let channel = "email";
+      const choose = smsEnabled ? h("div", { class: "field" }, h("label", {}, "Como você quer receber o código?"),
+        h("label", { class: "check", style: "margin-bottom:6px" }, h("input", { type: "radio", name: "channel", value: "email", checked: true, onchange: () => { channel = "email"; } }), h("span", {}, "Por e-mail")),
+        h("label", { class: "check" }, h("input", { type: "radio", name: "channel", value: "sms", onchange: () => { channel = "sms"; } }), h("span", {}, "Por SMS, para o celular cadastrado na conta"))) : null;
+      const cap = captchaField();
+      const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Enviar código");
+      show("Esqueci a senha", "Digite o e-mail da sua conta. Enviamos um código de 6 números para você criar uma nova senha.",
+        h("form", { class: "login-form", onsubmit: submitter(go,
+          () => api("POST", "/auth/password/forgot", { email: email.input.value, channel, lang: langCode(), captcha: cap.getToken() }),
+          (r) => viewReset(r, channel), () => cap.reset()) }, email.box, choose, cap.box, go),
+        h("p", { class: "muted small center" }, "Você entra com Google, GitHub, Discord…? Então não precisa de senha: use o botão do serviço na tela de entrar."),
+        h("p", { class: "muted small center" }, h("button", { class: "linkbtn", type: "button", onclick: viewLogin }, "Voltar")));
+      email.input.focus();
+    }
+
+    // ---- tela: código + nova senha
+    function viewReset(state, channel) {
+      setError("");
+      $("lgHint").hidden = true;
+      let resendAt = Date.now() + state.resendIn * 1000;
+      const code = h("input", { class: "code-input", type: "text", inputMode: "numeric", autocomplete: "one-time-code", maxlength: 7, placeholder: "000000", required: true, spellcheck: false });
+      const pass = formField("Nova senha", "password", { type: "password", autocomplete: "new-password", max: 128, hint: "De 8 a 128 caracteres." });
+      const again = formField("Confirmar a nova senha", "confirm", { type: "password", autocomplete: "new-password", max: 128 });
+      const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Redefinir senha");
+      const resend = h("button", { class: "btn", type: "button", disabled: true }, "Reenviar código");
+      const dead = (e) => { setError(e.message); if (e.status === 410 || (e.status === 429 && !/^Espere/.test(e.message))) setTimeout(viewForgot, 3500); };
+      const form = h("form", { class: "login-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        setError("");
+        go.disabled = true;
+        try {
+          await withWait(api("POST", "/auth/password/reset", { challenge: state.challenge, code: code.value, password: pass.input.value, confirm: again.input.value, lang: langCode() }));
+          clearInterval(resendTimer);
+          show("Senha alterada!", "Pronto: entre com a sua nova senha. Os outros aparelhos foram desconectados.",
+            h("button", { class: "btn btn-primary btn-block", type: "button", onclick: viewLogin }, "Ir para o login"));
+        } catch (e) { dead(e); } finally { go.disabled = false; }
+      } }, h("div", { class: "field" }, h("label", {}, "Código de 6 números"), code), pass.box, again.box, showPasswordToggle(pass.input, again.input), go);
+      code.addEventListener("input", () => { code.value = code.value.replace(/[^\d ]/g, ""); });
+      resend.addEventListener("click", async () => {
+        setError("");
+        resend.disabled = true;
+        try {
+          const r = await withWait(api("POST", "/auth/password/resend", { challenge: state.challenge, lang: langCode() }));
+          resendAt = Date.now() + r.resendIn * 1000;
+        } catch (e) { dead(e); }
+      });
+      show("Redefinir a senha", channel === "sms"
+          ? "Se a conta tiver um celular cadastrado, enviamos um SMS com um código de 6 números. Digite o código e escolha a nova senha."
+          : `Enviamos um código de 6 números para ${state.email} (se existir uma conta com esse e-mail). Digite o código e escolha a nova senha.`,
+        form,
+        h("div", { class: "btn-row", style: "justify-content:center" }, resend, h("button", { class: "btn", type: "button", onclick: viewForgot }, "Voltar")),
+        h("p", { class: "muted small center" }, channel === "sms" ? "O código vale por 10 minutos. Não chegou? Confira o número da conta, ou tente por e-mail." : "O código vale por 10 minutos. Olhe também a caixa de spam."));
+      const tick = () => {
+        const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+        resend.disabled = left > 0;
+        resend.textContent = left > 0 ? `Reenviar código (${left}s)` : "Reenviar código";
+      };
+      tick();
+      resendTimer = setInterval(tick, 500);
+      code.focus();
     }
 
     // ---- tela: criar conta
@@ -239,6 +308,7 @@
       const data = await api("GET", "/auth/providers");
       providers = data.providers;
       pwEnabled = !!(data.password && data.password.enabled);
+      smsEnabled = !!(data.sms && data.sms.enabled);
       canSetup = data.canSetup;
       viewLogin();
       $("lgSetup").hidden = !data.canSetup;
@@ -251,10 +321,53 @@
       try { cfg = (await api("GET", "/auth/config")).providers; } catch { return; }
       let mailCfg = null;
       try { mailCfg = await api("GET", "/auth/mail"); } catch { /* sem o bloco do e-mail */ }
+      let smsCfg = null;
+      try { smsCfg = await api("GET", "/auth/sms"); } catch { /* sem o bloco do SMS */ }
       let captchaCfg = null;
       try { captchaCfg = await api("GET", "/auth/captcha"); } catch { /* sem o bloco do captcha */ }
-      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...(captchaCfg ? [captchaBlock(captchaCfg)] : []),
+      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...(smsCfg ? [smsBlock(smsCfg)] : []), ...(captchaCfg ? [captchaBlock(captchaCfg)] : []),
         ...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
+    }
+
+    const SMS_HELP = [
+      ["Os códigos por SMS (esqueci a senha e celular de recuperação) precisam de um serviço de envio. O AethelHost usa a Twilio: crie uma conta em twilio.com (tem um teste grátis).", "SMS codes (forgot password and recovery phone) need a sending service. AethelHost uses Twilio: create an account at twilio.com (there's a free trial)."],
+      ["No painel da Twilio copie o \"Account SID\" (começa com AC) e o \"Auth Token\", e compre/ative um número que envie SMS (ou crie um Messaging Service). Na conta de teste, só dá para enviar para números verificados.", "In the Twilio console copy the \"Account SID\" (starts with AC) and the \"Auth Token\", and get a number that can send SMS (or create a Messaging Service). On a trial account you can only send to verified numbers."],
+      ["Cole abaixo, salve e use \"Enviar SMS de teste\". O modo de teste não envia nada: só mostra o código no terminal do AethelHost (serve para experimentar no seu PC).", "Paste them below, save and use \"Send test SMS\". Test mode sends nothing: it only shows the code in the AethelHost terminal (handy for trying it on your PC)."],
+    ];
+
+    function smsBlock(c) {
+      const lang = en() ? 1 : 0;
+      const field = (label, name, value, opts = {}) => h("div", { class: "field", "data-for": name }, h("label", {}, label),
+        h("input", { type: opts.secret ? "password" : "text", name, value: value ?? "", placeholder: opts.placeholder || "", autocomplete: "off", spellcheck: false }));
+      const msg = h("div", { class: "ok-msg" }, saved === "sms" ? "Salvo. O esqueci a senha e o celular de recuperação já podem usar SMS." : "");
+      const provider = h("select", { name: "provider" },
+        h("option", { value: "twilio", selected: c.provider !== "test" }, "Twilio (envia de verdade)"),
+        h("option", { value: "test", selected: c.provider === "test" }, "Modo de teste (só mostra no terminal)"));
+      const form = h("form", { class: "setup-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        msg.className = "ok-msg"; msg.textContent = "";
+        try { await api("POST", "/auth/sms", Object.fromEntries(new FormData(ev.target))); saved = "sms"; await loadProviders(); }
+        catch (e) { msg.className = "error"; msg.textContent = e.message; }
+      } },
+        h("div", { class: "field" }, h("label", {}, "Serviço"), provider),
+        field("Account SID", "sid", c.sid, { placeholder: "AC…" }),
+        field("Auth Token", "token", "", { secret: true, placeholder: c.hasToken ? "•••••••• (já salvo; deixe vazio para manter)" : "" }),
+        field("Número de envio (ou Messaging Service)", "from", c.from, { placeholder: "+15551234567" }),
+        h("div", { class: "btn-row" },
+          h("button", { class: "btn btn-primary", type: "submit" }, "Salvar"),
+          c.configured ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => { await api("POST", "/auth/sms", { clear: true }); saved = null; await loadProviders(); } }, "Remover") : null));
+      const to = h("input", { type: "text", placeholder: "+55 11 91234-5678", autocomplete: "off" });
+      const testMsg = h("div", { class: "ok-msg" });
+      const test = h("div", { class: "field", style: "margin-top:12px" }, h("label", {}, "Enviar um SMS de teste para"),
+        h("div", { class: "uri-row" }, to, h("button", { class: "btn", type: "button", onclick: async () => {
+          testMsg.className = "ok-msg"; testMsg.textContent = "Enviando o SMS…";
+          try { await api("POST", "/auth/sms/test", { to: to.value }); testMsg.textContent = c.provider === "test" ? "Pronto! No modo de teste o texto aparece no terminal do AethelHost." : "Enviado! Olhe o celular."; }
+          catch (e) { testMsg.className = "error"; testMsg.textContent = e.message; }
+        } }, "Enviar SMS de teste")), testMsg);
+      return h("details", { class: "setup-block", open: saved === "sms" },
+        h("summary", {}, "SMS (códigos por celular)", c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
+        h("ol", { class: "steps", translate: "no" }, SMS_HELP.map((s) => h("li", {}, s[lang]))),
+        form, msg, c.configured ? test : null);
     }
 
     const CAPTCHA_HELP = [
