@@ -2248,13 +2248,22 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json(status, data)
 
+    def _not_found(self):
+        self._send(404, (ROOT / "notfound.html").read_bytes(), "text/html; charset=utf-8")
+
     def _static(self, path, query=""):
         rel = unquote(path).lstrip("/") or "index.html"
         file = ROOT / rel
         if not STATIC_RE.match(rel) or not file.is_file():
-            raise ApiError(404, "Página não encontrada.")
+            return self._not_found()
         if rel in PROTECTED_PAGES and not current_user():  # sem conta, essas páginas mandam para o login
             return self._redirect("/login.html?next=" + quote("/" + rel + ("?" + query if query else "")))
+        if rel == "admin.html" and not (current_user() or {}).get("admin"):  # quem não administra nem fica sabendo que a página existe
+            return self._not_found()
+        if rel == "panel.html":  # servidor que não existe ou que a conta não pode ver: mesma página de "não existe"
+            sid = (parse_qs(query).get("id") or [""])[0]
+            if not any(s["id"] == sid and _role(s) for s in db_load()):
+                return self._not_found()
         ctype = mimetypes.guess_type(rel)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript"):
             ctype += "; charset=utf-8"
