@@ -417,7 +417,8 @@ while [ -e "$B/$N" ]; do i=$((i+1)); N="$STAMP-$TAG-$i.tar.gz"; done
 cd "$D" || exit 3
 tar czf "$B/$N.part" --exclude=session.lock -- "$@" && mv -f "$B/$N.part" "$B/$N" || { rm -f "$B/$N.part"; exit 1; }
 ls -1 "$B" | grep -- '-antes-de-' | sort -r | tail -n +%d | while read -r f; do rm -f "$B/$f"; done
-echo "$N"''' % (KEEP_AUTO_BACKUPS + 1), [stamp, re.sub(r"[^A-Za-z0-9\-]", "-", tag), *dirs], timeout=3600)
+ls -1 "$B" | grep -E -- '-automatico(-[0-9]+)?\.tar\.gz$' | sort -r | tail -n +%d | while read -r f; do rm -f "$B/$f"; done
+echo "$N"''' % (KEEP_AUTO_BACKUPS + 1, manage.KEEP_SCHEDULED_BACKUPS + 1), [stamp, re.sub(r"[^A-Za-z0-9\-]", "-", tag), *dirs], timeout=3600)
     return out.decode().strip().splitlines()[-1]
 
 

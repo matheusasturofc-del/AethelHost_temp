@@ -150,6 +150,15 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 - Mudanças em arquivos, mundos, mods e propriedades só com o servidor desligado.
 - As abas ficam nesta ordem: Servidor, Opções, Console, Jogadores, Software, Mods/Plugins (não aparece no Vanilla), Mundos, Arquivos e Backups.
 
+## Backups automáticos
+
+Na aba **Backups**, o campo **Backups automáticos** deixa escolher **Desligado**, **Todo dia**, **Toda semana** ou **Todo mês** (30 dias). O primeiro backup sai daqui a um período inteiro, e a tela mostra a data do próximo. Eles ficam na lista com a etiqueta **Automático** e o AethelHost guarda os **10 mais recentes** (os manuais e os de segurança antes de mudar algo não entram nessa limpeza).
+
+- **Servidor ligado:** o backup salva tudo antes de copiar (`save-off`, `save-all flush`, `save-on`), como no botão manual. Se ele estiver ligando ou desligando, espera.
+- **PC desligado na hora:** o backup vencido sai assim que o AethelHost voltar. Se falhar (por exemplo, a VPS fora do ar), tenta de novo em 1 hora.
+- **Google Drive:** se o dono do servidor vinculou o Drive e ligou o envio automático, os backups agendados também sobem para o Drive dele.
+- Funciona no plano Grátis e na VPS. Quem tem acesso completo ao servidor pode mudar o agendamento. API: `POST /api/servers/<id>/backups/schedule` com `{"every": "off|daily|weekly|monthly"}`; o estado vem em `GET /api/servers/<id>/backups` (`schedule`).
+
 ## Google Drive nos backups
 
 Na aba **Backups** cada conta pode **vincular o próprio Google Drive** e guardar cópias dos backups lá: botão **Enviar ao Drive** em cada backup (com o andamento em %, e o selo **No Drive** com link quando termina) e a opção **Enviar os backups manuais para o Drive automaticamente**. Os arquivos vão para a pasta **AethelHost Backups** do Drive da pessoa (nome `<servidor>-<backup>`). Funciona no plano Grátis e na VPS (na VPS o backup é baixado da VPS para este PC e enviado).

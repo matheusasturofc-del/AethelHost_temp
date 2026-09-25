@@ -2,6 +2,7 @@
 // Usa as variáveis do painel: $, base, server.
 
 let bkList = [];
+let bkSchedule = { every: "off", next: null, keep: 10 };
 let bkDrive = { account: null, linked: false, uploads: {}, remote: {}, prefix: "", error: "" };
 let bkDriveTimer = null;
 const DRIVE_ERRORS = {
@@ -32,6 +33,8 @@ async function loadBackups() {
     return;
   }
   bkList = data.backups;
+  bkSchedule = data.schedule || bkSchedule;
+  renderSchedule();
   renderBackups();
   loadDrive();
 }
@@ -39,10 +42,33 @@ async function loadBackups() {
 // "antes-de-apagar-criativo" -> "Antes de apagar o mundo criativo"
 function backupLabel(tag) {
   if (tag === "manual") return "Manual";
+  if (/^automatico(-\d+)?$/.test(tag)) return "Automático";
   if (tag === "antes-de-mudar-software") return "Antes de mudar o software";
   if (tag === "antes-de-restaurar") return "Antes de restaurar um backup";
   const m = /^antes-de-apagar-(.+)$/.exec(tag);
   return m ? `Antes de apagar o mundo ${m[1]}` : tag;
+}
+
+// ---- Backups automáticos (agendados)
+const SCHEDULE_LABELS = { off: "Desligado", daily: "Todo dia", weekly: "Toda semana", monthly: "Todo mês" };
+
+function renderSchedule() {
+  const select = h("select", { id: "bkEvery", onchange: async (ev) => {
+    $("bkErr").textContent = $("bkOk").textContent = "";
+    try {
+      bkSchedule = await api("POST", `${base}/backups/schedule`, { every: ev.target.value });
+      $("bkOk").textContent = bkSchedule.every === "off" ? "Backups automáticos desligados." : "Backups automáticos ligados.";
+    } catch (e) {
+      $("bkErr").textContent = e.message;
+    }
+    renderSchedule();
+  } }, ...Object.entries(SCHEDULE_LABELS).map(([value, label]) => h("option", { value, selected: value === bkSchedule.every }, label)));
+  $("bkSchedule").replaceChildren(
+    h("label", { for: "bkEvery" }, "Backups automáticos"),
+    select,
+    h("div", { class: "hint" }, bkSchedule.every === "off"
+      ? "Desligado: só saem os backups que você criar (e os de segurança antes de mudar algo)."
+      : `Próximo backup automático: ${fmtDate(bkSchedule.next)}. Guarda os ${bkSchedule.keep} mais recentes.`));
 }
 
 function driveBadge(b) {
@@ -193,6 +219,8 @@ $("bkCreate").addEventListener("click", async () => {
   $("bkCreate").disabled = false;
   $("bkCreate").textContent = "Criar backup agora";
 });
+
+window.addEventListener("langchange", () => { if (typeof renderSchedule === "function" && $("bkSchedule")) renderSchedule(); });
 
 // Voltando do Google (?tab=backups&drive=linked): abre esta aba sozinha.
 (() => {

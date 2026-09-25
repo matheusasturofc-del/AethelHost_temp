@@ -27,6 +27,7 @@ MAX_TEXT = 1024 * 1024
 MAX_EXTRACT = 4 * 1024 ** 3   # tamanho máximo depois de descompactar
 MAX_ENTRIES = 200_000
 KEEP_AUTO_BACKUPS = 15
+KEEP_SCHEDULED_BACKUPS = 10  # backups agendados (tag "automatico")
 
 
 def root(sid):
@@ -385,8 +386,10 @@ def create_backup(sid, tag="manual", names=None):
 
 def prune_auto(sid):
     """Os backups automáticos ("antes-de-...") não se acumulam para sempre: ficam os mais recentes."""
-    auto = [b for b in list_backups(sid) if b["tag"].startswith("antes-de-")]
-    for old in auto[KEEP_AUTO_BACKUPS:]:
+    everything = list_backups(sid)
+    auto = [b for b in everything if b["tag"].startswith("antes-de-")]
+    scheduled = [b for b in everything if b["tag"] == "automatico" or re.fullmatch(r"automatico-\d+", b["tag"])]
+    for old in auto[KEEP_AUTO_BACKUPS:] + scheduled[KEEP_SCHEDULED_BACKUPS:]:
         (backup_folder(sid) / old["name"]).unlink(missing_ok=True)
 
 

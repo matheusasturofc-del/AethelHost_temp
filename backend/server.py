@@ -1371,7 +1371,7 @@ def api_world_upload(query, zip_path, sid):
 def api_backups(query, body, sid):
     server = find_server(sid)
     return 200, {"supported": True, "backups": remote.list_backups(server) if _remote(server) else manage.list_backups(sid),
-                 "state": _state(sid)}
+                 "state": _state(sid), "schedule": _schedule_view(server)}
 
 
 def _drive_name(server, backup):
@@ -1379,9 +1379,9 @@ def _drive_name(server, backup):
     return f"{slug}-{backup}"
 
 
-def _drive_send(server, backup):
-    """Começa a enviar um backup ao Drive da conta que está logada (em segundo plano)."""
-    me = current_user()
+def _drive_send(server, backup, user_id=None):
+    """Começa a enviar um backup ao Drive da conta que está logada (ou de `user_id`, nos backups agendados)."""
+    me = {"id": user_id} if user_id else current_user()
     if not drive.linked(me["id"]):
         raise ApiError(409, "Vincule o Google Drive primeiro.")
     if _remote(server):
@@ -1433,14 +1433,15 @@ def api_drive_settings(query, body):
     return 200, drive.status(current_user()["id"])
 
 
-def api_backup_create(query, body, sid):
-    server = _manage_server(sid)
-    make = (lambda: remote.create_backup(server, "manual")) if _remote(server) else (lambda: manage.create_backup(sid, "manual"))
+def _do_backup(server, tag):
+    """Cria um backup. Com o servidor ligado, manda salvar tudo e parar de gravar, copia, e volta a gravar.
+    Devolve o nome do arquivo, ou None se ainda não há mundo."""
+    sid = server["id"]
+    make = (lambda: remote.create_backup(server, tag)) if _remote(server) else (lambda: manage.create_backup(sid, tag))
     state = _state(sid)
     if state in ("starting", "stopping"):
         raise ApiError(409, "Espere o servidor terminar de iniciar ou de parar.")
     if state == "online":
-        # Com o servidor ligado: manda salvar tudo e parar de gravar, copia, e volta a gravar.
         rt = RUNTIMES[sid]
         _, mark = rt.read(0)
         rt.command("save-off")
@@ -1459,6 +1460,12 @@ def api_backup_create(query, body, sid):
                 pass
     else:
         name = make()
+    return name
+
+
+def api_backup_create(query, body, sid):
+    server = _manage_server(sid)
+    name = _do_backup(server, "manual")
     if not name:
         raise ApiError(400, "Ainda não há mundo para guardar: ligue o servidor uma vez.")
     sent = False
@@ -1470,6 +1477,64 @@ def api_backup_create(query, body, sid):
         except (ApiError, content.ContentError):
             pass
     return 200, {"name": name, "drive": sent}
+
+
+# ---- backups agendados: de dia em dia, de semana em semana ou de mês em mês
+SCHEDULE_SECONDS = {"daily": 86400, "weekly": 7 * 86400, "monthly": 30 * 86400}
+SCHEDULE_TICK = float(os.environ.get("AETHELHOST_SCHEDULER_TICK") or 60)  # só os testes mudam isso
+SCHEDULE_RETRY = 3600  # se um backup agendado falhar (VPS fora do ar…), tenta de novo em 1 hora
+
+
+def _schedule_view(server):
+    s = server.get("backupSchedule") or {}
+    every = s.get("every") if s.get("every") in SCHEDULE_SECONDS else "off"
+    last = s.get("last") or 0
+    return {"every": every, "last": last, "next": int(last + SCHEDULE_SECONDS[every]) if every != "off" else None,
+            "keep": manage.KEEP_SCHEDULED_BACKUPS}
+
+
+def api_backup_schedule_set(query, body, sid):
+    every = str(body.get("every", ""))
+    if every != "off" and every not in SCHEDULE_SECONDS:
+        raise ApiError(400, "Escolha desligado, todo dia, toda semana ou todo mês.")
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        if (server.get("backupSchedule") or {}).get("every", "off") != every:
+            server["backupSchedule"] = {"every": every, "last": int(time.time())}  # o primeiro sai daqui a um período inteiro
+            db_save(servers)
+    return 200, _schedule_view(server)
+
+
+def run_scheduled_backups():
+    """Thread do agendador: a cada minuto vê quais servidores estão com backup vencido e faz (se o PC ficou desligado,
+    faz assim que ligar)."""
+    while True:
+        time.sleep(SCHEDULE_TICK)
+        try:
+            now = time.time()
+            for server in db_load():
+                s = server.get("backupSchedule") or {}
+                if s.get("every") not in SCHEDULE_SECONDS or now - (s.get("last") or 0) < SCHEDULE_SECONDS[s["every"]]:
+                    continue
+                if _state(server["id"]) in ("starting", "stopping"):
+                    continue  # espera o servidor terminar de ligar ou desligar
+                stamp = now
+                try:
+                    name = _do_backup(server, "automatico")
+                    if name and (drive.entry(server["owner"]) or {}).get("auto"):
+                        _drive_send(server, name, server["owner"])
+                except (ApiError, content.ContentError, RuntimeError) as e:
+                    print(f"[aviso] backup agendado de {server['name']} falhou: {getattr(e, 'message', e)}")
+                    stamp = now - SCHEDULE_SECONDS[s["every"]] + SCHEDULE_RETRY
+                with DB_LOCK:
+                    servers = db_load()
+                    for x in servers:
+                        if x["id"] == server["id"] and x.get("backupSchedule"):
+                            x["backupSchedule"]["last"] = int(stamp)
+                    db_save(servers)
+        except Exception:
+            traceback.print_exc()
 
 
 def api_backup_restore(query, body, sid):
@@ -2110,6 +2175,7 @@ ROUTES = [
     ("GET", rf"^/api/servers/{ID}/backups$", api_backups),
     ("GET", rf"^/api/servers/{ID}/backups/drive$", api_backup_drive_get),
     ("POST", rf"^/api/servers/{ID}/backups/drive$", api_backup_drive_send),
+    ("POST", rf"^/api/servers/{ID}/backups/schedule$", api_backup_schedule_set),
     ("GET", r"^/api/drive$", api_drive_get),
     ("POST", r"^/api/drive/unlink$", api_drive_unlink),
     ("POST", r"^/api/drive/settings$", api_drive_settings),
@@ -2129,7 +2195,7 @@ NEED = {
                            api_content_list, api_content_search, api_content_install, api_content_upload, api_content_toggle, api_content_delete,
                            api_worlds, api_world_use, api_world_create, api_world_delete, api_world_download, api_world_upload,
                            api_backups, api_backup_create, api_backup_restore, api_backup_delete, api_backup_download,
-                           api_backup_drive_get, api_backup_drive_send,
+                           api_backup_drive_get, api_backup_drive_send, api_backup_schedule_set,
                            api_settings, api_settings_properties, api_settings_gamerules)},
     **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
@@ -2455,6 +2521,7 @@ def main():
     manage.cleanup_tmp()
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=adopt_vps_servers, daemon=True).start()
+    threading.Thread(target=run_scheduled_backups, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:
