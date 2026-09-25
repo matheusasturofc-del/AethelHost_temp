@@ -64,6 +64,7 @@
           <div class="btn-row">
             <button class="btn" id="vpsCopy">Copiar chave</button>
             <button class="btn btn-primary" id="vpsCheck">Testar conexão</button>
+            <button class="btn" id="vpsPortCheck">Testar porta</button>
           </div>
           <div id="vpsResult" class="vps-result"></div>
         </div>
@@ -536,6 +537,30 @@
         box.classList.add("bad");
       } finally {
         $("vpsCheck").disabled = false;
+      }
+    });
+
+    $("vpsPortCheck").addEventListener("click", async () => {
+      const box = $("vpsResult");
+      box.className = "vps-result";
+      box.textContent = "Testando a porta…";
+      $("vpsPortCheck").disabled = true;
+      try {
+        const r = await api("POST", `${base}/vps/port`);
+        if (r.open) {
+          box.textContent = `A porta ${server.port} está aberta: os jogadores conseguem entrar.`;
+          box.classList.add("ok");
+        } else {
+          box.textContent = r.state === "online"
+            ? `A porta ${server.port} está fechada, mesmo com o servidor ligado. Libere a porta ${server.port} (TCP) no painel do provedor (no Oracle: Security List da VCN) e no firewall da VPS.`
+            : `A porta ${server.port} não respondeu. Se o servidor está desligado isso é normal: ligue-o e teste de novo. Se estiver ligado, libere a porta ${server.port} (TCP) no painel do provedor e no firewall da VPS.`;
+          box.classList.add("bad");
+        }
+      } catch (e) {
+        box.textContent = e.message;
+        box.classList.add("bad");
+      } finally {
+        $("vpsPortCheck").disabled = false;
       }
     });
 

@@ -1199,6 +1199,19 @@ def api_vps_check(query, body, sid):
     return 200, {"info": info, "needJava": required_java(server["version"]), "server": view(server)}
 
 
+def api_vps_port(query, body, sid):
+    """Tenta abrir a porta do servidor de fora (daqui): se falhar, o firewall da VPS ou do provedor está fechado."""
+    server = find_server(sid)
+    if server["plan"] != "vps":
+        raise ApiError(400, "Este servidor não usa VPS.")
+    sshx.check_host(server["vps"]["host"])
+    try:
+        with socket.create_connection((server["vps"]["host"], server["port"]), timeout=6):
+            return 200, {"open": True, "state": _state(sid)}
+    except OSError:
+        return 200, {"open": False, "state": _state(sid)}
+
+
 # ---------------------------------------------------------------- Jogadores, arquivos, mundos e backups
 # No plano Grátis tudo acontece na pasta deste PC (manage.py, options.py). Na VPS as mesmas telas usam remote.py (SSH).
 
@@ -1998,6 +2011,7 @@ ROUTES = [
     ("GET", rf"^/api/servers/{ID}/console$", api_console),
     ("GET", r"^/api/vps/key$", api_vps_key),
     ("POST", rf"^/api/servers/{ID}/vps/check$", api_vps_check),
+    ("POST", rf"^/api/servers/{ID}/vps/port$", api_vps_port),
     ("GET", r"^/api/software/([a-z]{1,20})/versions$", api_software_versions),
     ("POST", rf"^/api/servers/{ID}/software$", api_software_set),
     ("GET", rf"^/api/servers/{ID}/content$", api_content_list),

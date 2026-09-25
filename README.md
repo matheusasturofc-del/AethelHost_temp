@@ -161,7 +161,11 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 ## Planos
 
 - **Grátis**: roda neste PC. Fecha sozinho após 5 horas sem jogadores.
-- **VPS**: conecta por SSH com uma chave gerada pelo app. Ao iniciar, instala Java e tmux na VPS e liga o servidor. Ainda não foi testado numa VPS real, e mods/plugins ainda não estão disponíveis nela.
+- **VPS** (beta): conecta por SSH com uma chave gerada pelo app (uma por conta; a privada nunca sai do PC). Ao ligar pela primeira vez, instala Java, tmux e curl na VPS (precisa ser root ou ter `sudo` sem senha; Ubuntu, Debian, Oracle Linux e parecidos com `apt` ou `dnf`), baixa o servidor e liga dentro de um `tmux`. O servidor continua rodando na VPS mesmo se o AethelHost fechar: ao reiniciar, ele reconecta sozinho.
+  - **O que funciona na VPS:** ligar, desligar, console e comandos; **Jogadores** (whitelist, operadores, banidos), **Opções** (`server.properties` e regras do jogo), **Arquivos**, **Mundos**, **Backups** e **Mods/Plugins** (busca e instalação pelo Modrinth: a própria VPS baixa e confere o hash). Tudo por SSH, na pasta `~/aethelhost/<id>` (backups em `~/aethelhost/backups/<id>`, como `.tar.gz`). Vanilla, Paper, Purpur, Fabric, Quilt, Forge e NeoForge (os três últimos rodam o instalador uma vez na VPS).
+  - **Memória:** a aba Software deixa escolher a RAM (até 80% da memória da VPS; clique em **Testar conexão** para o AethelHost medir). Se a VPS tiver menos do que o pedido, o servidor usa o que dá e avisa no console.
+  - **Segurança:** endereços internos (`localhost`, `10.x`, `192.168.x`, `172.16-31.x`, `169.254.x`…) são recusados, para o site não virar um jeito de escanear a rede onde ele roda (para testar numa rede local: `AETHELHOST_ALLOW_PRIVATE_VPS=1`). Limites por conta: 10 servidores em VPS e 3 VPS diferentes. Caminhos de arquivos são conferidos (sem `..` nem atalhos que saiam da pasta do servidor); zips de mundo são extraídos com verificação de caminho.
+  - **Limitações:** o endereço para jogar é `IP-da-VPS:porta` (sem o endereço bonito do playit). O painel do provedor (Oracle, AWS…) precisa liberar a porta do servidor; isso o AethelHost não consegue fazer. Enviar um mundo `.zip` exige `python3` na VPS. Testado com uma VPS Ubuntu real acessada por SSH (no WSL); ainda não com um provedor de nuvem de verdade.
 
 ## Jogar
 
