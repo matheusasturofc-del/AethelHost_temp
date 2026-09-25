@@ -52,14 +52,14 @@ async function bkDo(promise, okText) {
   loadBackups();
 }
 
-function restoreBackup(b) {
-  if (confirm(`Restaurar o backup de ${fmtDate(b.created)}? Os mundos atuais serão substituídos (um backup de segurança deles é guardado antes).`)) {
+async function restoreBackup(b) {
+  if (await confirmBox(`Restaurar o backup de ${fmtDate(b.created)}? Os mundos atuais serão substituídos (um backup de segurança deles é guardado antes).`, { title: "Você tem certeza?", ok: "Restaurar", danger: true })) {
     bkDo(api("POST", `${base}/backups/restore`, { name: b.name }), "Backup restaurado. Um backup de segurança do que estava antes ficou na lista.");
   }
 }
 
-function deleteBackup(b) {
-  if (confirm(`Excluir o backup de ${fmtDate(b.created)}? Não dá para desfazer.`)) {
+async function deleteBackup(b) {
+  if (await confirmBox(`Excluir o backup de ${fmtDate(b.created)}? Não dá para desfazer.`, { title: "Você tem certeza?", ok: "Excluir", danger: true })) {
     bkDo(api("POST", `${base}/backups/delete`, { name: b.name }), "Backup excluído.");
   }
 }

@@ -82,8 +82,8 @@ function shRow(s) {
     h("div", { class: "who" }, avatarOf(s.user), h("div", {}, h("strong", { translate: "no" }, s.user.name), h("small", { translate: "no" }, "@" + s.user.username))),
     s.status === "pending" ? h("span", { class: "badge pending" }, "Convite pendente") : null,
     levelSel, filesSel,
-    edit ? h("button", { class: "btn btn-danger", type: "button", onclick: () => {
-      if (confirm(s.status === "pending" ? "Cancelar este convite?" : "Tirar o acesso desta pessoa ao servidor?")) shAct(api("DELETE", `${base}/shares/${uid}`, {}), s.status === "pending" ? "Convite cancelado." : "Acesso removido.");
+    edit ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+      if (await confirmBox(s.status === "pending" ? "Cancelar este convite?" : "Tirar o acesso desta pessoa ao servidor?", { title: "Você tem certeza?", ok: s.status === "pending" ? "Cancelar convite" : "Remover", cancel: "Voltar", danger: true })) shAct(api("DELETE", `${base}/shares/${uid}`, {}), s.status === "pending" ? "Convite cancelado." : "Acesso removido.");
     } }, s.status === "pending" ? "Cancelar convite" : "Remover") : null);
 }
 
@@ -109,7 +109,7 @@ $("shForm").addEventListener("submit", async (ev) => {
 });
 
 $("shLeave").addEventListener("click", async () => {
-  if (!confirm("Sair deste servidor? Ele some da sua lista e só volta se o dono convidar de novo.")) return;
+  if (!(await confirmBox("Sair deste servidor? Ele some da sua lista e só volta se o dono convidar de novo.", { title: "Você tem certeza?", ok: "Sair do servidor", danger: true }))) return;
   try {
     await api("POST", `${base}/leave`, {});
     location.href = "servers.html";

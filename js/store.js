@@ -41,6 +41,45 @@ async function withWait(promise) {
   try { return await promise; } finally { el.hidden = true; }
 }
 
+// Caixas de diálogo do próprio site (no lugar de confirm/prompt do navegador).
+// confirmBox("Excluir?", { ok: "Excluir", danger: true }) -> true/false
+// promptBox("Novo nome:", { value: "abc", ok: "Renomear" }) -> texto, ou null se cancelou
+function dialogBox({ message, title, input, value = "", ok = "Confirmar", cancel = "Cancelar", danger = false, placeholder = "" }) {
+  return new Promise((resolve) => {
+    const previous = document.activeElement;
+    const field = input ? h("input", { class: "dlg-input", type: "text", value, placeholder, autocomplete: "off", spellcheck: false, maxlength: 200 }) : null;
+    const okBtn = h("button", { class: "btn " + (danger ? "btn-danger" : "btn-primary"), type: "button" }, ok);
+    const cancelBtn = h("button", { class: "btn", type: "button" }, cancel);
+    const box = h("div", { class: "dlg-box" + (danger ? " danger" : ""), role: "alertdialog", "aria-modal": "true" },
+      h("div", { class: "dlg-icon", "aria-hidden": "true" }, danger ? "!" : "?"),
+      title ? h("h3", { class: "dlg-title" }, title) : null,
+      h("p", { class: "dlg-msg" }, message),
+      field,
+      h("div", { class: "dlg-actions" }, cancelBtn, okBtn));
+    const overlay = h("div", { class: "dlg-overlay" }, box);
+    const finish = (result) => {
+      document.removeEventListener("keydown", onKey, true);
+      overlay.remove();
+      if (previous && previous.focus) previous.focus();
+      resolve(result);
+    };
+    const accept = () => finish(input ? field.value.trim() : true);
+    const onKey = (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); finish(input ? null : false); }
+      else if (ev.key === "Enter" && (input || document.activeElement !== cancelBtn)) { ev.preventDefault(); accept(); }
+    };
+    okBtn.addEventListener("click", accept);
+    cancelBtn.addEventListener("click", () => finish(input ? null : false));
+    overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) finish(input ? null : false); });
+    document.addEventListener("keydown", onKey, true);
+    document.body.append(overlay);
+    (field || (danger ? cancelBtn : okBtn)).focus();  // ação perigosa: o foco começa em "Cancelar"
+    if (field) field.select();
+  });
+}
+const confirmBox = (message, opts = {}) => dialogBox({ message, ...opts });
+const promptBox = (message, opts = {}) => dialogBox({ message, input: true, ...opts });
+
 // Envia um arquivo (ex.: um .jar de mod) sem mexer no conteúdo.
 async function apiUpload(path, file) {
   let res;

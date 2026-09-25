@@ -75,13 +75,13 @@ async function flDo(promise, okText) {
   loadFiles(fl.path);
 }
 
-function renameFile(name) {
-  const next = prompt("Novo nome:", name);
+async function renameFile(name) {
+  const next = await promptBox("Novo nome:", { title: "Renomear", value: name, ok: "Renomear" });
   if (next && next !== name) flDo(api("POST", `${base}/files/rename`, { path: flRel(name), name: next }));
 }
 
-function deleteFile(it) {
-  if (confirm(`Excluir "${it.name}"${it.dir ? " e tudo o que está dentro dela" : ""}? Não dá para desfazer.`)) {
+async function deleteFile(it) {
+  if (await confirmBox(`Excluir "${it.name}"${it.dir ? " e tudo o que está dentro dela" : ""}? Não dá para desfazer.`, { title: "Você tem certeza?", ok: "Excluir", danger: true })) {
     flDo(api("POST", `${base}/files/delete`, { path: flRel(it.name) }));
   }
 }
@@ -118,8 +118,8 @@ $("flClose").addEventListener("click", () => {
   loadFiles(fl.path);
 });
 
-$("flMkdir").addEventListener("click", () => {
-  const name = prompt("Nome da nova pasta:");
+$("flMkdir").addEventListener("click", async () => {
+  const name = await promptBox("Nome da nova pasta:", { title: "Nova pasta", ok: "Criar" });
   if (name) flDo(api("POST", `${base}/files/mkdir`, { path: fl.path, name }));
 });
 

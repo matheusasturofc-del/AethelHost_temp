@@ -389,7 +389,7 @@
     }
 
     async function disconnect(p) {
-      if (!confirm("Desconectar este login? Você não vai mais conseguir entrar por ele (as outras formas de entrar continuam funcionando).")) return;
+      if (!(await confirmBox("Desconectar este login? Você não vai mais conseguir entrar por ele (as outras formas de entrar continuam funcionando).", { title: "Você tem certeza?", ok: "Desconectar", danger: true }))) return;
       $("stConnectOk").textContent = $("stConnectErr").textContent = "";
       try {
         me = (await api("POST", "/account/unlink", { provider: p.id })).user;

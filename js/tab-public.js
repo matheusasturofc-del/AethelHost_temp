@@ -98,9 +98,9 @@ function renderPublic() {
     }
     if (tunnelSt.admin) {
       parts.push(h("p", { class: "muted small", style: "margin-bottom:0" },
-        h("a", { href: "#", onclick: (ev) => {
+        h("a", { href: "#", onclick: async (ev) => {
           ev.preventDefault();
-          if (confirm("Desligar o playit.gg? Os endereços públicos deixam de funcionar.")) pubAction(() => api("POST", "/tunnel/unlink"));
+          if (await confirmBox("Desligar o playit.gg? Os endereços públicos deixam de funcionar.", { title: "Você tem certeza?", ok: "Desligar", danger: true })) pubAction(() => api("POST", "/tunnel/unlink"));
         } }, "Desligar o playit.gg")));
     }
   }

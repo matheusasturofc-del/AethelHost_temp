@@ -3,6 +3,7 @@
 
 let plTimer = null;
 let plState = null;
+let plLoadFailed = false;
 
 async function openPlayers() {
   await loadPlayers();
@@ -16,8 +17,10 @@ async function loadPlayers() {
     data = await api("GET", `${base}/players`);
   } catch (e) {
     $("plErr").textContent = e.message;
+    plLoadFailed = true;
     return;
   }
+  if (plLoadFailed) { $("plErr").textContent = ""; plLoadFailed = false; }  // o aviso de "backend fora do ar" some quando ele volta
   $("plMain").hidden = !data.supported;
   $("plNotice").hidden = data.supported;
   if (!data.supported) {
@@ -38,7 +41,16 @@ function plRow(name, extra, ...buttons) {
 
 function plButton(text, action, name, opts = {}) {
   return h("button", { class: "btn full-only" + (opts.danger ? " btn-danger" : "") + (opts.offline ? " needs-offline" : ""), type: "button",
-                       onclick: () => plAct(action, name, opts.reason ? prompt(opts.reason, "") ?? null : "") }, text);
+                       onclick: async () => {
+                         let reason = "";
+                         if (opts.reason) {
+                           reason = await promptBox(opts.reason, { title: `${text} ${name}`, ok: text, danger: !!opts.danger, placeholder: "Motivo" });
+                           if (reason === null) return;  // cancelou
+                         } else if (opts.confirm) {
+                           if (!(await confirmBox(opts.confirm, { title: "Você tem certeza?", ok: text, danger: !!opts.danger }))) return;
+                         }
+                         plAct(action, name, reason);
+                       } }, text);
 }
 
 function renderPlayers(d) {
@@ -55,7 +67,7 @@ function renderPlayers(d) {
   const list = (items, empty) => (items.length ? items : [h("p", { class: "muted" }, empty)]);
   $("plWl").replaceChildren(...list(d.whitelist.players.map((n) => plRow(n, "", plButton("Remover", "whitelist_remove", n))), "Ninguém na lista ainda."));
   $("plOps").replaceChildren(...list(d.ops.map((o) => plRow(o.name, `Nível ${o.level}`, plButton("Remover", "deop", o.name))), "Nenhum operador ainda."));
-  $("plBans").replaceChildren(...list(d.banned.map((b) => plRow(b.name, b.reason, plButton("Perdoar", "pardon", b.name))), "Ninguém banido."));
+  $("plBans").replaceChildren(...list(d.banned.map((b) => plRow(b.name, b.reason, plButton("Desbanir", "pardon", b.name))), "Ninguém banido."));
   $("plWlOn").checked = d.whitelist.enabled;
 }
 
@@ -82,6 +94,14 @@ function plForm(id, action, reasonInput) {
     inputs.forEach((i) => (i.value = ""));
   });
 }
+
+$("plUnban").addEventListener("click", async () => {
+  const input = $("plBanForm").querySelector("input");
+  const name = input.value.trim();
+  if (!name) { $("plErr").textContent = "Escreva o nome de quem você quer desbanir."; input.focus(); return; }
+  await plAct("pardon", name, "");
+  input.value = "";
+});
 
 plForm("plWlForm", "whitelist_add");
 plForm("plOpForm", "op");

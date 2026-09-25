@@ -79,7 +79,7 @@
       return h("div", { class: "uri-row", style: "margin-top:10px;flex-wrap:wrap" }, select,
         h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
           if (!mergeFor.target) return $("adErr").replaceChildren(document.createTextNode("Escolha a conta que fica."));
-          if (!confirm("Mesclar estas duas contas numa só? A conta desta caixa deixa de existir e os logins e servidores dela passam para a conta escolhida. Não dá para desfazer.")) return;
+          if (!(await confirmBox("Mesclar estas duas contas numa só? A conta desta caixa deixa de existir e os logins e servidores dela passam para a conta escolhida. Não dá para desfazer.", { title: "Você tem certeza?", ok: "Mesclar", danger: true }))) return;
           try { await api("POST", "/admin/merge", { keep: mergeFor.target, drop: u.id }); mergeFor = null; $("adErr").textContent = ""; await load(); }
           catch (e) { $("adErr").textContent = e.message; }
         } }, "Mesclar"),

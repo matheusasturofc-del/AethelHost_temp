@@ -158,7 +158,7 @@
           </div>
           <div class="card" style="margin-top:16px">
             <h3 style="margin-top:0">Banidos</h3>
-            <form class="cmd-row full-only" id="plBanForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><input type="text" placeholder="Motivo (opcional)" maxlength="100" autocomplete="off"><button class="btn btn-primary" type="submit">Banir</button></form>
+            <form class="cmd-row full-only" id="plBanForm"><input type="text" placeholder="Nome do jogador" maxlength="16" autocomplete="off"><input type="text" placeholder="Motivo (opcional)" maxlength="100" autocomplete="off"><button class="btn btn-primary" type="submit">Banir</button><button class="btn" type="button" id="plUnban">Desbanir</button></form>
             <div id="plBans"></div>
           </div>
           <div class="ok-msg" id="plOk"></div>
@@ -679,7 +679,7 @@
         ct.supported = null;  // a lista de mods/plugins depende do software: recarrega ao abrir
       } catch (e) {
         if (e.status === 409 && e.data && e.data.needConfirm) {
-          if (confirm(`${e.message} Um backup do mundo será salvo antes. Continuar mesmo assim?`)) return saveSoftware(true);
+          if (await confirmBox(`${e.message} Um backup do mundo será salvo antes. Continuar mesmo assim?`, { title: "Você tem certeza?", ok: "Continuar", danger: true })) return saveSoftware(true);
         } else {
           $("swErr").textContent = e.message;
         }
@@ -737,7 +737,7 @@
           h("strong", {}, it.title || it.name),
           h("small", {}, [it.title ? it.name : null, it.version ? "v" + it.version : null, fmtSize(it.size)].filter(Boolean).join(" · "))),
         h("button", { class: "btn needs-offline", onclick: () => contentAction("toggle", it.name) }, it.enabled ? "Ativado" : "Desativado"),
-        h("button", { class: "btn btn-danger needs-offline", onclick: () => { if (confirm(`Remover ${it.name}?`)) contentAction("delete", it.name); } }, "Remover"))));
+        h("button", { class: "btn btn-danger needs-offline", onclick: async () => { if (await confirmBox(`Remover ${it.name}?`, { title: "Você tem certeza?", ok: "Remover", danger: true })) contentAction("delete", it.name); } }, "Remover"))));
     }
 
     async function contentAction(action, name) {
@@ -865,7 +865,7 @@
       const where = server.plan === "vps"
         ? "Os arquivos que já estão na VPS (pasta ~/aethelhost) NÃO serão apagados por aqui."
         : "O mundo e os arquivos do servidor serão apagados deste PC.";
-      if (!confirm(`Excluir "${server.name}"? ${where}`)) return;
+      if (!(await confirmBox(`Excluir "${server.name}"? ${where}`, { title: "Você tem certeza?", ok: "Excluir", danger: true }))) return;
       try {
         await api("DELETE", base);
         location.href = "servers.html";

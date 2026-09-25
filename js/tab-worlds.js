@@ -48,8 +48,8 @@ async function wdDo(promise, okText) {
   loadWorlds();
 }
 
-function deleteWorld(name) {
-  if (confirm(`Excluir o mundo "${name}"? Um backup dele é guardado antes, mas o mundo some da pasta do servidor.`)) {
+async function deleteWorld(name) {
+  if (await confirmBox(`Excluir o mundo "${name}"? Um backup dele é guardado antes, mas o mundo some da pasta do servidor.`, { title: "Você tem certeza?", ok: "Excluir", danger: true })) {
     wdDo(api("POST", `${base}/worlds/delete`, { name }), `Mundo "${name}" excluído (o backup ficou na aba Backups).`);
   }
 }
