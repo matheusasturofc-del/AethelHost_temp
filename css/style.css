@@ -656,3 +656,15 @@ body.files-read .files-write, body.files-none .files-write { display: none !impo
   .side button.active { border-bottom-color: var(--accent); }
   .side button.active::after { display: none; }
 }
+
+/* ===== Menu lateral colado na borda da tela, de cima a baixo (como no Aternos) ===== */
+main.panel { max-width: none; width: 100%; padding: 0; gap: 0; min-height: calc(100vh - 61px); align-items: stretch; }
+main.panel > .side { position: static; align-self: stretch; display: flex; flex-direction: column; border-radius: 0; border: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08); box-shadow: none; }
+main.panel > .side .side-foot { margin-top: auto; }
+main.panel > section { min-width: 0; width: 100%; max-width: 1120px; margin: 0 auto; padding: 32px 36px 70px; }
+@media (max-width: 800px) {
+  main.panel { min-height: 0; }
+  main.panel > .side { flex-direction: row; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  main.panel > section { padding: 20px 16px 50px; }
+}
