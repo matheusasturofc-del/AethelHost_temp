@@ -27,6 +27,7 @@
     </div>
     <div class="error" id="adErr"></div>
     <div class="info-grid" id="adTotals"></div>
+    <div id="adNodes" style="margin-top:20px"></div>
     <div id="adCapacity" style="margin-top:20px"></div>
     <div id="adExplore" style="margin-top:20px"></div>
     <div id="adSupport" style="margin-top:20px"></div>
@@ -110,7 +111,61 @@
       catch (e) { $("adErr").textContent = e.message; }
     }
 
-    let capData = null;
+    let capData = null, nodesData = null, nodeNote = {};
+    async function nodeAct(body, note) {
+      try {
+        nodesData = await api("POST", "/admin/nodes", body);
+        if (nodesData.checked) {
+          const i = nodesData.checked.info;
+          nodeNote[nodesData.checked.id] = `Conectou! ${i.OS || "?"}, ${i.MEM || "?"} MB de RAM` + (i.TMUX === "yes" ? "" : " · falta o tmux (instala sozinho ao iniciar)") + (i.SUDO === "yes" ? "" : " · sem sudo sem senha: instale Java e tmux à mão");
+        } else if (note) nodeNote[body.id] = note;
+        $("adErr").textContent = "";
+      } catch (e) {
+        if (body.action === "check") nodeNote[body.id] = "Erro: " + e.message; else $("adErr").textContent = e.message;
+      }
+      drawExtra(true);
+    }
+    function nodesSection() {
+      const d = nodesData || { nodes: [], localGames: true, publicKey: "", localRunning: 0, localMax: 0 };
+      const f = { name: h("input", { type: "text", placeholder: "Nome (ex.: Jogo 1)", maxlength: 40, autocomplete: "off" }),
+                  host: h("input", { type: "text", placeholder: "IP ou endereço", maxlength: 253, autocomplete: "off" }),
+                  port: h("input", { type: "number", value: "22", min: 1, max: 65535, style: "max-width:90px", "aria-label": "Porta SSH" }),
+                  user: h("input", { type: "text", placeholder: "Usuário SSH", maxlength: 32, autocomplete: "off", style: "max-width:150px" }),
+                  maxServers: h("input", { type: "number", value: "5", min: 1, max: 1000, style: "max-width:90px", "aria-label": "Máximo ligados" }) };
+      const rows = d.nodes.map((n) => {
+        const cap = h("input", { type: "number", value: String(n.maxServers), min: 1, max: 1000, style: "max-width:90px", "aria-label": "Máximo ligados" });
+        return h("div", { style: "padding:12px 0;border-top:1px solid var(--border)" },
+          h("div", { class: "row", style: "border:0;padding:0" },
+            h("div", { class: "row-main" },
+              h("strong", { translate: "no" }, n.name),
+              h("small", { translate: "no" }, `${n.user}@${n.host}:${n.port}` + (n.memMb ? ` · ${(n.memMb / 1024).toFixed(1)} GB` : ""))),
+            h("span", { class: "badge" + (n.enabled ? " on" : "") }, n.enabled ? "Recebe servidores novos" : "Desativada"),
+            h("span", { class: "muted small", style: "text-align:right" }, `${n.servers} servidor${n.servers === 1 ? "" : "es"} · ${n.running} ligado${n.running === 1 ? "" : "s"} de ${n.maxServers} · ${n.queued} na fila`)),
+          h("div", { class: "uri-row", style: "margin-top:8px;flex-wrap:wrap;align-items:center" },
+            h("label", { class: "small muted" }, "Ligados ao mesmo tempo: "), cap,
+            h("button", { class: "btn", type: "button", onclick: () => nodeAct({ action: "update", id: n.id, maxServers: Number(cap.value) }) }, "Salvar"),
+            h("button", { class: "btn", type: "button", onclick: () => nodeAct({ action: "check", id: n.id }) }, "Testar conexão"),
+            h("button", { class: "btn", type: "button", onclick: () => nodeAct({ action: "update", id: n.id, enabled: !n.enabled }) }, n.enabled ? "Desativar" : "Ativar"),
+            h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+              if (await confirmBox(`Remover a máquina "${n.name}"? Só dá se não houver servidores nela.`, { ok: "Remover", danger: true })) nodeAct({ action: "remove", id: n.id });
+            } }, "Remover")),
+          nodeNote[n.id] ? h("p", { class: "small", style: "margin:8px 0 0" }, nodeNote[n.id]) : null);
+      });
+      const key = h("textarea", { rows: 3, readonly: true, spellcheck: false, class: "keybox", style: "width:100%" }, d.publicKey || "");
+      return h("div", { class: "card", style: "padding:20px" },
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Máquinas de jogo"),
+        h("p", { class: "muted small", style: "margin:0 0 12px" }, "Computadores ou VPS seus onde rodam os servidores do plano Grátis, para o site ficar numa máquina só de painel. Cada servidor novo vai para a máquina menos cheia e fica lá; o AethelHost instala o Java e controla tudo por SSH (o usuário precisa de sudo sem senha). Cada máquina liga no máximo o número que você definir ao mesmo tempo, com fila própria."),
+        h("p", { class: "small", style: "margin:0 0 6px" }, "1. Copie a chave do AethelHost e adicione, numa linha, ao arquivo ~/.ssh/authorized_keys do usuário de cada máquina:"),
+        key,
+        h("label", { class: "switch", style: "margin:14px 0 6px" },
+          h("input", { type: "checkbox", checked: d.localGames, onchange: (ev) => nodeAct({ action: "settings", localGames: ev.target.checked }) }),
+          h("span", { class: "knob" }), h("span", {}, "Este PC também roda servidores Grátis")),
+        h("p", { class: "muted small", style: "margin:0 0 6px" }, `Neste PC agora: ${d.localRunning} ligado${d.localRunning === 1 ? "" : "s"}` + (d.localMax ? ` de ${d.localMax}` : "") + ". Se desligar, servidores novos só vão para as máquinas de jogo (quando todas estão cheias, ninguém consegue criar até abrir vaga)."),
+        rows.length ? rows : h("p", { class: "muted" }, "Nenhuma máquina de jogo ainda: os servidores Grátis rodam neste PC."),
+        h("h3", { style: "margin:18px 0 8px;font-size:16px" }, "Adicionar máquina"),
+        h("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center" }, f.name, f.host, f.port, f.user, f.maxServers,
+          h("button", { class: "btn btn-primary", type: "button", onclick: () => nodeAct({ action: "add", name: f.name.value, host: f.host.value, port: Number(f.port.value), user: f.user.value, maxServers: Number(f.maxServers.value) }) }, "Adicionar")));
+    }
     async function saveCapacity(value) {
       try { capData = await api("POST", "/admin/capacity", { max: value }); $("adErr").textContent = ""; drawExtra(true); }
       catch (e) { $("adErr").textContent = e.message; }
@@ -232,17 +287,18 @@
 
     let extraSig = "";
     function drawExtra(force) {
-      const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest("#adSupport, #adCapacity");
-      const sig = JSON.stringify([capData, exploreData, supportData, document.documentElement.lang]);
+      const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest("#adSupport, #adCapacity, #adNodes");
+      const sig = JSON.stringify([nodesData, nodeNote, capData, exploreData, supportData, document.documentElement.lang]);
       if (!force && (sig === extraSig || focus || Object.values(supportDraft).some(Boolean))) return;
       extraSig = sig;
+      $("adNodes").replaceChildren(nodesSection());
       $("adCapacity").replaceChildren(capacitySection());
       $("adExplore").replaceChildren(exploreSection());
       $("adSupport").replaceChildren(supportSection());
     }
     async function loadExtra(force) {
       try {
-        [exploreData, supportData, capData] = await Promise.all([api("GET", "/admin/explore"), api("GET", "/admin/support"), api("GET", "/admin/capacity")]);
+        [exploreData, supportData, capData, nodesData] = await Promise.all([api("GET", "/admin/explore"), api("GET", "/admin/support"), api("GET", "/admin/capacity"), api("GET", "/admin/nodes")]);
         drawExtra(force);
       } catch { /* o erro principal já aparece em load() */ }
     }

@@ -41,6 +41,7 @@ import capacity  # noqa: E402
 import captcha  # noqa: E402
 import mail  # noqa: E402
 import mailtemplate  # noqa: E402
+import nodes  # noqa: E402
 import notify  # noqa: E402
 import manage  # noqa: E402
 import options  # noqa: E402
@@ -300,6 +301,7 @@ class Runtime:
         self.sid = sid
         self.plan = "free"
         self.state = "offline"  # offline | starting | online | stopping
+        self.machine = "local"  # onde roda: "local" (o PC do site) ou o id de uma máquina de jogo
         self.proc = None
         self.players = set()
         self.idle_since = None
@@ -324,7 +326,7 @@ class Runtime:
         with self.lock:
             idle_left = None
             if self.plan == "free" and self.state == "online" and self.idle_since:
-                idle_left = max(0, int(idle_limit() - (time.time() - self.idle_since)))
+                idle_left = max(0, int(idle_limit(self.machine) - (time.time() - self.idle_since)))
             return {"state": self.state, "players": sorted(self.players), "idleLeft": idle_left}
 
     def start(self, server):
@@ -332,6 +334,7 @@ class Runtime:
             if self.state != "offline":
                 raise ApiError(409, "O servidor já está ligado ou iniciando.")
             self.plan = server["plan"]
+            self.machine = nodes.machine(server)
             if os.environ.get("AETHELHOST_FAKE_START") == "1":  # só nos testes: "liga" sem Java nem processo
                 self.state = "online"
                 self.idle_since = time.time()
@@ -339,7 +342,7 @@ class Runtime:
             self.state = "starting"
             self.gamerules = dict(server.get("gamerules") or {})
             self.players.clear()
-        if server.get("public") and server["plan"] == "free":
+        if server.get("public") and server["plan"] == "free" and not server.get("node"):
             tunnel.want(server["id"], server["port"])  # o endereço fica pronto enquanto o servidor liga
         if self.lines:
             self.log("──────── Nova execução ────────", "sep")
@@ -609,9 +612,10 @@ def remote_setup_script(server, need, jar):
     q = shlex.quote
     motd = motd_to_properties(server["subtitle"] or server["name"])
     icon = base64.b64encode(icon_bytes(server["id"])).decode("ascii")
+    maxp = min(MAX_PLAYERS, capacity.limits()["maxPlayers"]) if server["plan"] == "free" else MAX_PLAYERS
     head = (
         "set -e\n"
-        f"ID={q(server['id'])}\nNEED={need}\nPORT={server['port']}\nMAXP={MAX_PLAYERS}\n"
+        f"ID={q(server['id'])}\nNEED={need}\nPORT={server['port']}\nMAXP={maxp}\n"
         f"JAR_URL={q(jar['url'])}\nJAR_NAME={q(jar['name'])}\n"
         f"JAR_ALGO={q(jar['hash'][0] if jar['hash'] else '')}\nJAR_HASH={q(jar['hash'][1] if jar['hash'] else '')}\n"
         f"MOTD={q(motd)}\nICON_B64={q(icon)}\n"
@@ -638,11 +642,11 @@ class RemoteRuntime(Runtime):
             self.log(line)
 
     def _run(self, server):
-        self.vps = {**server["vps"], "owner": server["owner"]}  # o dono decide qual chave SSH é usada
         self.session_up = self.gone = self._adopted = False
         try:
+            self.vps = nodes.conn(server)  # VPS do cliente (a chave é do dono) ou máquina de jogo (a chave é da plataforma)
             need = required_java(server["version"])
-            self.log(f"Conectando à VPS {self.vps['host']}…")
+            self.log(f"Conectando à máquina de jogo {self.vps['host']}…" if server.get("node") else f"Conectando à VPS {self.vps['host']}…")
             jar = spec_for(server["software"], server["version"])
             if jar.get("note"):
                 self.log(jar["note"])
@@ -675,9 +679,10 @@ class RemoteRuntime(Runtime):
                 return
             self.state = "online"
             self.plan = server["plan"]
+            self.machine = nodes.machine(server)
             self.gamerules = dict(server.get("gamerules") or {})
             self.players.clear()
-        self.vps = {**server["vps"], "owner": server["owner"]}
+        self.vps = nodes.conn(server)
         self.session_up, self.gone, self._adopted = True, False, True
         self.log("Reconectado a um servidor que já estava rodando na VPS.")
         threading.Thread(target=self._adopt_run, daemon=True).start()
@@ -736,6 +741,9 @@ class RemoteRuntime(Runtime):
 
     def stop(self):
         with self.lock:
+            if os.environ.get("AETHELHOST_FAKE_START") == "1" and self.state == "online" and not self.session_up:
+                self.state = "offline"  # só nos testes: o "servidor de mentira" não tem sessão SSH
+                return
             if self.state not in ("starting", "online") or not self.session_up:
                 raise ApiError(409, "Ainda não dá para parar: espere terminar de preparar a VPS.")
             self.state = "stopping"
@@ -784,14 +792,14 @@ def runtime(server):
     with RUNTIMES_LOCK:
         rt = RUNTIMES.get(server["id"])
         if rt is None:
-            rt = (RemoteRuntime if server["plan"] == "vps" else Runtime)(server["id"])
+            rt = (RemoteRuntime if nodes.is_remote(server) else Runtime)(server["id"])
             RUNTIMES[server["id"]] = rt
         return rt
 
 
-def idle_limit():
-    """Segundos sem jogadores até um servidor do plano grátis fechar agora (depende de quantos estão ligados)."""
-    return capacity.idle_limit(running_free())
+def idle_limit(machine="local"):
+    """Segundos sem jogadores até um servidor do plano grátis fechar agora (depende de quantos estão ligados na mesma máquina)."""
+    return capacity.idle_limit(running_on(machine))
 
 
 def _span_text(seconds):
@@ -805,10 +813,10 @@ def monitor():
     """Fecha servidores do plano grátis que ficam sem jogadores (ou em que ninguém entrou depois de ligar) pelo tempo de idle_limit."""
     while True:
         time.sleep(5)
-        limit = idle_limit()
         for rt in list(RUNTIMES.values()):
             try:
                 if rt.plan == "free" and rt.state == "online" and rt.idle_since:
+                    limit = idle_limit(rt.machine)
                     idle = time.time() - rt.idle_since
                     if idle >= limit:
                         rt.log(f"Fechando o servidor: {_span_text(limit)} sem jogadores.", "warn")
@@ -840,17 +848,18 @@ def adopt_vps_servers():
     """Servidores em VPS continuam rodando lá quando o AethelHost reinicia: vê quais ainda estão no ar e reconecta."""
     seen = {}
     for server in db_load():
-        if server["plan"] != "vps":
+        if not nodes.is_remote(server):
             continue
-        key = (server["owner"], server["vps"]["host"], server["vps"]["port"], server["vps"]["user"])
         try:
+            c = nodes.conn(server)
+            key = (c["owner"], c["host"], c["port"], c["user"])
             if key not in seen:
-                _, out = ssh_script({**server["vps"], "owner": server["owner"]}, 'tmux ls 2>/dev/null | cut -d: -f1', 25)
+                _, out = ssh_script(c, 'tmux ls 2>/dev/null | cut -d: -f1', 25)
                 seen[key] = set(out.split())
             if f"bh-{server['id']}" in seen[key]:
                 runtime(server).adopt(server)
         except (RuntimeError, content.ContentError, OSError):
-            seen[key] = seen.get(key, set())  # VPS fora do ar agora: o servidor aparece desligado até alguém abrir o painel
+            pass  # VPS ou máquina fora do ar agora: o servidor aparece desligado até alguém abrir o painel
 
 
 def shutdown_all():
@@ -871,7 +880,7 @@ def shutdown_all():
 
 def _max_players(server):
     """As vagas do servidor: o que está no server.properties (editável na aba Opções)."""
-    if server["plan"] == "free":
+    if server["plan"] == "free" and not server.get("node"):
         try:
             return int(read_properties(SERVERS_DIR / server["id"] / "server.properties")["max-players"])
         except (KeyError, ValueError):
@@ -895,7 +904,7 @@ def view(server):
         "explore": explore.public_view(server),
         "role": role[0] if role else None, "files": role[1] if role else None, "shared": shared,
         "publicName": f"{server['ip']}.{DOMAIN}",
-        "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
+        "address": f"{nodes.host(server)}:{server['port']}" if nodes.is_remote(server) else f"localhost:{server['port']}",
         "maxPlayers": _max_players(server),
         "vpsRamOptions": vps_ram_options(server) if server["plan"] == "vps" else None,
         "softwareLabel": SOFTWARE[server["software"]]["label"],
@@ -903,8 +912,9 @@ def view(server):
         "iconVersion": icon_version(server["id"]),
         "tunnel": tunnel.info(server["id"]) if server.get("public") else {"state": "off"},
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
-        "queue": {"position": capacity.position(server["id"]), "waiting": capacity.waiting()} if server["plan"] == "free" else None,
-        "capacity": {"running": running_free(), "max": capacity.max_running(), "idleSeconds": idle_limit()} if server["plan"] == "free" else None,
+        "queue": {"position": capacity.position(server["id"]), "waiting": capacity.waiting(nodes.machine(server))} if server["plan"] == "free" else None,
+        "capacity": {"running": running_on(nodes.machine(server)), "max": machine_cap(nodes.machine(server)), "idleSeconds": idle_limit(nodes.machine(server))} if server["plan"] == "free" else None,
+        "node": {"id": server["node"], "name": (nodes.get(server["node"]) or {}).get("name", "?")} if server.get("node") else None,
     }
 
 
@@ -989,9 +999,7 @@ def api_create(query, body):
 
     vps = None
     if plan == "free":
-        need = required_java(version)
-        if not pick_java(need):
-            raise ApiError(400, f"A versão {version} precisa do Java {need}, que não está instalado neste PC.")
+        pass  # onde ele vai rodar (e se este PC tem o Java certo) é decidido mais abaixo
     else:
         v = body.get("vps") or {}
         host, user = str(v.get("host", "")).strip(), str(v.get("user", "")).strip()
@@ -1005,12 +1013,18 @@ def api_create(query, body):
         servers = db_load()
         if any(s["ip"] == ip for s in servers):
             raise ApiError(409, "Este endereço já está em uso. Escolha outro.")
+        node = None
         if plan == "free":
             st = free_seat(current_user()["id"], servers)
             if not st["canCreate"]:
                 position = capacity.wait_join(current_user()["id"])
                 raise ApiError(403, f"As vagas do plano Grátis estão esgotadas ({st['used']} de {st['max']} contas). Você entrou na lista de espera (posição {position}) e recebe um aviso no sino quando abrir vaga. Enquanto isso, dá para usar a sua própria VPS.",
                                {"waitlist": position})
+            node = choose_node(servers)
+            if not node:  # vai rodar neste PC
+                need = required_java(version)
+                if not pick_java(need):
+                    raise ApiError(400, f"A versão {version} precisa do Java {need}, que não está instalado neste PC.")
         if plan == "vps":
             mine = [s for s in servers if s["plan"] == "vps" and s["owner"] == current_user()["id"]]
             if len(mine) >= MAX_VPS_SERVERS:
@@ -1020,20 +1034,24 @@ def api_create(query, body):
         # Neste PC a porta também precisa estar livre; na VPS basta não repetir a de outro servidor da mesma VPS.
         if plan == "vps":
             used = {s["port"] for s in servers if s["plan"] == "vps" and s["vps"]["host"] == vps["host"]}
+        elif node:
+            used = {s["port"] for s in servers if s.get("node") == node["id"] or (s["plan"] == "vps" and s["vps"]["host"] == node["host"])}
         else:
-            used = {s["port"] for s in servers if s["plan"] == "free"}
+            used = {s["port"] for s in servers if s["plan"] == "free" and not s.get("node")}
         port = FIRST_MC_PORT
-        while port in used or (plan == "free" and not port_free(port)):
+        while port in used or (plan == "free" and not node and not port_free(port)):
             port += 1
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
             "edition": "java", "software": software, "version": version,
-            "ramMb": capacity.clamp_ram(software, DEFAULT_RAM_MB, system_ram_mb()) if plan == "free" else DEFAULT_RAM_MB,
+            "ramMb": capacity.clamp_ram(software, DEFAULT_RAM_MB, (node["memMb"] if node else system_ram_mb())) if plan == "free" else DEFAULT_RAM_MB,
             "plan": plan, "port": port, "eula": True, "owner": current_user()["id"], "public": False,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         if vps:
             server["vps"] = vps
+        if node:
+            server["node"] = node["id"]
         servers.append(server)
         db_save(servers)
         if plan == "free":
@@ -1091,17 +1109,17 @@ def api_software_set(query, body, sid):
             if not isinstance(ram, int) or (ram not in allowed_ram and ram != server["ramMb"]):
                 raise ApiError(400, "Quantidade de RAM inválida para esta VPS.")
         else:
-            allowed_ram = capacity.ram_options(sw, system_ram_mb())
+            allowed_ram = capacity.ram_options(sw, _free_mem(server))
             if not isinstance(ram, int) or isinstance(ram, bool):
                 raise ApiError(400, "Quantidade de RAM inválida.")
             if "ramMb" not in body:  # só trocou o software: ajusta a RAM atual ao teto do novo
-                ram = capacity.clamp_ram(sw, ram, system_ram_mb())
+                ram = capacity.clamp_ram(sw, ram, _free_mem(server))
             elif ram not in allowed_ram:
                 raise ApiError(400, f"No plano Grátis o {SOFTWARE[sw]['label']} aceita de {allowed_ram[0]} MB a {allowed_ram[-1]} MB de RAM. Para mais, use o plano com a sua VPS.")
 
         changed = (sw, version) != (server["software"], server["version"])
         backup = None
-        if changed and server["plan"] == "free":
+        if changed and not nodes.is_remote(server):
             need = required_java(version)
             if not pick_java(need):
                 raise ApiError(400, f"A versão {version} precisa do Java {need}, que não está instalado neste PC.")
@@ -1109,12 +1127,12 @@ def api_software_set(query, body, sid):
                 raise ApiError(409, "Voltar para uma versão mais antiga pode corromper o mundo.",
                                {"needConfirm": True})
             backup = manage.create_backup(sid, "antes-de-mudar-software")
-        elif changed and server["plan"] == "vps":
+        elif changed:
             try:
                 backup = remote.create_backup(server, "antes-de-mudar-software")
             except (RuntimeError, content.ContentError):
                 backup = None  # sem conexão agora: a troca continua (o mundo na VPS não é mexido)
-        if server["plan"] == "vps":
+        if nodes.is_remote(server):
             try:
                 had_content = changed and any(remote.content_list(server, kind) for kind in ("mods", "plugins"))
             except (RuntimeError, content.ContentError):
@@ -1201,11 +1219,16 @@ def api_icon_reset(query, body, sid):
 def api_delete(query, body, sid):  # noqa: D401 - só o dono
     with DB_LOCK:
         servers = db_load()
-        _pick(servers, sid)
+        victim = _pick(servers, sid)
         rt = RUNTIMES.get(sid)
         if rt and rt.state != "offline":
             raise ApiError(409, "Desligue o servidor antes de excluir.")
         db_save([s for s in servers if s["id"] != sid])
+    if victim.get("node"):  # o servidor era da plataforma: não deixa lixo na máquina de jogo (na VPS do cliente nada é apagado)
+        try:
+            ssh_script(nodes.conn(victim), f'rm -rf "$HOME/aethelhost/{sid}" "$HOME/aethelhost/backups/{sid}"', 30)
+        except (RuntimeError, OSError):
+            pass
     folder = (SERVERS_DIR / sid).resolve()
     if folder.parent == SERVERS_DIR.resolve() and folder.is_dir():
         shutil.rmtree(folder, ignore_errors=True)
@@ -1273,9 +1296,21 @@ def _seat_notify():
 START_LOCK = threading.RLock()  # quem decide "liga agora" ou "vai para a fila" fica sozinho na vez
 
 
+def running_on(machine="local"):
+    """Quantos servidores do plano Grátis estão usando essa máquina agora (ligando, ligados ou desligando)."""
+    return sum(1 for rt in list(RUNTIMES.values()) if rt.plan == "free" and rt.state != "offline" and getattr(rt, "machine", "local") == machine)
+
+
 def running_free():
-    """Quantos servidores do plano Grátis estão usando este PC agora (ligando, ligados ou desligando)."""
-    return sum(1 for rt in list(RUNTIMES.values()) if not isinstance(rt, RemoteRuntime) and rt.state != "offline")
+    return running_on("local")  # o PC do site
+
+
+def machine_cap(machine):
+    """Teto de servidores ligados ao mesmo tempo na máquina (0 = sem limite; só o PC do site pode ser 0)."""
+    if machine == "local":
+        return capacity.max_running()
+    node = nodes.get(machine)
+    return node["maxServers"] if node else 1
 
 
 def _check_java(server):
@@ -1289,15 +1324,16 @@ def api_start(query, body, sid):
     if server["plan"] != "free":  # na VPS, quem instala o Java é o próprio script de preparação e não há teto
         runtime(server).start(server)
         return 202, view(server)
-    if not os.environ.get("AETHELHOST_FAKE_START") == "1":
-        _check_java(server)
+    machine = nodes.machine(server)
+    if machine == "local" and not os.environ.get("AETHELHOST_FAKE_START") == "1":
+        _check_java(server)  # numa máquina de jogo o Java é instalado por SSH
     with START_LOCK:
         if capacity.position(sid):
             return 202, view(server)
         rt = runtime(server)
-        cap = capacity.max_running()
-        if rt.state == "offline" and cap and (running_free() >= cap or capacity.waiting()):
-            capacity.add(sid, current_user()["id"])  # lotado (ou já tem gente esperando): entra no fim da fila
+        cap = machine_cap(machine)
+        if rt.state == "offline" and cap and (running_on(machine) >= cap or capacity.waiting(machine)):
+            capacity.add(sid, current_user()["id"], machine)  # lotado (ou já tem gente esperando): entra no fim da fila
         else:
             rt.start(server)
     return 202, view(server)
@@ -1324,19 +1360,20 @@ def queue_worker():
                 traceback.print_exc()
         try:
             with START_LOCK:
-                while (entry := capacity.first()):
-                    servers = db_load()
+                servers = db_load()
+                for entry in capacity.entries():
                     server = next((s for s in servers if s["id"] == entry["sid"]), None)
                     rt = RUNTIMES.get(entry["sid"])
                     if not server or server["plan"] != "free" or (rt and rt.state != "offline"):
                         capacity.remove(entry["sid"])  # sumiu, mudou de plano ou já foi ligado por outro caminho
                         continue
-                    cap = capacity.max_running()
-                    if cap and running_free() >= cap:
-                        break
+                    machine = nodes.machine(server)
+                    cap = machine_cap(machine)
+                    if cap and running_on(machine) >= cap:
+                        continue  # essa máquina segue cheia; a fila das outras continua andando
                     capacity.remove(entry["sid"])
                     try:
-                        if not os.environ.get("AETHELHOST_FAKE_START") == "1":
+                        if machine == "local" and not os.environ.get("AETHELHOST_FAKE_START") == "1":
                             _check_java(server)
                         runtime(server).start(server)
                         notify.add(entry["user"], "queue_started", {"fromName": "AethelHost", "serverName": server["name"], "server": server["id"]})
@@ -1460,7 +1497,7 @@ def _manage_server(sid):
 
 
 def _remote(server):
-    return server["plan"] == "vps"
+    return nodes.is_remote(server)
 
 
 def _state(sid):
@@ -2274,8 +2311,8 @@ def api_admin_overview(query, body):
         if snap["state"] != "offline":
             running += 1
             online_players += item["players"]
-            if s["plan"] == "free":
-                ram_in_use += s["ramMb"]  # a VPS usa a memória da VPS, não a deste PC
+            if s["plan"] == "free" and not s.get("node"):
+                ram_in_use += s["ramMb"]  # a VPS e as máquinas de jogo usam a memória delas, não a deste PC
     for u in users:
         u["servers"] = by_owner.get(u["id"], [])
     return 200, {
@@ -2292,8 +2329,8 @@ def _explore_entry(s):
     rt = RUNTIMES.get(s["id"])
     snap = rt.snapshot() if rt else {"state": "offline", "players": []}
     owner = auth.get_user(s.get("owner")) or {}
-    if s["plan"] == "vps":
-        address = f"{s['vps']['host']}:{s['port']}"
+    if nodes.is_remote(s):
+        address = f"{nodes.host(s)}:{s['port']}"
     else:
         t = tunnel.info(s["id"]) if s.get("public") else {}
         address = t.get("address") if t.get("state") == "ready" else None  # o endereço do playit só existe com o servidor ligado
@@ -2308,7 +2345,7 @@ def _explore_entry(s):
 
 
 def _explore_visible(s, hidden):
-    return explore.is_listed(s) and s["id"] not in hidden and (s["plan"] == "vps" or s.get("public")) and auth.get_user(s.get("owner")) is not None
+    return explore.is_listed(s) and s["id"] not in hidden and (nodes.is_remote(s) or s.get("public")) and auth.get_user(s.get("owner")) is not None
 
 
 def _explore_hidden():
@@ -2422,7 +2459,7 @@ def api_explore_set(query, body, sid):
         if listed:
             if e.get("blocked"):
                 raise ApiError(403, "A administração removeu este servidor do Explorar. Fale com o Suporte se achar que foi um engano.")
-            if server["plan"] == "free" and not server.get("public"):
+            if server["plan"] == "free" and not server.get("node") and not server.get("public"):
                 raise ApiError(409, "Ative o endereço público (Jogar com amigos) antes: sem ele ninguém de fora consegue entrar.")
             others = [x for x in servers if x["owner"] == server["owner"] and x["id"] != sid and (x.get("explore") or {}).get("listed")]
             if len(others) >= explore.MAX_LISTED and not e.get("listed"):
@@ -2540,6 +2577,84 @@ def api_admin_support_reply(query, body):
     return 200, {"ok": True}
 
 
+def _free_mem(server):
+    """Memória da máquina onde o servidor Grátis roda (0 = não sei, só vale o teto do plano)."""
+    if server.get("node"):
+        return (nodes.get(server["node"]) or {}).get("memMb") or 0
+    return system_ram_mb()
+
+
+def choose_node(servers):
+    """Máquina de jogo com vaga para um servidor Grátis novo (a menos cheia), ou None para rodar neste PC."""
+    best = None
+    for n in nodes.all_nodes():
+        if not n.get("enabled", True):
+            continue
+        stored = sum(1 for s in servers if s.get("node") == n["id"])
+        if stored >= n["maxServers"] * nodes.STORE_FACTOR:
+            continue
+        load = stored / (n["maxServers"] * nodes.STORE_FACTOR)
+        if best is None or load < best[0]:
+            best = (load, n)
+    if best:
+        return best[1]
+    if nodes.local_games():
+        return None
+    raise ApiError(503, "Todas as máquinas de jogo estão cheias no momento. Tente de novo mais tarde.")
+
+
+def _nodes_view():
+    servers = db_load()
+    out = []
+    for n in nodes.all_nodes():
+        mine = [s for s in servers if s.get("node") == n["id"]]
+        out.append({**n, "servers": len(mine), "running": running_on(n["id"]), "queued": capacity.waiting(n["id"]),
+                    "storeMax": n["maxServers"] * nodes.STORE_FACTOR})
+    return {"nodes": out, "localGames": nodes.local_games(), "publicKey": ensure_key(nodes.OWNER), "localRunning": running_free(), "localMax": capacity.max_running()}
+
+
+def api_admin_nodes(query, body):
+    _require_admin("Só o administrador pode ver isto.")
+    return 200, _nodes_view()
+
+
+def api_admin_nodes_set(query, body):
+    """Máquinas de jogo: {action: add|update|remove|check|settings, ...}."""
+    _require_admin("Só o administrador pode fazer isto.")
+    action = body.get("action")
+    if action == "settings":
+        nodes.set_local_games(body.get("localGames"))
+    elif action == "add":
+        nodes.create(body)
+    elif action == "update":
+        nodes.update(str(body.get("id", "")), {k: v for k, v in body.items() if k in ("name", "host", "port", "user", "maxServers", "enabled")})
+    elif action == "remove":
+        nid = str(body.get("id", ""))
+        left = sum(1 for s in db_load() if s.get("node") == nid)
+        if left:
+            raise ApiError(409, f"Ainda há {left} servidor{'es' if left != 1 else ''} nesta máquina. Desative-a para não receber novos, mas ela só pode ser removida sem servidores.")
+        nodes.remove(nid)
+    elif action == "check":
+        nid = str(body.get("id", ""))
+        if not nodes.get(nid):
+            raise ApiError(404, "Máquina não encontrada.")
+        try:
+            _, out = ssh_script(nodes.conn({"node": nid}), CHECK_SCRIPT, 40)
+        except RuntimeError as e:
+            raise ApiError(502, str(e))
+        info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+        try:
+            mem = int(info.get("MEM", "0"))
+        except ValueError:
+            mem = 0
+        if mem > 0:
+            nodes.set_mem(nid, mem)
+        return 200, {**_nodes_view(), "checked": {"id": nid, "info": info}}
+    else:
+        raise ApiError(400, "Ação inválida.")
+    return 200, _nodes_view()
+
+
 def api_tunnel(query, body):
     st = tunnel.status()
     if not (current_user() or {}).get("admin"):
@@ -2575,6 +2690,8 @@ def api_public_set(query, body, sid):
         server = _pick(servers, sid)
         if server["plan"] != "free":
             raise ApiError(400, "Na VPS o servidor já tem o endereço da própria VPS.")
+        if server.get("node"):
+            raise ApiError(400, "Este servidor roda numa máquina de jogo do AethelHost e já tem o endereço dela.")
         if enabled and not tunnel.secret():
             raise ApiError(409, "O administrador precisa ligar o AethelHost ao playit.gg antes.")
         server["public"] = enabled
@@ -2700,6 +2817,8 @@ ROUTES = [
     ("GET", r"^/api/free/status$", api_free_status),
     ("POST", r"^/api/free/waitlist/join$", api_free_join),
     ("POST", r"^/api/free/waitlist/leave$", api_free_leave),
+    ("GET", r"^/api/admin/nodes$", api_admin_nodes),
+    ("POST", r"^/api/admin/nodes$", api_admin_nodes_set),
     ("GET", r"^/api/admin/capacity$", api_admin_capacity),
     ("POST", r"^/api/admin/capacity$", api_admin_capacity_set),
     ("GET", r"^/api/admin/explore$", api_admin_explore),

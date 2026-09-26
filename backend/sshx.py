@@ -83,7 +83,8 @@ def ssh_permanent(message):
 
 
 def ssh_cmd(vps, remote):
-    check_host(vps["host"])
+    if not vps.get("trusted"):  # máquinas de jogo foram cadastradas pelo administrador: podem estar numa rede interna
+        check_host(vps["host"])
     key_file, known_hosts = key_paths(vps["owner"])
     return [
         "ssh", "-i", str(key_file), "-p", str(vps["port"]),

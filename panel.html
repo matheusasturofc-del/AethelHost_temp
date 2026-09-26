@@ -464,7 +464,9 @@
       if (typeof applyRole === "function") applyRole();  // quem recebeu o servidor só vê o que o nível permite
       $("plan").textContent = server.plan === "vps" ? `VPS (${server.vps.provider})` : "Grátis";
 
-      $("banner").textContent = server.plan === "vps"
+      $("banner").textContent = server.node
+        ? `Rodando na máquina de jogo ${server.node.name} do AethelHost. Para jogar, use ${server.address}.`
+        : server.plan === "vps"
         ? `Rodando na sua VPS (${server.vps.host}). Ela continua ligada mesmo se você fechar este PC. Para jogar, use ${server.address}.`
         : server.public && server.tunnel && server.tunnel.state === "ready"
           ? `Rodando neste PC. Para jogar daqui, use ${server.address}. Amigos de fora entram por ${server.tunnel.address}.`
@@ -737,7 +739,7 @@
       try {
         const r = await api("GET", `/software/${encodeURIComponent(sw)}/versions`);
         if (seq !== swSeq) return;  // o usuário já escolheu outro software
-        const vps = server.plan === "vps";  // na VPS o Java é instalado por SSH, então tudo é permitido
+        const vps = server.plan === "vps" || !!server.node;  // na VPS e nas máquinas de jogo o Java é instalado por SSH, então tudo é permitido
         const ok = (v) => vps || v.available;
         $("swVersion").replaceChildren(...r.versions.map((v) =>
           h("option", { value: v.version, disabled: !ok(v) }, v.version + (ok(v) ? "" : ` (precisa de Java ${v.java})`))));

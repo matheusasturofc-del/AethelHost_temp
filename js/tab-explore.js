@@ -33,7 +33,7 @@ function renderExplore() {
   if (!server || server.role !== "owner") { card.hidden = true; return; }
   card.hidden = false;
   const ex = server.explore || {};
-  const needPublic = server.plan === "free" && !server.public;
+  const needPublic = server.plan === "free" && !server.node && !server.public;
   const sig = JSON.stringify([ex, server.plan, server.public, exBusy, exErr, document.documentElement.lang]);
   if (sig === exShown) return;
   exShown = sig;
@@ -58,7 +58,7 @@ function renderExplore() {
       h("div", { class: "btn-row", style: "margin-top:10px" },
         h("button", { class: "btn", type: "button", disabled: exBusy, onclick: () => exSave({ about: about.value }) }, "Salvar descrição"),
         ex.listed ? h("a", { class: "btn", href: "explore.html" }, "Ver no Explorar") : null));
-    if (server.plan === "vps") parts.push(h("p", { class: "muted small" }, "Atenção: o endereço da sua VPS (o IP) fica visível para todo mundo que abrir o Explorar."));
+    if (server.plan === "vps" || server.node) parts.push(h("p", { class: "muted small" }, server.node ? "Atenção: o endereço (IP) da máquina de jogo fica visível para todo mundo que abrir o Explorar." : "Atenção: o endereço da sua VPS (o IP) fica visível para todo mundo que abrir o Explorar."));
     parts.push(h("p", { class: "muted small", style: "margin-bottom:0" }, "Qualquer pessoa pode entrar. Se quiser só amigos, ative a lista de permitidos (whitelist) na aba Jogadores."));
   }
   if (ex.verified) {

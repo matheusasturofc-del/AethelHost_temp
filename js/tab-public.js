@@ -37,7 +37,7 @@ async function pubAction(fn) {
 
 function renderPublic() {
   const card = $("pubCard");
-  if (!server || server.plan !== "free" || !tunnelSt) { card.hidden = true; return; }
+  if (!server || server.plan !== "free" || server.node || !tunnelSt) { card.hidden = true; return; }
   if (!tunnelSt.supported) { card.hidden = true; return; }
   card.hidden = false;
 

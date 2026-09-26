@@ -65,7 +65,7 @@ def _paths(server, name):
 
 
 def _remote(server):
-    return server.get("plan") == "vps"
+    return server.get("plan") == "vps" or bool(server.get("node"))
 
 
 def _rem():

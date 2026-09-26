@@ -207,18 +207,19 @@ def wait_update(fn):
 
 
 def position(sid):
-    """Posição na fila (1 = próximo), ou None se o servidor não está na fila."""
+    """Posição na fila da máquina do servidor (1 = próximo), ou None se ele não está na fila."""
     with LOCK:
-        for i, e in enumerate(_queue):
-            if e["sid"] == sid:
-                return i + 1
-    return None
+        mine = next((e for e in _queue if e["sid"] == sid), None)
+        if not mine:
+            return None
+        return 1 + sum(1 for e in _queue[:_queue.index(mine)] if e["machine"] == mine["machine"])
 
 
-def add(sid, user):
+def add(sid, user, machine="local"):
+    """Põe o servidor no fim da fila da sua máquina ("local" = o PC do site, ou o id de um nó)."""
     with LOCK:
         if position(sid) is None:
-            _queue.append({"sid": sid, "user": user, "since": int(time.time())})
+            _queue.append({"sid": sid, "user": user, "machine": machine, "since": int(time.time())})
         return position(sid)
 
 
@@ -229,9 +230,9 @@ def remove(sid):
         return len(_queue) != before
 
 
-def waiting():
+def waiting(machine=None):
     with LOCK:
-        return len(_queue)
+        return sum(1 for e in _queue if machine is None or e["machine"] == machine)
 
 
 def first():

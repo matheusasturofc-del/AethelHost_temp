@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 import manage
+import nodes
 from config import DATA, SERVERS_DIR
 from errors import ContentError
 from props import read_properties
@@ -35,7 +36,7 @@ inside() {  # o caminho (mesmo com atalhos) precisa continuar dentro da pasta do
 
 
 def _vps(server):
-    return {**server["vps"], "owner": server["owner"]}
+    return nodes.conn(server)  # VPS do cliente ou máquina de jogo (nó)
 
 
 def run(server, body, args=(), stdin=b"", timeout=90, **kw):
