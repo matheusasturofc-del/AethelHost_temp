@@ -26,6 +26,8 @@
     </div>
     <div class="error" id="adErr"></div>
     <div class="info-grid" id="adTotals"></div>
+    <div id="adExplore" style="margin-top:20px"></div>
+    <div id="adSupport" style="margin-top:20px"></div>
     <div id="adList" style="margin-top:20px"></div>
     <p class="muted small" id="adNote" hidden>Só leitura. Você vê aqui as contas e os servidores de todo mundo; para mexer em um servidor, a própria pessoa usa o painel dela.</p>
   </main>
@@ -60,6 +62,9 @@
           h("strong", { translate: "no" }, s.name),
           h("small", { translate: "no" }, `${s.ip} · ${s.software} ${s.version} · :${s.port}`)),
         s.public ? h("span", { class: "badge on" }, "Endereço público") : null,
+        s.listed ? h("span", { class: "badge on" }, "No Explorar") : null,
+        s.verified ? h("span", { class: "badge on" }, "Verificado") : null,
+        h("button", { class: "btn", type: "button", style: "padding:3px 10px;font-size:12px", onclick: () => setTrust(s) }, s.verified ? "Tirar selo" : "Dar selo"),
         h("span", { class: "badge" }, s.plan === "vps" ? "VPS" : "Grátis"),
         h("span", { class: "badge", translate: "no" }, fmtRam(s.ramMb)),
         h("span", { class: "status " + s.state }, STATE[s.state]),
@@ -84,6 +89,98 @@
           catch (e) { $("adErr").textContent = e.message; }
         } }, "Mesclar"),
         h("button", { class: "btn", type: "button", onclick: () => { mergeFor = null; render(); } }, "Cancelar"));
+    }
+
+    // ---- Explorar: selo "Confiável por AethelHost", remoção e denúncias
+    async function setTrust(s) {
+      let note = "";
+      if (!s.verified) {
+        note = await promptBox(`Dar o selo Confiável por AethelHost ao servidor "${s.name}"? Só dê depois de testar: entra, sem mods maliciosos, sem golpe. Nota para você (opcional):`, { title: "Dar o selo", ok: "Dar selo", placeholder: "ex.: testado em 26/09" });
+        if (note === null) return;
+      } else if (!(await confirmBox(`Tirar o selo do servidor "${s.name}"?`, { ok: "Tirar selo", danger: true }))) return;
+      try { await api("POST", "/admin/explore", { id: s.id, verified: !s.verified, note }); $("adErr").textContent = ""; await load(); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
+
+    async function exploreAct(s, body, ask) {
+      if (ask && !(await confirmBox(ask, { ok: "Confirmar", danger: true }))) return;
+      try { await api("POST", "/admin/explore", { id: s.id, ...body }); $("adErr").textContent = ""; await load(); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
+
+    let exploreData = null, supportData = null, supportDraft = {};
+    function exploreSection() {
+      const list = exploreData ? exploreData.servers : [];
+      const reported = list.filter((s) => s.reports.length).length;
+      const rows = list.map((s) => h("div", { style: "padding:12px 0;border-top:1px solid var(--border)" },
+        h("div", { class: "row", style: "border:0;padding:0" },
+          h("div", { class: "row-main" },
+            h("strong", { translate: "no" }, s.name),
+            h("small", { translate: "no" }, `${s.ip} · ${s.softwareLabel} ${s.version} · ${s.plan === "vps" ? "VPS" : "Grátis"} · @${s.owner}`),
+            s.verified && s.verifiedNote ? h("small", {}, "Nota: ", h("span", { translate: "no" }, s.verifiedNote)) : null),
+          s.listed && !s.blocked ? h("span", { class: "badge on" }, "No Explorar") : null,
+          s.blocked ? h("span", { class: "badge pending" }, "Removido") : null,
+          s.autoHidden ? h("span", { class: "badge pending" }, "Oculto por denúncias") : null,
+          s.verified ? h("span", { class: "badge on" }, "Verificado") : null,
+          h("span", { class: "status " + s.state }, STATE[s.state])),
+        s.reports.length ? h("div", { style: "margin:8px 0 0" }, ...s.reports.map((r) => h("div", { class: "small", style: "margin:2px 0" },
+          h("b", {}, r.label), r.note ? h("span", { translate: "no" }, ": " + r.note) : null, h("span", { class: "muted" }, " · @" + r.by + " · ", fmtDate(r.ts))))) : null,
+        h("div", { class: "btn-row", style: "margin-top:8px" },
+          h("button", { class: "btn", type: "button", onclick: () => setTrust(s) }, s.verified ? "Tirar selo" : "Dar selo"),
+          s.blocked
+            ? h("button", { class: "btn", type: "button", onclick: () => exploreAct(s, { blocked: false }) }, "Liberar no Explorar")
+            : h("button", { class: "btn btn-danger", type: "button", onclick: () => exploreAct(s, { blocked: true, dismiss: true }, `Tirar "${s.name}" do Explorar? O dono não consegue anunciar de novo, e recebe um aviso.`) }, "Tirar do Explorar"),
+          s.reports.length ? h("button", { class: "btn", type: "button", onclick: () => exploreAct(s, { dismiss: true }) }, "Descartar denúncias") : null)));
+      return h("div", { class: "card", style: "padding:20px" },
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Explorar ", h("span", { class: "beta-tag" }, "Beta")),
+        h("p", { class: "muted small", style: "margin:0 0 6px" }, `${list.length} servidor${list.length === 1 ? "" : "es"}` + (reported ? `, ${reported} com denúncia` : "") + ". Com 5 denúncias de pessoas diferentes o servidor sai da lista até você olhar."),
+        rows.length ? rows : h("p", { class: "muted" }, "Nenhum servidor anunciado ainda."));
+    }
+
+    // ---- Suporte
+    const TOPIC = { account: "Conta e login", server: "Meu servidor", vps: "VPS", backup: "Backups e Drive", explore: "Explorar", bug: "Erro no site", other: "Outro assunto" };
+    const TSTATE = { open: "Aguardando você", answered: "Respondida", closed: "Encerrada" };
+    async function supportAct(t, text, close) {
+      try { await api("POST", "/admin/support/reply", { id: t.id, text, close }); $("adErr").textContent = ""; supportDraft = {}; await loadExtra(true); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
+    function supportSection() {
+      const list = supportData ? supportData.tickets : [];
+      const open = list.filter((t) => t.status === "open").length;
+      const cards = list.map((t) => {
+        const box = h("textarea", { rows: 2, maxlength: 2000, placeholder: "Sua resposta…", value: supportDraft[t.id] || "", oninput: (ev) => { supportDraft[t.id] = ev.target.value; } });
+        return h("div", { style: "padding:12px 0;border-top:1px solid var(--border)" },
+          h("div", { class: "row", style: "border:0;padding:0 0 6px" },
+            h("div", { class: "row-main" },
+              h("strong", { translate: "no" }, t.subject),
+              h("small", {}, h("span", { translate: "no" }, `${t.user.name}${t.user.username ? " @" + t.user.username : ""} · ${t.user.email || ""}`), " · ", TOPIC[t.topic] || t.topic)),
+            h("span", { class: "badge" + (t.status === "open" ? " pending" : "") }, TSTATE[t.status])),
+          ...t.messages.map((m) => h("div", { class: "support-msg " + m.from }, h("small", { class: "muted" }, m.from === "team" ? "Equipe" : "Pessoa", " · ", fmtDate(m.ts)), h("div", { translate: "no", style: "white-space:pre-wrap;overflow-wrap:anywhere" }, m.text))),
+          t.status === "closed" ? null : h("div", {}, box,
+            h("div", { class: "btn-row", style: "margin-top:8px" },
+              h("button", { class: "btn btn-primary", type: "button", onclick: () => box.value.trim() ? supportAct(t, box.value, false) : null }, "Responder"),
+              h("button", { class: "btn", type: "button", onclick: () => supportAct(t, box.value, true) }, "Responder e encerrar"))));
+      });
+      return h("div", { class: "card", style: "padding:20px" },
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Suporte ", h("span", { class: "beta-tag" }, "Beta")),
+        h("p", { class: "muted small", style: "margin:0 0 6px" }, `${list.length} conversa${list.length === 1 ? "" : "s"}` + (open ? `, ${open} esperando resposta` : "") + ". Quem recebe a resposta é avisado no sino."),
+        cards.length ? cards : h("p", { class: "muted" }, "Nenhuma mensagem ainda."));
+    }
+
+    let extraSig = "";
+    function drawExtra(force) {
+      const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest("#adSupport");
+      const sig = JSON.stringify([exploreData, supportData, document.documentElement.lang]);
+      if (!force && (sig === extraSig || focus || Object.values(supportDraft).some(Boolean))) return;
+      extraSig = sig;
+      $("adExplore").replaceChildren(exploreSection());
+      $("adSupport").replaceChildren(supportSection());
+    }
+    async function loadExtra(force) {
+      try {
+        [exploreData, supportData] = await Promise.all([api("GET", "/admin/explore"), api("GET", "/admin/support")]);
+        drawExtra(force);
+      } catch { /* o erro principal já aparece em load() */ }
     }
 
     function accountCard(u) {
@@ -126,6 +223,7 @@
         data = await api("GET", "/admin/overview");
         $("adErr").textContent = "";
         render();
+        loadExtra();
       } catch (e) {
         if (e.status === 403) {
           $("adTotals").replaceChildren();
@@ -140,7 +238,7 @@
     }
 
     $("adSearch").addEventListener("input", () => data && render());
-    window.addEventListener("langchange", () => data && render());
+    window.addEventListener("langchange", () => { if (data) render(); drawExtra(true); });
     const timer = setInterval(load, 5000);
     load();
   </script>

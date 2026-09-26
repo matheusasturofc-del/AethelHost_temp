@@ -9,6 +9,7 @@ O AethelHost é um painel para criar e gerenciar servidores de Minecraft Java. E
 - **Formas de entrar:** o identificador que Google, Microsoft, GitHub, Discord ou outro serviço nos informa ao você entrar com ele.
 - **Servidores:** nome, versão, configurações, mundos, backups e arquivos dos servidores que você cria.
 - **Sessão:** um cookie para manter você logado e um para o tema/idioma.
+- **Explorar e Suporte (Beta):** se você mostrar um servidor no Explorar, o nome, o subtítulo, a descrição, o endereço (na VPS, o IP) e o seu @usuário ficam públicos até você desligar. As denúncias que você fizer e as mensagens que mandar ao Suporte ficam guardadas para a administração ler e responder.
 
 ## Google (login e Google Drive)
 - **Login com Google:** lemos seu nome, e-mail e foto para criar sua conta.
@@ -43,6 +44,8 @@ AethelHost is a panel to create and manage Minecraft Java servers. This page exp
 **Data we store:** account (display name, username, email, photo from the sign-in service, preferences); the identifiers your sign-in service gives us; your servers (settings, worlds, backups, files); and session cookies. Passwords are stored only as a hash.
 
 **Google:** with Google sign-in we read your name, email and photo to create your account. If you optionally link Google Drive, we only request the `drive.file` scope: AethelHost can see **only the files it creates itself** (the "AethelHost Backups" folder) and never reads, lists or changes anything else in your Drive. The long-term token is kept only to upload your backups. You can unlink at any time in the panel (Backups tab) or at myaccount.google.com/permissions; what is already in your Drive stays yours. AethelHost's use of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements.
+
+**Explore and Support (Beta):** if you list a server in Explore, its name, subtitle, description, address (for a VPS, the IP) and your @username are public until you turn it off. Reports you file and messages you send to Support are kept so the administration can read and answer them.
 
 **How we use it:** only to make the site work (sign-in, managing your servers, confirmation emails, storing your backups). We do not sell your data or share it with third parties for advertising. It is shared with other accounts only if you share a server with them, and with the services the site needs (your sign-in provider, the email server, and Google Drive / playit.gg if you use them).
 

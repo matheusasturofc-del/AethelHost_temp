@@ -29,6 +29,11 @@
       share_changed: [" mudou o seu acesso ao servidor ", srv, "."],
       share_removed: [" removeu o seu acesso ao servidor ", srv, "."],
       share_left: [" saiu do servidor ", srv, "."],
+      explore_verified: [" deu o selo Confiável por AethelHost ao servidor ", srv, "."],
+      explore_unverified: [" tirou o selo Confiável por AethelHost do servidor ", srv, "."],
+      explore_lost: [": o selo Confiável por AethelHost do servidor ", srv, " foi removido porque o software ou os mods mudaram. A equipe pode verificar de novo."],
+      explore_blocked: [" tirou o servidor ", srv, " do Explorar. Fale com o Suporte se achar que foi um engano."],
+      support_reply: [" respondeu à sua mensagem: ", h("b", { translate: "no" }, d.subject || ""), ". Veja em Suporte."],
     }[n.type] || [];
     return h("div", {}, ...name, ...parts);
   }
@@ -90,10 +95,20 @@
     window.addEventListener("langchange", refresh);
   }
 
+  // Explorar e Suporte (Beta) aparecem no topo de todas as páginas.
+  function mountNavLinks(nav) {
+    if (nav.querySelector('a[href="explore.html"]')) return;
+    const before = nav.querySelector('a[href="servers.html"]');
+    const link = (href, label) => h("a", { href }, label, " ", h("span", { class: "beta-tag" }, "Beta"));
+    const items = [link("explore.html", "Explorar"), link("support.html", "Suporte")];
+    if (before) before.before(...items); else nav.append(...items);
+  }
+
   // Clicar no perfil abre um menu: Ver perfil, Administração (só a administradora) e Sair.
   function mountMenu(user) {
     const nav = document.querySelector(".topnav");
     if (!nav) return;
+    mountNavLinks(nav);
     if (!user) {
       if (page !== "login.html") nav.append(h("a", { class: "btn nav-login", href: "login.html" }, "Entrar"));
       return;
@@ -101,6 +116,7 @@
     const pop = h("div", { class: "user-pop", role: "menu", hidden: true },
       h("div", { class: "who" }, h("b", { translate: "no" }, user.name), user.username ? h("span", { translate: "no" }, "@" + user.username) : null),
       h("a", { class: "only-mobile", href: "servers.html", role: "menuitem" }, "Servidores"),
+      h("a", { class: "only-mobile", href: "support.html", role: "menuitem" }, "Suporte"),
       h("a", { href: "profile.html", role: "menuitem" }, "Ver perfil"),
       h("a", { href: "settings.html", role: "menuitem" }, "Editar perfil"),
       user.admin ? h("a", { href: "admin.html", role: "menuitem" }, "Administração") : null,

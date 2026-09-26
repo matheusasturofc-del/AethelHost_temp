@@ -140,3 +140,9 @@ function fmtDate(seconds) {
 }
 
 const STATUS_LABEL = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };
+
+// Selo "Confiável por AethelHost" (Explorar) e a etiqueta Beta.
+const TRUST_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+function trustBadge(when) {
+  return h("span", { class: "trust", title: "Testado pela equipe do AethelHost" + (when ? " em " + fmtDate(when) : "") }, h("span", { class: "trust-ico", innerHTML: TRUST_CHECK }), "Confiável por AethelHost");
+}

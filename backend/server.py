@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # deixa importar confi
 
 import content  # noqa: E402
 import drive  # noqa: E402
+import explore  # noqa: E402
 import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
@@ -43,6 +44,7 @@ import manage  # noqa: E402
 import options  # noqa: E402
 import remote  # noqa: E402
 import sms  # noqa: E402
+import support  # noqa: E402
 import telegram  # noqa: E402
 import sshx  # noqa: E402
 import tunnel  # noqa: E402
@@ -840,8 +842,9 @@ def view(server):
         if server.get("vps"):
             extra["vps"] = {"provider": server["vps"].get("provider", ""), "host": server["vps"]["host"]}
     return {
-        **{k: v for k, v in server.items() if k != "shares"},
+        **{k: v for k, v in server.items() if k not in ("shares", "verified", "explore")},
         **extra,
+        "explore": explore.public_view(server),
         "role": role[0] if role else None, "files": role[1] if role else None, "shared": shared,
         "publicName": f"{server['ip']}.{DOMAIN}",
         "address": f"{server['vps']['host']}:{server['port']}" if server["plan"] == "vps" else f"localhost:{server['port']}",
@@ -1138,6 +1141,7 @@ def api_delete(query, body, sid):  # noqa: D401 - só o dono
         shutil.rmtree(folder, ignore_errors=True)
     RUNTIMES.pop(sid, None)
     tunnel.forget(sid)
+    explore.forget_server(sid)
     notify.remove_where(lambda n: n["type"] == "share_invite" and n["data"].get("server") == sid)  # convites de um servidor que não existe mais
     return 200, {"ok": True}
 
@@ -2022,7 +2026,8 @@ def api_admin_overview(query, body):
         snap = rt.snapshot() if rt else {"state": "offline", "players": []}
         item = {"id": s["id"], "name": s["name"], "ip": s["ip"], "plan": s["plan"], "software": SOFTWARE[s["software"]]["label"],
                 "version": s["version"], "ramMb": s["ramMb"], "port": s["port"], "public": bool(s.get("public")),
-                "createdAt": s.get("createdAt"), "state": snap["state"], "players": len(snap["players"])}
+                "createdAt": s.get("createdAt"), "state": snap["state"], "players": len(snap["players"]),
+                "listed": explore.is_listed(s), "verified": explore.is_verified(s)}
         by_owner.setdefault(s.get("owner") if s.get("owner") in known else None, []).append(item)
         if snap["state"] != "offline":
             running += 1
@@ -2037,6 +2042,211 @@ def api_admin_overview(query, body):
         "totals": {"users": len(users), "servers": sum(len(v) for v in by_owner.values()), "running": running,
                    "players": online_players, "ramInUseMb": ram_in_use},
     }
+
+
+# ---------------------------------------------------------------- Explorar (Beta), selo e Suporte (Beta)
+
+def _explore_entry(s):
+    rt = RUNTIMES.get(s["id"])
+    snap = rt.snapshot() if rt else {"state": "offline", "players": []}
+    owner = auth.get_user(s.get("owner")) or {}
+    if s["plan"] == "vps":
+        address = f"{s['vps']['host']}:{s['port']}"
+    else:
+        t = tunnel.info(s["id"]) if s.get("public") else {}
+        address = t.get("address") if t.get("state") == "ready" else None  # o endereço do playit só existe com o servidor ligado
+    props = read_properties(SERVERS_DIR / s["id"] / "server.properties")
+    return {"id": s["id"], "name": s["name"], "subtitle": s.get("subtitle", ""), "about": (s.get("explore") or {}).get("about", ""),
+            "software": s["software"], "softwareLabel": SOFTWARE[s["software"]]["label"], "version": s["version"],
+            "state": snap["state"], "players": len(snap["players"]), "maxPlayers": _max_players(s), "address": address,
+            "whitelist": props.get("white-list", "false").strip().lower() == "true", "iconVersion": icon_version(s["id"]),
+            "verified": explore.is_verified(s), "verifiedAt": (s.get("verified") or {}).get("at") if explore.is_verified(s) else None,
+            "owner": owner.get("username") or owner.get("name") or "", "ownerName": owner.get("name") or "", "createdAt": s.get("createdAt")}
+
+
+def _explore_visible(s, hidden):
+    return explore.is_listed(s) and s["id"] not in hidden and (s["plan"] == "vps" or s.get("public")) and auth.get_user(s.get("owner")) is not None
+
+
+def _explore_hidden():
+    seen = {}
+    for r in explore.open_reports():
+        seen.setdefault(r["server"], set()).add(r["user"])
+    return {sid for sid, users in seen.items() if len(users) >= explore.HIDE_AT}
+
+
+def api_explore_list(query, body):
+    q = (query.get("q", [""])[0] or "").strip().lower()[:60]
+    software = query.get("software", [""])[0]
+    only_verified = query.get("verified", [""])[0] == "1"
+    only_online = query.get("online", [""])[0] == "1"
+    hidden = _explore_hidden()
+    items = []
+    for s in db_load():
+        if not _explore_visible(s, hidden):
+            continue
+        e = _explore_entry(s)
+        if software and e["software"] != software:
+            continue
+        if only_verified and not e["verified"]:
+            continue
+        if only_online and e["state"] != "online":
+            continue
+        if q and not any(q in str(x).lower() for x in (e["name"], mcplain(e["subtitle"]), e["about"], e["owner"], e["softwareLabel"], e["version"])):
+            continue
+        items.append(e)
+    items.sort(key=lambda e: (not e["verified"], e["state"] != "online", -e["players"], e["name"].lower()))
+    return 200, {"servers": items[:100], "total": len(items)}
+
+
+def mcplain(text):
+    return COLOR_CODE_RE.sub("", str(text or ""))
+
+
+def api_explore_icon(query, body, sid):
+    s = next((s for s in db_load() if s["id"] == sid), None)
+    if not s or not _explore_visible(s, _explore_hidden()):
+        raise ApiError(404, "Servidor não encontrado.")
+    return 200, Raw(icon_bytes(sid), "image/png", "public, max-age=600")
+
+
+def api_explore_report(query, body, sid):
+    s = next((s for s in db_load() if s["id"] == sid), None)
+    if not s or not _explore_visible(s, _explore_hidden()):
+        raise ApiError(404, "Servidor não encontrado.")
+    if s.get("owner") == current_user()["id"]:
+        raise ApiError(400, "Este servidor é seu.")
+    explore.add_report(sid, current_user()["id"], str(body.get("reason", "")), body.get("note", ""))
+    return 200, {"ok": True}
+
+
+def api_explore_set(query, body, sid):
+    """Dono: aparecer (ou não) no Explorar e escrever a descrição."""
+    with DB_LOCK:
+        servers = db_load()
+        server = _pick(servers, sid)
+        e = dict(server.get("explore") or {})
+        listed = body.get("listed", e.get("listed", False))
+        if not isinstance(listed, bool):
+            raise ApiError(400, "Informe listed: true ou false.")
+        e["about"] = explore.clean_text(body.get("about", e.get("about", "")), explore.ABOUT_MAX, "Descrição")
+        if listed:
+            if e.get("blocked"):
+                raise ApiError(403, "A administração removeu este servidor do Explorar. Fale com o Suporte se achar que foi um engano.")
+            if server["plan"] == "free" and not server.get("public"):
+                raise ApiError(409, "Ative o endereço público (Jogar com amigos) antes: sem ele ninguém de fora consegue entrar.")
+            others = [x for x in servers if x["owner"] == server["owner"] and x["id"] != sid and (x.get("explore") or {}).get("listed")]
+            if len(others) >= explore.MAX_LISTED and not e.get("listed"):
+                raise ApiError(429, f"No máximo {explore.MAX_LISTED} servidores por conta no Explorar.")
+        e["listed"] = listed
+        e["at"] = int(time.time())
+        server["explore"] = e
+        db_save(servers)
+        return 200, view(server)
+
+
+def api_admin_explore(query, body):
+    """Administrador: servidores anunciados, com selo ou denunciados, e as denúncias abertas de cada um."""
+    _require_admin("Só o administrador pode ver isto.")
+    open_reports = explore.open_reports()
+    by_server = {}
+    for r in open_reports:
+        who = auth.get_user(r["user"]) or {}
+        by_server.setdefault(r["server"], []).append({"reason": r["reason"], "label": explore.REASONS.get(r["reason"], r["reason"]),
+                                                      "note": r["note"], "ts": r["ts"], "by": who.get("username") or who.get("name") or "?"})
+    hidden = _explore_hidden()
+    out = []
+    for s in db_load():
+        e = s.get("explore") or {}
+        if not (e.get("listed") or e.get("blocked") or s.get("verified") or s["id"] in by_server):
+            continue
+        item = _explore_entry(s)
+        item.update(listed=bool(e.get("listed")), blocked=bool(e.get("blocked")), reports=by_server.get(s["id"], []),
+                    autoHidden=s["id"] in hidden, verifiedNote=(s.get("verified") or {}).get("note", ""),
+                    ip=s["ip"], plan=s["plan"])
+        out.append(item)
+    out.sort(key=lambda i: (-len(i["reports"]), i["name"].lower()))
+    return 200, {"servers": out, "reasons": explore.REASONS}
+
+
+def api_admin_explore_set(query, body):
+    _require_admin("Só o administrador pode fazer isto.")
+    sid = str(body.get("id", ""))
+    with DB_LOCK:
+        servers = db_load()
+        s = next((x for x in servers if x["id"] == sid), None)
+        if not s:
+            raise ApiError(404, "Servidor não encontrado.")
+        notice = None
+        if "verified" in body:
+            if not isinstance(body["verified"], bool):
+                raise ApiError(400, "Informe verified: true ou false.")
+            if body["verified"]:
+                s["verified"] = {"by": current_user()["id"], "at": int(time.time()), "software": s["software"], "version": s["version"],
+                                 "note": explore.clean_text(body.get("note", ""), 200, "Nota")}
+                notice = "explore_verified"
+            elif s.pop("verified", None):
+                notice = "explore_unverified"
+        if "blocked" in body:
+            if not isinstance(body["blocked"], bool):
+                raise ApiError(400, "Informe blocked: true ou false.")
+            e = dict(s.get("explore") or {})
+            e["blocked"] = body["blocked"]
+            s["explore"] = e
+            if body["blocked"]:
+                notice = "explore_blocked"
+        if body.get("dismiss") is True:
+            explore.dismiss_reports(sid)
+        db_save(servers)
+    if notice and s.get("owner"):
+        notify.add(s["owner"], notice, {"fromName": "AethelHost", "serverName": s["name"], "server": sid})
+    return 200, {"ok": True}
+
+
+def _unverify(sid, always):
+    """Mexeu em mods (ou trocou o software): o selo era do servidor que foi testado, então cai até o administrador olhar de novo."""
+    with DB_LOCK:
+        servers = db_load()
+        s = next((x for x in servers if x["id"] == sid), None)
+        if not s or not s.get("verified") or (not always and explore.is_verified(s)):
+            return
+        s.pop("verified")
+        db_save(servers)
+    if s.get("owner"):
+        notify.add(s["owner"], "explore_lost", {"fromName": "AethelHost", "serverName": s["name"], "server": sid})
+
+
+def api_support_create(query, body):
+    return 201, support.create(current_user()["id"], str(body.get("topic", "")), body.get("subject", ""), body.get("message", ""))
+
+
+def api_support_mine(query, body):
+    return 200, {"tickets": support.mine(current_user()["id"]), "topics": list(support.TOPICS)}
+
+
+def api_support_reply(query, body, tid):
+    return 200, support.reply_mine(current_user()["id"], tid, body.get("message", ""))
+
+
+def api_support_close(query, body, tid):
+    return 200, support.close_mine(current_user()["id"], tid)
+
+
+def api_admin_support(query, body):
+    _require_admin("Só o administrador pode ver isto.")
+    out = []
+    for t in support.all_for_admin():
+        u = auth.get_user(t["user"]) or {}
+        out.append({**t, "user": {"name": u.get("name", "?"), "username": u.get("username", ""), "email": u.get("email", "")}})
+    return 200, {"tickets": out}
+
+
+def api_admin_support_reply(query, body):
+    _require_admin("Só o administrador pode fazer isto.")
+    t = support.admin_reply(str(body.get("id", "")), body.get("text", ""), bool(body.get("close")))
+    if str(body.get("text", "")).strip():
+        notify.add(t["user"], "support_reply", {"fromName": "AethelHost", "subject": t["subject"], "ticket": t["id"]})
+    return 200, {"ok": True}
 
 
 def api_tunnel(query, body):
@@ -2196,6 +2406,18 @@ ROUTES = [
     ("POST", r"^/api/auth/captcha$", api_captcha_save),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("POST", r"^/api/admin/merge$", api_admin_merge),
+    ("GET", r"^/api/admin/explore$", api_admin_explore),
+    ("POST", r"^/api/admin/explore$", api_admin_explore_set),
+    ("GET", r"^/api/admin/support$", api_admin_support),
+    ("POST", r"^/api/admin/support/reply$", api_admin_support_reply),
+    ("GET", r"^/api/explore$", api_explore_list),
+    ("GET", rf"^/api/explore/{ID}/icon$", api_explore_icon),
+    ("POST", rf"^/api/explore/{ID}/report$", api_explore_report),
+    ("POST", rf"^/api/servers/{ID}/explore$", api_explore_set),
+    ("GET", r"^/api/support$", api_support_mine),
+    ("POST", r"^/api/support$", api_support_create),
+    ("POST", rf"^/api/support/{ID}/reply$", api_support_reply),
+    ("POST", rf"^/api/support/{ID}/close$", api_support_close),
     ("GET", r"^/api/tunnel$", api_tunnel),
     ("POST", r"^/api/tunnel/link$", api_tunnel_link),
     ("POST", r"^/api/tunnel/unlink$", api_tunnel_unlink),
@@ -2275,10 +2497,11 @@ NEED = {
     **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
 }
-PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
+PUBLIC = {api_explore_list, api_explore_icon, api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
           api_captcha_config, api_captcha_get, api_captcha_save, api_pw_forgot, api_pw_reset,
           api_sms_get, api_sms_save, api_sms_test, api_telegram_get, api_telegram_save}  # não exigem login
+UNVERIFY = {api_software_set, api_content_install, api_content_upload, api_content_toggle, api_content_delete}  # mexer nisso derruba o selo
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload, api_account_avatar_set, api_account_banner_image}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024
@@ -2531,6 +2754,8 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             if temp:
                 temp.unlink(missing_ok=True)
+        if fn in UNVERIFY and groups:
+            _unverify(groups[0], fn is not api_software_set)
         if isinstance(data, Raw):
             if data.path:
                 self._send_file(status, data)

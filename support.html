@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suporte — AethelHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="page-head">
+      <div>
+        <h1>Suporte <span class="beta-tag">Beta</span></h1>
+        <p class="muted" style="margin:6px 0 0">Guias de tudo que o AethelHost faz e, se não achar a resposta, fale com a equipe.</p>
+      </div>
+      <input type="search" id="spQ" placeholder="Buscar nos guias…" maxlength="60" autocomplete="off" style="max-width:320px">
+    </div>
+
+    <div class="support-topics" id="spTopics" role="tablist"></div>
+    <div id="spGuides" translate="no"></div>
+
+    <section class="support-contact" id="contato">
+      <h2>Falar com a equipe <span class="beta-tag">Beta</span></h2>
+      <p class="muted small">Respondemos aqui mesmo: você recebe um aviso no sino quando houver resposta. O Suporte está em Beta, então a resposta pode demorar.</p>
+      <div id="spContact"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>AethelHost · desde 2026</span>
+      <span><a href="explore.html">Explorar</a> · <a href="index.html#perguntas">Perguntas frequentes</a></span>
+    </div>
+  </footer>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const isEn = () => (document.documentElement.lang || "").startsWith("en");
+    const L = (o) => (isEn() ? o.en : o.pt);
+
+    // ---- Conteúdo dos guias (português e inglês). **negrito**; uma lista dentro do texto vira passos numerados.
+    const TOPICS = [
+      { id: "start", pt: "Começar", en: "Getting started" },
+      { id: "plans", pt: "Planos e VPS", en: "Plans & VPS" },
+      { id: "friends", pt: "Amigos e acesso", en: "Friends & access" },
+      { id: "content", pt: "Mods, mundos e backups", en: "Mods, worlds & backups" },
+      { id: "account", pt: "Conta e segurança", en: "Account & security" },
+      { id: "explore", pt: "Explorar", en: "Explore" },
+      { id: "fix", pt: "Problemas comuns", en: "Troubleshooting" },
+    ];
+    const GUIDES = [
+      { id: "criar", topic: "start",
+        title: { pt: "Criar o primeiro servidor", en: "Create your first server" },
+        body: { pt: ["Vá em **Servidores → Criar servidor** e siga os passos:", ["Escolha o nome, o endereço (de 3 a 24 letras minúsculas, números e hífen), o ícone e o subtítulo colorido.", "Escolha o software (Vanilla, Paper, Purpur, Fabric, Quilt, Forge ou NeoForge) e a versão do Minecraft.", "Aceite o EULA do Minecraft e resolva o captcha.", "Escolha o plano: **Grátis** (roda no computador do AethelHost) ou **VPS** (a sua própria máquina).", "Abra o servidor e clique em **Iniciar**."], "A versão precisa do Java certo. No plano Grátis o Java tem de estar instalado no computador; na VPS o AethelHost instala sozinho."],
+                en: ["Go to **Servers → Create server** and follow the steps:", ["Pick the name, the address (3 to 24 lowercase letters, numbers and hyphens), the icon and the colored subtitle.", "Pick the software (Vanilla, Paper, Purpur, Fabric, Quilt, Forge or NeoForge) and the Minecraft version.", "Accept the Minecraft EULA and solve the captcha.", "Pick the plan: **Free** (runs on the AethelHost computer) or **VPS** (your own machine).", "Open the server and click **Start**."], "Each version needs the right Java. On the Free plan Java must be installed on the computer; on a VPS AethelHost installs it for you."] } },
+      { id: "painel", topic: "start",
+        title: { pt: "O painel do servidor: o que tem em cada aba", en: "The server panel: what each tab does" },
+        body: { pt: ["O menu do lado esquerdo tem:", ["**Servidor**: ligar e desligar, endereço, jogar com amigos e Explorar.", "**Opções**: as configurações do server.properties, com explicação de cada uma.", "**Console**: os comandos e o que o servidor escreve.", "**Jogadores**: quem está online, lista de permitidos (whitelist), operadores e banidos (com botão de desbanir).", "**Software**: trocar o software, a versão e a RAM (só com o servidor desligado; guarda um backup antes).", "**Mods**: buscar no Modrinth e instalar com as dependências, ou enviar o seu .jar.", "**Arquivos**, **Mundos** e **Backups**.", "**Acesso e Compartilhamento**: convidar outras contas para ajudar."]],
+                en: ["The left menu has:", ["**Server**: start and stop, address, play with friends and Explore.", "**Options**: the server.properties settings, each one explained.", "**Console**: commands and what the server prints.", "**Players**: who is online, the whitelist, operators and banned players (with an unban button).", "**Software**: change the software, the version and the RAM (only while the server is off; a backup is saved first).", "**Mods**: search Modrinth and install with dependencies, or upload your own .jar.", "**Files**, **Worlds** and **Backups**.", "**Access & Sharing**: invite other accounts to help."]] } },
+
+      { id: "gratis", topic: "plans",
+        title: { pt: "Plano Grátis: como funciona", en: "Free plan: how it works" },
+        body: { pt: ["O servidor roda no computador em que o AethelHost está instalado, então você não paga nada ao AethelHost. Tem todos os recursos (mods, mundos, backups).", "Para economizar o computador, o servidor **fecha sozinho depois de 5 horas sem jogadores**. É só iniciar de novo."],
+                en: ["The server runs on the computer where AethelHost is installed, so you pay AethelHost nothing. It has every feature (mods, worlds, backups).", "To save the computer, the server **shuts down by itself after 5 hours with no players**. Just start it again."] } },
+      { id: "vps", topic: "plans",
+        title: { pt: "Usar a sua própria VPS (Beta)", en: "Use your own VPS (Beta)" },
+        body: { pt: ["Com uma VPS (Oracle, Hetzner, DigitalOcean…) o servidor fica ligado o tempo todo. Você paga só o provedor; o AethelHost instala e controla tudo por SSH.", ["Ao criar o servidor, escolha **VPS** e informe o endereço (IP), o usuário e a porta SSH da máquina.", "Copie a **chave pública** que o painel mostra e adicione, numa linha, ao arquivo `~/.ssh/authorized_keys` do usuário na VPS.", "No painel do provedor, libere a porta do Minecraft (TCP). No Oracle, é a Security List da VCN.", "Clique em **Testar conexão**, escolha a RAM e depois **Iniciar**."], "Nenhuma senha passa pelo AethelHost: só a chave SSH. Não dá para usar IPs de rede interna (localhost, 192.168…). Limites por conta: 10 servidores em VPS e 3 VPS diferentes."],
+                en: ["With a VPS (Oracle, Hetzner, DigitalOcean…) the server stays on all the time. You only pay the provider; AethelHost installs and controls everything over SSH.", ["When creating the server, choose **VPS** and enter the machine's address (IP), user and SSH port.", "Copy the **public key** the panel shows and add it, on one line, to the `~/.ssh/authorized_keys` file of that user on the VPS.", "In the provider's panel, open the Minecraft port (TCP). On Oracle that is the VCN Security List.", "Click **Test connection**, pick the RAM and then **Start**."], "No password goes through AethelHost: only the SSH key. Internal network IPs (localhost, 192.168…) are not allowed. Limits per account: 10 VPS servers and 3 different VPSs."] } },
+
+      { id: "amigos", topic: "friends",
+        title: { pt: "Como os amigos entram no meu servidor", en: "How friends join my server" },
+        body: { pt: ["Na aba **Servidor**, no cartão **Jogar com amigos**, ative o **endereço público**. Ele usa o playit.gg, então você não abre porta no roteador. (A primeira vez, o administrador do AethelHost liga a conta do playit.)", "Quando o servidor ligar, o endereço aparece: use **Copiar** e passe para os amigos (Minecraft Java: Multijogador → Adicionar servidor). Na VPS o endereço é o da própria máquina.", "Para deixar só os amigos, ative a **lista de permitidos** na aba Jogadores."],
+                en: ["On the **Server** tab, in the **Play with friends** card, turn on the **public address**. It uses playit.gg, so you don't open ports on your router. (The first time, the AethelHost administrator links the playit account.)", "When the server starts, the address shows up: use **Copy** and send it to your friends (Minecraft Java: Multiplayer → Add server). On a VPS the address is the machine's own.", "To keep it friends-only, turn on the **whitelist** in the Players tab."] } },
+      { id: "compartilhar", topic: "friends",
+        title: { pt: "Dar acesso ao painel para outra pessoa", en: "Give someone access to the panel" },
+        body: { pt: ["Em **Acesso e Compartilhamento**, convide uma conta pelo @usuário. Você escolhe o nível:", ["**Completo**: mexe em quase tudo (iniciar, jogadores, mods, backups…).", "**Básico**: só liga, desliga e vê o console e os jogadores."], "E escolhe o acesso aos arquivos: nenhum, só leitura ou leitura e escrita. A pessoa recebe o convite no sino e pode aceitar ou recusar. Excluir o servidor, ver dados da VPS e mudar o compartilhamento é só do dono."],
+                en: ["In **Access & Sharing**, invite an account by @username. You choose the level:", ["**Full**: can do almost everything (start, players, mods, backups…).", "**Basic**: can only start, stop and see the console and players."], "You also choose file access: none, read only or read and write. The person gets the invite in the bell and can accept or decline. Deleting the server, seeing VPS data and changing sharing is for the owner only."] } },
+
+      { id: "mods", topic: "content",
+        title: { pt: "Instalar mods e plugins", en: "Install mods and plugins" },
+        body: { pt: ["Na aba **Mods**, busque no Modrinth e clique para instalar: as dependências vêm junto e o arquivo é conferido. Também dá para enviar o seu próprio .jar.", "Trocar o software e mexer nos mods só é possível com o servidor desligado. Vanilla não usa mods; Paper e Purpur usam plugins; Fabric, Quilt, Forge e NeoForge usam mods."],
+                en: ["On the **Mods** tab, search Modrinth and click to install: dependencies come along and the file is checked. You can also upload your own .jar.", "Changing the software and touching mods is only possible while the server is off. Vanilla has no mods; Paper and Purpur use plugins; Fabric, Quilt, Forge and NeoForge use mods."] } },
+      { id: "backups", topic: "content",
+        title: { pt: "Mundos e backups (inclusive automáticos)", en: "Worlds and backups (including automatic)" },
+        body: { pt: ["Em **Mundos** você cria, troca, baixa e envia mundos. Em **Backups** você cria, restaura, baixa e apaga cópias. O AethelHost também guarda um backup antes de qualquer mudança arriscada (como trocar de versão).", "Os **backups automáticos** podem ser diários, semanais ou mensais: ative no cartão de agendamento da aba Backups. O site mantém os 10 mais recentes."],
+                en: ["In **Worlds** you create, switch, download and upload worlds. In **Backups** you create, restore, download and delete copies. AethelHost also saves a backup before any risky change (like changing version).", "**Automatic backups** can be daily, weekly or monthly: turn them on in the schedule card in the Backups tab. The site keeps the 10 most recent."] } },
+      { id: "drive", topic: "content",
+        title: { pt: "Enviar backups para o Google Drive", en: "Send backups to Google Drive" },
+        body: { pt: ["Na aba **Backups**, no cartão do Google Drive, clique em **Conectar** e aprove. Depois você pode enviar um backup para o seu Drive ou deixar o envio automático ligado.", "O AethelHost só enxerga os arquivos que ele mesmo criou no seu Drive (permissão `drive.file`), nunca o resto. Dá para desconectar quando quiser."],
+                en: ["In the **Backups** tab, in the Google Drive card, click **Connect** and approve. Then you can send a backup to your Drive or leave automatic upload on.", "AethelHost can only see the files it created itself in your Drive (`drive.file` permission), never the rest. You can disconnect any time."] } },
+
+      { id: "senha", topic: "account",
+        title: { pt: "Esqueci a minha senha", en: "I forgot my password" },
+        body: { pt: ["Na tela de login, clique em **Esqueci a senha**, resolva o captcha e escolha por onde receber o **código de 6 dígitos**: e-mail ou Telegram. O código vale 10 minutos, tem 5 tentativas e só funciona uma vez. Ao redefinir, todos os aparelhos saem da conta.", "Para receber pelo Telegram, vincule antes: **Editar perfil → Segurança → Telegram de recuperação** (pede a senha atual e abre o bot do AethelHost)."],
+                en: ["On the login screen, click **Forgot password**, solve the captcha and choose where to get the **6-digit code**: email or Telegram. The code lasts 10 minutes, has 5 tries and works once. When you reset, every device is signed out.", "To get it on Telegram, link it first: **Edit profile → Security → Recovery Telegram** (asks for your current password and opens the AethelHost bot)."] } },
+      { id: "seguranca", topic: "account",
+        title: { pt: "Deixar a conta mais segura", en: "Make the account safer" },
+        body: { pt: ["Crie uma **senha do AethelHost** em Editar perfil → Segurança (mesmo entrando com Google, GitHub ou Discord) e confirme o seu e-mail. Assim você consegue recuperar a conta e o site avisa por e-mail quando algo importante muda.", "Você pode ligar mais de uma forma de login à mesma conta (Google, GitHub, Discord, e-mail e senha)."],
+                en: ["Create an **AethelHost password** in Edit profile → Security (even if you sign in with Google, GitHub or Discord) and confirm your email. That lets you recover the account, and the site emails you when something important changes.", "You can link more than one sign-in method to the same account (Google, GitHub, Discord, email and password)."] } },
+
+      { id: "explorar", topic: "explore",
+        title: { pt: "Explorar: mostrar o meu servidor para todo mundo (Beta)", en: "Explore: show my server to everyone (Beta)" },
+        body: { pt: ["O **Explorar** é uma lista pública de servidores. Para aparecer nela (só o dono pode):", ["Abra o painel do servidor, aba **Servidor**, cartão **Explorar**.", "No plano Grátis, ative antes o endereço público em **Jogar com amigos**. Na VPS já tem endereço.", "Escreva uma descrição curta (até 200 caracteres) e ative a chave **Explorar**."], "Vale saber: no máximo 3 servidores por conta; qualquer pessoa pode entrar (use a whitelist para limitar); na VPS o **IP fica visível** para todos; e a administração pode tirar servidores que quebrem as regras. Para sair da lista é só desativar."],
+                en: ["**Explore** is a public server list. To appear in it (owners only):", ["Open the server panel, **Server** tab, **Explore** card.", "On the Free plan, first turn on the public address in **Play with friends**. A VPS already has an address.", "Write a short description (up to 200 characters) and turn on the **Explore** switch."], "Good to know: at most 3 servers per account; anyone can join (use the whitelist to limit); on a VPS the **IP becomes visible** to everyone; and the administration can remove servers that break the rules. To leave the list just turn it off."] } },
+      { id: "confiavel", topic: "explore",
+        title: { pt: "O selo “Confiável por AethelHost”", en: "The “Trusted by AethelHost” badge" },
+        body: { pt: ["O selo verde quer dizer que **a equipe do AethelHost testou o servidor**. Só a administração dá o selo, e olha se:", ["o servidor liga e dá para entrar;", "não tem mods ou plugins maliciosos, e o dono não pede dinheiro ou dados pessoais por fora;", "não tem conteúdo ofensivo ou ilegal."], "O selo **não é garantia para sempre**: mostra a data do teste e cai sozinho se o dono trocar o software, a versão ou mexer nos mods, até a equipe olhar de novo. Quer o selo? Deixe o servidor no Explorar e peça pelo formulário abaixo."],
+                en: ["The green badge means **the AethelHost team tested the server**. Only the administration gives it, and checks that:", ["the server starts and you can join;", "it has no malicious mods or plugins, and the owner doesn't ask for money or personal data outside the game;", "it has no offensive or illegal content."], "The badge is **not a lifetime guarantee**: it shows the test date and drops by itself if the owner changes the software, the version or touches the mods, until the team looks again. Want the badge? Keep the server in Explore and ask through the form below."] } },
+      { id: "denunciar", topic: "explore",
+        title: { pt: "Denunciar um servidor do Explorar", en: "Report a server in Explore" },
+        body: { pt: ["Em cada servidor do Explorar tem o botão **Denunciar** (precisa estar logado). Escolha o motivo e, se quiser, conte os detalhes. Só a administração vê a denúncia. Se **5 pessoas diferentes** denunciarem, o servidor sai da lista até a equipe analisar."],
+                en: ["Every server in Explore has a **Report** button (you must be signed in). Pick the reason and, if you want, add details. Only the administration sees the report. If **5 different people** report a server, it leaves the list until the team reviews it."] } },
+
+      { id: "naoentra", topic: "fix",
+        title: { pt: "Meus amigos não conseguem entrar", en: "My friends can't join" },
+        body: { pt: [["O servidor está **Online**? O endereço público só existe com ele ligado.", "O endereço público está ativado (plano Grátis)? Na VPS, a porta está liberada no provedor? Use **Testar porta** no painel.", "Todo mundo usa a **mesma versão** do Minecraft Java que o servidor (ou uma compatível).", "A **whitelist** está ligada? Adicione o nome do jogador na aba Jogadores.", "O jogador foi **banido**? Veja a lista de banidos e desbane."]],
+                en: [["Is the server **Online**? The public address only exists while it is running.", "Is the public address on (Free plan)? On a VPS, is the port open at the provider? Use **Test port** in the panel.", "Everyone uses the **same Minecraft Java version** as the server (or a compatible one).", "Is the **whitelist** on? Add the player's name in the Players tab.", "Was the player **banned**? Check the banned list and unban."]] } },
+      { id: "naoliga", topic: "fix",
+        title: { pt: "O servidor não liga", en: "The server won't start" },
+        body: { pt: [["Abra o **Console** e leia a última mensagem: ela costuma dizer o motivo.", "Plano Grátis: o computador precisa ter o **Java** que a versão pede.", "Pouca **RAM**? Em Software, escolha menos RAM ou uma versão mais leve.", "VPS: clique em **Testar conexão**. Se falhar, confira a chave em `authorized_keys`, o usuário, o IP e a porta SSH.", "Mods quebrados são a causa mais comum: tire o último instalado (aba Mods) e tente de novo."]],
+                en: [["Open the **Console** and read the last message: it usually says why.", "Free plan: the computer needs the **Java** the version asks for.", "Low on **RAM**? In Software, pick less RAM or a lighter version.", "VPS: click **Test connection**. If it fails, check the key in `authorized_keys`, the user, the IP and the SSH port.", "Broken mods are the most common cause: remove the last one you installed (Mods tab) and try again."]] } },
+    ];
+
+    // ---- desenho
+    let topic = "", query = "";
+    const clean = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    function rich(text) {  // **negrito** e `código`, sem innerHTML
+      const out = [];
+      for (const part of String(text).split(/(\*\*[^*]+\*\*|`[^`]+`)/)) {
+        if (part.startsWith("**")) out.push(h("b", {}, part.slice(2, -2)));
+        else if (part.startsWith("`")) out.push(h("code", {}, part.slice(1, -1)));
+        else if (part) out.push(part);
+      }
+      return out;
+    }
+    const plain = (g) => clean([L(g.title), ...L(g.body).flat()].join(" "));
+
+    function drawTopics() {
+      const all = [{ id: "", pt: "Tudo", en: "All" }, ...TOPICS];
+      $("spTopics").replaceChildren(...all.map((t) => h("button", { type: "button", role: "tab", class: "tab-chip" + (t.id === topic ? " active" : ""), "aria-selected": String(t.id === topic),
+        onclick: () => { topic = t.id; drawTopics(); drawGuides(); } }, L(t))));
+    }
+
+    function drawGuides(openId) {
+      const q = clean(query.trim());
+      const hash = openId || decodeURIComponent(location.hash.slice(1));
+      const list = GUIDES.filter((g) => (!topic || g.topic === topic) && (!q || plain(g).includes(q)));
+      if (!list.length) {
+        $("spGuides").replaceChildren(h("div", { class: "empty", translate: "yes" }, h("h2", {}, "Nada encontrado"), h("p", {}, "Tente outras palavras ou fale com a equipe aqui embaixo."), h("a", { class: "btn btn-primary", href: "#contato" }, "Falar com a equipe")));
+        return;
+      }
+      $("spGuides").replaceChildren(...TOPICS.filter((t) => list.some((g) => g.topic === t.id)).map((t) =>
+        h("div", { class: "support-group" }, h("h2", {}, L(t)),
+          ...list.filter((g) => g.topic === t.id).map((g) => {
+            const el = h("details", { class: "faq", id: g.id, open: g.id === hash || !!q }, h("summary", {}, L(g.title)),
+              ...L(g.body).map((b) => Array.isArray(b) ? h("ol", { class: "steps" }, b.map((s) => h("li", {}, rich(s)))) : h("p", {}, rich(b))));
+            return el;
+          }))));
+      if (hash && !openId) { const el = document.getElementById(hash); if (el) el.scrollIntoView({ block: "start" }); }
+    }
+
+    // ---- falar com a equipe
+    const TOPIC_LABEL = { account: "Conta e login", server: "Meu servidor", vps: "VPS", backup: "Backups e Drive", explore: "Explorar", bug: "Erro no site", other: "Outro assunto" };
+    const TSTATE = { open: "Aguardando a equipe", answered: "Respondida", closed: "Encerrada" };
+    let tickets = null, contactSig = "", sending = false, formErr = "", formOk = "";
+
+    function form() {
+      const topicSel = h("select", { "aria-label": "Assunto" }, ...Object.entries(TOPIC_LABEL).map(([k, v]) => h("option", { value: k }, v)));
+      const subject = h("input", { type: "text", maxlength: 80, placeholder: "Título (ex.: quero o selo Confiável)", autocomplete: "off" });
+      const msg = h("textarea", { rows: 4, maxlength: 2000, placeholder: "Conte o que aconteceu, com o máximo de detalhes (nome do servidor, o que você fez, a mensagem de erro…)" });
+      const err = h("div", { class: "error" }, formErr), ok = h("div", { class: "ok-msg" }, formOk);
+      const send = h("button", { class: "btn btn-primary", type: "button", disabled: sending, onclick: async () => {
+        send.disabled = true; err.textContent = ""; ok.textContent = "";
+        try {
+          await api("POST", "/support", { topic: topicSel.value, subject: subject.value, message: msg.value });
+          formOk = "Mensagem enviada! Você recebe um aviso no sino quando a equipe responder."; formErr = "";
+          contactSig = ""; await loadTickets();
+        } catch (e) { formErr = e.message; formOk = ""; err.textContent = e.message; send.disabled = false; }
+      } }, "Enviar");
+      return h("div", { class: "card support-form" }, h("div", { class: "field" }, h("label", {}, "Assunto"), topicSel), h("div", { class: "field" }, h("label", {}, "Título"), subject),
+        h("div", { class: "field" }, h("label", {}, "Mensagem"), msg), send, err, ok);
+    }
+
+    function thread(t) {
+      const box = h("textarea", { rows: 2, maxlength: 2000, placeholder: "Escreva uma resposta…" });
+      const err = h("div", { class: "error" });
+      return h("div", { class: "card support-ticket" },
+        h("div", { class: "row", style: "border:0;padding:0 0 8px" },
+          h("div", { class: "row-main" }, h("strong", { translate: "no" }, t.subject), h("small", {}, TOPIC_LABEL[t.topic] || t.topic, " · ", fmtDate(t.created))),
+          h("span", { class: "badge" + (t.status === "answered" ? " on" : "") }, TSTATE[t.status])),
+        ...t.messages.map((m) => h("div", { class: "support-msg " + m.from }, h("small", { class: "muted" }, m.from === "team" ? "Equipe AethelHost" : "Você", " · ", fmtDate(m.ts)),
+          h("div", { translate: "no", style: "white-space:pre-wrap;overflow-wrap:anywhere" }, m.text))),
+        t.status === "closed" ? h("p", { class: "muted small", style: "margin:8px 0 0" }, "Conversa encerrada. Se precisar, abra uma nova acima.") : h("div", { style: "margin-top:10px" }, box,
+          h("div", { class: "btn-row", style: "margin-top:8px" },
+            h("button", { class: "btn btn-primary", type: "button", onclick: async () => { try { await api("POST", `/support/${t.id}/reply`, { message: box.value }); contactSig = ""; await loadTickets(); } catch (e) { err.textContent = e.message; } } }, "Responder"),
+            h("button", { class: "btn", type: "button", onclick: async () => { try { await api("POST", `/support/${t.id}/close`, {}); contactSig = ""; await loadTickets(); } catch (e) { err.textContent = e.message; } } }, "Encerrar")), err));
+    }
+
+    function drawContact(force) {
+      const box = $("spContact");
+      if (!window.BH_USER) {
+        box.replaceChildren(h("div", { class: "card", style: "text-align:center" }, h("p", { class: "muted" }, "Entre na sua conta para falar com a equipe."),
+          h("a", { class: "btn btn-primary", href: "login.html?next=" + encodeURIComponent("/support.html#contato") }, "Entrar")));
+        return;
+      }
+      const sig = JSON.stringify([tickets, formErr, formOk, document.documentElement.lang]);
+      const typing = box.contains(document.activeElement) && document.activeElement.matches("input, textarea");
+      if (!force && (sig === contactSig || typing)) return;
+      contactSig = sig;
+      box.replaceChildren(form(), ...(tickets && tickets.length ? [h("h3", { style: "margin:26px 0 12px" }, "Suas conversas"), ...tickets.map(thread)] : []));
+    }
+
+    async function loadTickets() {
+      if (!window.BH_USER) return;
+      try { tickets = (await api("GET", "/support")).tickets; drawContact(); } catch { /* segue */ }
+    }
+
+    $("spQ").addEventListener("input", (ev) => { query = ev.target.value; drawGuides(); });
+    window.addEventListener("langchange", () => { drawTopics(); drawGuides(); drawContact(true); });
+    window.addEventListener("hashchange", () => drawGuides());
+    drawTopics(); drawGuides();
+    window.BH_ME_READY.then(() => { drawContact(true); loadTickets(); setInterval(() => { if (!document.hidden) loadTickets(); }, 20000); });
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+  <script>drawTopics(); drawGuides();  // o idioma só é conhecido depois do i18n.js</script>
+</body>
+</html>

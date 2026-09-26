@@ -65,6 +65,7 @@
           <div class="error" id="msg" style="margin-top:14px"></div>
         </div>
         <div class="card full-only" id="pubCard" hidden style="margin-bottom:16px"></div>
+        <div class="card owner-only" id="exploreCard" hidden style="margin-bottom:16px"></div>
         <div class="card owner-only" id="vpsCard" hidden style="margin-bottom:16px">
           <h3 style="margin-top:0">Conexão com a VPS</h3>
           <ol class="steps">
@@ -489,6 +490,7 @@
 
       $("cmd").disabled = $("cmdSend").disabled = rt.state !== "online";
       if (typeof pubPoll === "function") { pubPoll(); renderPublic(); }
+      if (typeof renderExplore === "function") renderExplore();
 
       // Trocar software, mods e plugins só com o servidor desligado.
       const busy = rt.state !== "offline";
@@ -954,6 +956,7 @@
   <script src="js/options-labels.js"></script>
   <script src="js/tab-options.js"></script>
   <script src="js/tab-public.js"></script>
+  <script src="js/tab-explore.js"></script>
   <script src="js/tab-sharing.js"></script>
   <script src="js/i18n-en.js"></script>
   <script src="js/i18n.js"></script>
