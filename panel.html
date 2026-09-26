@@ -994,16 +994,10 @@
         }
         if (lit.size) {
           ctx.strokeStyle = gray; ctx.lineCap = "round";
-          // linhas entre pontos vizinhos acesos (também nas diagonais) e do ponteiro até os mais próximos
+          // só as linhas suaves do ponteiro até os pontos mais próximos (sem grade entre os pontos)
           for (const a of lit.values()) {
-            for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
-              const b = lit.get((a.c + dc) + "," + (a.r + dr));
-              if (!b) continue;
-              ctx.globalAlpha = Math.min(a.t, b.t) * 0.3; ctx.lineWidth = 1;
-              ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-            }
-            if (a.t > 0.45) {
-              ctx.globalAlpha = (a.t - 0.45) * 0.3; ctx.lineWidth = 1;
+            if (a.t > 0.3) {
+              ctx.globalAlpha = (a.t - 0.3) * 0.4; ctx.lineWidth = 1;
               ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(a.x, a.y); ctx.stroke();
             }
           }
