@@ -1159,6 +1159,22 @@ const I18N_EXACT = {
   "Máximo de servidores ligados": "Maximum running servers",
   ": a vaga abriu e o servidor": ": a slot opened and the server",
   "está iniciando.": "is starting.",
+  // ---- Tempo sem jogadores
+  "Acesso a tudo, sem pagar nada. O servidor fecha sozinho quando fica sem jogadores.": "Access to everything, at no cost. The server closes by itself when it has no players.",
+  "Fecha sozinho sem jogadores": "Closes by itself with no players",
+  "Sim. Ele roda no seu computador, então você não paga nada ao AethelHost. O servidor fecha sozinho quando fica sem jogadores por algumas horas (menos tempo quando o site está cheio).": "Yes. It runs on your computer, so you pay AethelHost nothing. The server closes by itself when it has no players for a few hours (less time when the site is full).",
+  "Roda no plano Grátis: fecha sozinho quando fica sem jogadores (algumas horas, menos quando o site está cheio) e o dono precisa ligar de novo.": "Runs on the Free plan: it shuts down by itself when it has no players (a few hours, less when the site is full) and the owner has to start it again.",
+  "Tempo até fechar sem jogadores": "Time until closing with no players",
+  "Um servidor do plano Grátis fecha sozinho depois desse tempo sem jogadores (ou sem ninguém entrar depois de ligar). O tempo encolhe conforme mais servidores ficam ligados: até o primeiro número de servidores vale o tempo longo, a partir do segundo vale o curto, e no meio diminui aos poucos.": "A Free plan server closes by itself after this time with no players (or with nobody joining after it starts). The time shrinks as more servers are running: up to the first number of servers the long time applies, from the second number on the short one applies, and in between it decreases gradually.",
+  "Com até (servidores)": "With up to (servers)",
+  "fecha em (minutos)": "closes in (minutes)",
+  "Com a partir de (servidores)": "With from (servers)",
+  "Salvar tempos": "Save times",
+  "Sem jogadores: o servidor fecha em 1 minuto.": "No players: the server closes in 1 minute.",
+  "Servidores (folga)": "Servers (room)",
+  "Minutos (folga)": "Minutes (room)",
+  "Servidores (lotado)": "Servers (full)",
+  "Minutos (lotado)": "Minutes (full)",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1319,4 +1335,10 @@ const I18N_PATTERNS = [
   [/^Ligados agora: (\d+) de (\d+) · Na fila: (\d+)$/, "Running now: $1 of $2 · In queue: $3"],
   [/^Ligados agora: (\d+) \(sem limite\) · Na fila: (\d+)$/, "Running now: $1 (no limit) · In queue: $2"],
   [/^Informe um número de 0 a (\d+) \(0 = sem limite\)\.$/, "Enter a number from 0 to $1 (0 = no limit)."],
+  // ---- Tempo sem jogadores
+  [/^Fechando o servidor: (\d+) horas? sem jogadores\.$/, "Closing the server: $1 hour(s) without players."],
+  [/^Fechando o servidor: (\d+) minutos? sem jogadores\.$/, "Closing the server: $1 minute(s) without players."],
+  [/^(.+) · limite (.+)$/, (m, a, b) => `${I18N_tr(a)} · limit ${b}`],
+  [/^Agora, com (\d+) ligados?: fecha em (.+)\.$/, "Now, with $1 running: closes in $2."],
+  [/^Confira os tempos: servidores de 1 a (\d+) \(o segundo número maior que o primeiro\) e minutos de 1 a (\d+)\.$/, "Check the times: servers from 1 to $1 (the second number larger than the first) and minutes from 1 to $2."],
 ];

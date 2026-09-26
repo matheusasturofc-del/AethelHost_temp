@@ -100,7 +100,7 @@
         stat("No Explorar desde", fmtSince(s.since)),
         stat("Horas jogadas (7 dias)", s.plays > 0 ? String(s.hours) : "0"),
         s.rank ? h("div", { class: "info" }, h("small", {}, "Ranking de jogados"), h("strong", {}, `#${s.rank} de ${s.ranked}`)) : null)];
-      right.push(h("p", { class: "muted small", style: "margin:2px 0 0" }, s.alwaysOn ? "Roda numa VPS e fica ligado o tempo todo." : "Roda no plano Grátis: fecha sozinho depois de 5 horas sem jogadores e o dono precisa ligar de novo."));
+      right.push(h("p", { class: "muted small", style: "margin:2px 0 0" }, s.alwaysOn ? "Roda numa VPS e fica ligado o tempo todo." : "Roda no plano Grátis: fecha sozinho quando fica sem jogadores (algumas horas, menos quando o site está cheio) e o dono precisa ligar de novo."));
 
       if (user && user.admin) {
         right.push(h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Administração"),

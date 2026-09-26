@@ -115,8 +115,19 @@
       try { capData = await api("POST", "/admin/capacity", { max: value }); $("adErr").textContent = ""; drawExtra(true); }
       catch (e) { $("adErr").textContent = e.message; }
     }
+    const fmtMin = (m) => (m >= 120 && m % 60 === 0 ? `${m / 60} h` : m === 60 ? "1 h" : `${m} min`);
+    async function saveIdle(fields) {
+      const v = {};
+      for (const [k, el] of Object.entries(fields)) v[k] = el.value.trim() === "" ? -1 : Number(el.value);
+      try { capData = await api("POST", "/admin/capacity", { idle: v }); $("adErr").textContent = ""; drawExtra(true); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
     function capacitySection() {
-      const c = capData || { max: 0, running: 0, waiting: 0, queue: [], limit: 1000 };
+      const c = capData || { max: 0, running: 0, waiting: 0, queue: [], limit: 1000, idle: { lowServers: 10, lowMinutes: 300, highServers: 100, highMinutes: 10 }, idleNow: 18000, idleMaxMinutes: 1440 };
+      const num = (value, max, label) => h("input", { type: "number", min: 1, max, value: String(value), style: "max-width:110px", "aria-label": label });
+      const idle = { lowServers: num(c.idle.lowServers, c.limit, "Servidores (folga)"), lowMinutes: num(c.idle.lowMinutes, c.idleMaxMinutes, "Minutos (folga)"),
+                     highServers: num(c.idle.highServers, c.limit, "Servidores (lotado)"), highMinutes: num(c.idle.highMinutes, c.idleMaxMinutes, "Minutos (lotado)") };
+      const label = (text, el) => h("label", { style: "display:grid;gap:4px;font-size:13px;color:var(--muted)" }, text, el);
       const input = h("input", { type: "number", min: 0, max: c.limit, value: String(c.max), style: "max-width:120px", "aria-label": "Máximo de servidores ligados" });
       return h("div", { class: "card", style: "padding:20px" },
         h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Capacidade do plano Grátis"),
@@ -124,7 +135,14 @@
         h("div", { class: "uri-row", style: "align-items:center;flex-wrap:wrap" }, input,
           h("button", { class: "btn btn-primary", type: "button", onclick: () => saveCapacity(input.value.trim() === "" ? -1 : Number(input.value)) }, "Salvar")),
         h("p", { style: "margin:12px 0 0" }, `Ligados agora: ${c.running}` + (c.max ? ` de ${c.max}` : " (sem limite)") + ` · Na fila: ${c.waiting}`),
-        c.queue.length ? h("ol", { class: "steps", style: "margin:8px 0 0" }, c.queue.map((q) => h("li", {}, h("b", { translate: "no" }, q.name), h("span", { class: "muted", translate: "no" }, ` · @${q.owner} · `), fmtDate(q.since)))) : null);
+        c.queue.length ? h("ol", { class: "steps", style: "margin:8px 0 0" }, c.queue.map((q) => h("li", {}, h("b", { translate: "no" }, q.name), h("span", { class: "muted", translate: "no" }, ` · @${q.owner} · `), fmtDate(q.since)))) : null,
+        h("h3", { style: "margin:22px 0 4px;font-size:16px" }, "Tempo até fechar sem jogadores"),
+        h("p", { class: "muted small", style: "margin:0 0 12px" }, "Um servidor do plano Grátis fecha sozinho depois desse tempo sem jogadores (ou sem ninguém entrar depois de ligar). O tempo encolhe conforme mais servidores ficam ligados: até o primeiro número de servidores vale o tempo longo, a partir do segundo vale o curto, e no meio diminui aos poucos."),
+        h("div", { style: "display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end" },
+          label("Com até (servidores)", idle.lowServers), label("fecha em (minutos)", idle.lowMinutes),
+          label("Com a partir de (servidores)", idle.highServers), label("fecha em (minutos)", idle.highMinutes),
+          h("button", { class: "btn btn-primary", type: "button", onclick: () => saveIdle(idle) }, "Salvar tempos")),
+        h("p", { style: "margin:12px 0 0" }, `Agora, com ${c.running} ligado${c.running === 1 ? "" : "s"}: fecha em ${fmtMin(Math.round(c.idleNow / 60))}.`));
     }
 
     let exploreData = null, supportData = null, supportDraft = {};

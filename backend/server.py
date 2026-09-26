@@ -66,7 +66,7 @@ MAX_PLAYERS = 20
 DEFAULT_RAM_MB = 1024
 MAX_VPS_SERVERS = 10  # servidores em VPS por conta
 MAX_VPS_HOSTS = 3  # VPS diferentes por conta
-IDLE_LIMIT = 5 * 3600  # plano grátis fecha após 5h sem jogadores
+# O tempo sem jogadores até o plano grátis fechar não é fixo: vem de capacity.idle_limit (encurta quando há muitos servidores ligados)
 NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 IP_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$")
@@ -322,7 +322,7 @@ class Runtime:
         with self.lock:
             idle_left = None
             if self.plan == "free" and self.state == "online" and self.idle_since:
-                idle_left = max(0, int(IDLE_LIMIT - (time.time() - self.idle_since)))
+                idle_left = max(0, int(idle_limit() - (time.time() - self.idle_since)))
             return {"state": self.state, "players": sorted(self.players), "idleLeft": idle_left}
 
     def start(self, server):
@@ -783,16 +783,33 @@ def runtime(server):
         return rt
 
 
+def idle_limit():
+    """Segundos sem jogadores até um servidor do plano grátis fechar agora (depende de quantos estão ligados)."""
+    return capacity.idle_limit(running_free())
+
+
+def _span_text(seconds):
+    minutes = round(seconds / 60)
+    if minutes >= 120 and minutes % 60 == 0:
+        return f"{minutes // 60} horas"
+    return "1 hora" if minutes == 60 else f"{minutes} minutos" if minutes != 1 else "1 minuto"
+
+
 def monitor():
-    """Fecha servidores do plano grátis após 5h sem jogadores."""
+    """Fecha servidores do plano grátis que ficam sem jogadores (ou em que ninguém entrou depois de ligar) pelo tempo de idle_limit."""
     while True:
         time.sleep(5)
+        limit = idle_limit()
         for rt in list(RUNTIMES.values()):
             try:
-                if rt.plan == "free" and rt.state == "online" and rt.idle_since \
-                        and time.time() - rt.idle_since >= IDLE_LIMIT:
-                    rt.log("Fechando o servidor: 5 horas sem jogadores.", "warn")
-                    rt.stop()
+                if rt.plan == "free" and rt.state == "online" and rt.idle_since:
+                    idle = time.time() - rt.idle_since
+                    if idle >= limit:
+                        rt.log(f"Fechando o servidor: {_span_text(limit)} sem jogadores.", "warn")
+                        rt.stop()
+                    elif limit - idle <= 60 and getattr(rt, "warned_for", None) != rt.idle_since:
+                        rt.warned_for = rt.idle_since  # avisa uma vez por período vazio
+                        rt.log("Sem jogadores: o servidor fecha em 1 minuto.", "warn")
             except Exception:
                 traceback.print_exc()
 
@@ -881,7 +898,7 @@ def view(server):
         "tunnel": tunnel.info(server["id"]) if server.get("public") else {"state": "off"},
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
         "queue": {"position": capacity.position(server["id"]), "waiting": capacity.waiting()} if server["plan"] == "free" else None,
-        "capacity": {"running": running_free(), "max": capacity.max_running()} if server["plan"] == "free" else None,
+        "capacity": {"running": running_free(), "max": capacity.max_running(), "idleSeconds": idle_limit()} if server["plan"] == "free" else None,
     }
 
 
@@ -1252,15 +1269,22 @@ def api_admin_capacity(query, body):
         if s:
             owner = auth.get_user(s.get("owner")) or {}
             queue.append({"id": s["id"], "name": s["name"], "owner": owner.get("username") or owner.get("name") or "", "since": e["since"]})
-    return 200, {"max": capacity.max_running(), "running": running_free(), "waiting": len(queue), "queue": queue, "limit": capacity.MAX_ALLOWED}
+    return 200, {"max": capacity.max_running(), "running": running_free(), "waiting": len(queue), "queue": queue, "limit": capacity.MAX_ALLOWED,
+                 "idle": capacity.idle_config(), "idleNow": idle_limit(), "idleMaxMinutes": capacity.IDLE_MAX_MINUTES}
 
 
 def api_admin_capacity_set(query, body):
     _require_admin("Só o administrador pode fazer isto.")
-    try:
-        capacity.set_max(body.get("max"))
-    except ValueError:
-        raise ApiError(400, f"Informe um número de 0 a {capacity.MAX_ALLOWED} (0 = sem limite).")
+    if "max" in body:
+        try:
+            capacity.set_max(body["max"])
+        except ValueError:
+            raise ApiError(400, f"Informe um número de 0 a {capacity.MAX_ALLOWED} (0 = sem limite).")
+    if "idle" in body:
+        try:
+            capacity.set_idle(body["idle"])
+        except (ValueError, TypeError):
+            raise ApiError(400, f"Confira os tempos: servidores de 1 a {capacity.MAX_ALLOWED} (o segundo número maior que o primeiro) e minutos de 1 a {capacity.IDLE_MAX_MINUTES}.")
     return api_admin_capacity(query, body)
 
 

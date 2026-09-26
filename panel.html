@@ -427,6 +427,10 @@
     }
 
     // ---------- Desenho da tela ----------
+    function fmtMinutes(sec) {  // "5 h", "10 min"
+      const m = Math.round(sec / 60);
+      return m >= 120 && m % 60 === 0 ? `${m / 60} h` : m === 60 ? "1 h" : `${m} min`;
+    }
     function fmtTime(sec) {
       const h = String(Math.floor(sec / 3600)).padStart(2, "0");
       const m = String(Math.floor(sec / 60) % 60).padStart(2, "0");
@@ -494,7 +498,7 @@
 
       if (server.plan === "vps") $("autoclose").textContent = "Desativado";
       else if (rt.state !== "online") $("autoclose").textContent = "—";
-      else $("autoclose").textContent = rt.idleLeft === null ? "Pausado (há jogadores)" : fmtTime(rt.idleLeft);
+      else $("autoclose").textContent = rt.idleLeft === null ? "Pausado (há jogadores)" : fmtTime(rt.idleLeft) + (server.capacity ? ` · limite ${fmtMinutes(server.capacity.idleSeconds)}` : "");
 
       $("cmd").disabled = $("cmdSend").disabled = rt.state !== "online";
       if (typeof pubPoll === "function") { pubPoll(); renderPublic(); }
