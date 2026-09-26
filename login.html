@@ -153,9 +153,8 @@
       let channel = "email";
       const option = (value, text, checked) => h("label", { class: "check", style: "margin-bottom:6px" },
         h("input", { type: "radio", name: "channel", value, checked, onchange: () => { channel = value; } }), h("span", {}, text));
-      const choose = smsEnabled || telegramEnabled ? h("div", { class: "field" }, h("label", {}, "Como você quer receber o código?"),
+      const choose = telegramEnabled ? h("div", { class: "field" }, h("label", {}, "Como você quer receber o código?"),
         option("email", "Por e-mail", true),
-        smsEnabled ? option("sms", "Por SMS, para o celular cadastrado na conta", false) : null,
         telegramEnabled ? option("telegram", "Pelo Telegram, se você vinculou na conta", false) : null) : null;
       const cap = captchaField();
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Enviar código");
