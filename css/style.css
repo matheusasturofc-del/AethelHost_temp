@@ -835,3 +835,16 @@ a.plain { color: inherit; }
 @media (min-width: 801px) {
   .server-panel:not(.side-collapsed) .side button { white-space: normal; }
 }
+
+/* ===== Cartão de estado do servidor: mais alto, com pontos cinzas que acendem perto do mouse ===== */
+.status-card { position: relative; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 380px; --mx: -300px; --my: -300px; --glow: var(--accent); }
+.status-card:has(.status.offline) { --glow: var(--danger); }
+.status-card:has(.status.starting), .status-card:has(.status.stopping) { --glow: var(--warn); }
+.status-card::before, .status-card::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-size: 24px 24px; background-position: 12px 12px; }
+.status-card::before { background-image: radial-gradient(circle, color-mix(in srgb, var(--muted) 38%, transparent) 1.7px, transparent 2.2px); }
+.status-card::after { background-image: radial-gradient(circle, var(--glow) 2.2px, transparent 2.8px); opacity: 0; transition: opacity 0.25s;
+  -webkit-mask-image: radial-gradient(circle 130px at var(--mx) var(--my), #000 0%, transparent 100%); mask-image: radial-gradient(circle 130px at var(--mx) var(--my), #000 0%, transparent 100%); }
+.status-card.lit::after { opacity: 1; }
+.status-card > * { position: relative; z-index: 1; }
+@media (max-width: 640px) { .status-card { min-height: 300px; } }
+@media (prefers-reduced-motion: reduce) { .status-card::after { transition: none; } }

@@ -956,6 +956,22 @@
   <script src="js/options-labels.js"></script>
   <script src="js/tab-options.js"></script>
   <script src="js/tab-public.js"></script>
+  <script>
+    // Cartão de estado: os pontos cinzas acendem perto do mouse (ou do dedo)
+    (() => {
+      const card = document.querySelector(".status-card");
+      if (!card) return;
+      const move = (ev) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", (ev.clientX - r.left) + "px");
+        card.style.setProperty("--my", (ev.clientY - r.top) + "px");
+        card.classList.add("lit");
+      };
+      card.addEventListener("pointermove", move);
+      card.addEventListener("pointerdown", move);
+      card.addEventListener("pointerleave", () => card.classList.remove("lit"));
+    })();
+  </script>
   <script src="js/captcha.js"></script>
   <script src="js/tab-explore.js"></script>
   <script src="js/tab-sharing.js"></script>
