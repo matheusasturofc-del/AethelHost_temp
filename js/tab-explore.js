@@ -40,7 +40,7 @@ function renderExplore() {
   exCap = !ex.listed && !ex.blocked && typeof captchaField === "function" ? captchaField() : null;
 
   const about = h("textarea", { maxlength: 200, rows: 3, placeholder: "Conte em poucas palavras como é o seu servidor (modo de jogo, regras, idioma…)", value: ex.about || "", disabled: exBusy });
-  const parts = [h("h3", { style: "margin-top:0" }, "Explorar ", h("span", { class: "beta-tag" }, "Beta"))];
+  const parts = [h("h3", { style: "margin-top:0" }, "Explorar")];
   parts.push(h("p", { class: "muted" }, "Mostre o seu servidor na página Explorar, para qualquer pessoa achar e entrar."));
 
   if (ex.blocked) {

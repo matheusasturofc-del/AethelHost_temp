@@ -1618,7 +1618,7 @@ def api_settings_gamerules(query, body, sid):
 
 BASE_URL = f"http://127.0.0.1:{PORT}"  # o login sempre volta para este endereço (é o que se cadastra no provedor)
 mail.PUBLIC_URL = BASE_URL  # o link "bloquear este endereço" dos e-mails aponta para o site
-PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html"}
+PROTECTED_PAGES = {"servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html", "explore.html", "listing.html"}
 
 
 def _claim_legacy(user):
@@ -2564,7 +2564,7 @@ NEED = {
     **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
 }
-PUBLIC = {api_explore_list, api_explore_icon, api_explore_get, api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
+PUBLIC = { api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
           api_captcha_config, api_captcha_get, api_captcha_save, api_pw_forgot, api_pw_reset,
           api_sms_get, api_sms_save, api_sms_test, api_telegram_get, api_telegram_save}  # não exigem login

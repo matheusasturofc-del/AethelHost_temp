@@ -132,7 +132,7 @@
             : h("button", { class: "btn btn-danger", type: "button", onclick: () => exploreAct(s, { blocked: true, dismiss: true }, `Tirar "${s.name}" do Explorar? O dono não consegue anunciar de novo, e recebe um aviso.`) }, "Tirar do Explorar"),
           s.reports.length ? h("button", { class: "btn", type: "button", onclick: () => exploreAct(s, { dismiss: true }) }, "Descartar denúncias") : null)));
       return h("div", { class: "card", style: "padding:20px" },
-        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Explorar ", h("span", { class: "beta-tag" }, "Beta")),
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Explorar"),
         h("p", { class: "muted small", style: "margin:0 0 6px" }, `${list.length} servidor${list.length === 1 ? "" : "es"}` + (reported ? `, ${reported} com denúncia` : "") + ". Com 5 denúncias de pessoas diferentes o servidor sai da lista até você olhar."),
         rows.length ? rows : h("p", { class: "muted" }, "Nenhum servidor anunciado ainda."));
     }
@@ -162,7 +162,7 @@
               h("button", { class: "btn", type: "button", onclick: () => supportAct(t, box.value, true) }, "Responder e encerrar"))));
       });
       return h("div", { class: "card", style: "padding:20px" },
-        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Suporte ", h("span", { class: "beta-tag" }, "Beta")),
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Suporte"),
         h("p", { class: "muted small", style: "margin:0 0 6px" }, `${list.length} conversa${list.length === 1 ? "" : "s"}` + (open ? `, ${open} esperando resposta` : "") + ". Quem recebe a resposta é avisado no sino."),
         cards.length ? cards : h("p", { class: "muted" }, "Nenhuma mensagem ainda."));
     }

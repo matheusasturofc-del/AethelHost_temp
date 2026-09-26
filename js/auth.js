@@ -1,7 +1,7 @@
 // Conta do usuário: menu no topo (nome, foto e Sair) e proteção das páginas. Depende de store.js (api, h).
 
 (() => {
-  const PROTECTED = ["servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html"];
+  const PROTECTED = ["servers.html", "create.html", "panel.html", "admin.html", "profile.html", "settings.html", "explore.html", "listing.html"];
   const page = location.pathname.split("/").pop() || "index.html";
 
   function avatar(user) {
@@ -95,12 +95,11 @@
     window.addEventListener("langchange", refresh);
   }
 
-  // Explorar e Suporte (Beta) aparecem no topo de todas as páginas.
-  function mountNavLinks(nav) {
+  // Suporte aparece para todos; o Explorar só para quem tem conta.
+  function mountNavLinks(nav, user) {
     if (nav.querySelector('a[href="explore.html"]')) return;
     const before = nav.querySelector('a[href="servers.html"]');
-    const link = (href, label) => h("a", { href }, label, " ", h("span", { class: "beta-tag" }, "Beta"));
-    const items = [link("explore.html", "Explorar"), link("support.html", "Suporte")];
+    const items = [user ? h("a", { href: "explore.html" }, "Explorar") : null, h("a", { href: "support.html" }, "Suporte")].filter(Boolean);
     if (before) before.before(...items); else nav.append(...items);
   }
 
@@ -108,7 +107,7 @@
   function mountMenu(user) {
     const nav = document.querySelector(".topnav");
     if (!nav) return;
-    mountNavLinks(nav);
+    mountNavLinks(nav, user);
     if (!user) {
       if (page !== "login.html") nav.append(h("a", { class: "btn nav-login", href: "login.html" }, "Entrar"));
       return;
