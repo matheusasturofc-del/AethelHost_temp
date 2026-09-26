@@ -957,19 +957,79 @@
   <script src="js/tab-options.js"></script>
   <script src="js/tab-public.js"></script>
   <script>
-    // Cartão de estado: os pontos cinzas acendem perto do mouse (ou do dedo)
+    // Cartão de estado: grade de pontos cinzas; perto do mouse (ou do dedo) eles acendem e se ligam por linhas, como neurônios.
     (() => {
       const card = document.querySelector(".status-card");
       if (!card) return;
+      const cv = document.createElement("canvas");
+      cv.className = "status-fx";
+      cv.setAttribute("aria-hidden", "true");
+      card.prepend(cv);
+      const ctx = cv.getContext("2d");
+      const GAP = 28, RADIUS = 170;
+      let w = 0, h = 0, dpr = 1, mx = -1e4, my = -1e4, power = 0, target = 0, raf = 0;
+
+      function resize() {
+        dpr = window.devicePixelRatio || 1;
+        w = card.clientWidth; h = card.clientHeight;
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+      }
+
+      function draw() {
+        raf = 0;
+        ctx.clearRect(0, 0, w, h);
+        const cs = getComputedStyle(card);
+        const glow = cs.getPropertyValue("--glow").trim() || "#4ade80";
+        const gray = cs.getPropertyValue("--muted").trim() || "#8b93a1";
+        const cols = Math.ceil(w / GAP), rows = Math.ceil(h / GAP);
+        const ox = (w - (cols - 1) * GAP) / 2, oy = (h - (rows - 1) * GAP) / 2;
+        const lit = new Map();  // "c,r" -> { x, y, t }
+        ctx.globalAlpha = 0.4; ctx.fillStyle = gray;
+        for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+          const x = ox + c * GAP, y = oy + r * GAP;
+          ctx.beginPath(); ctx.arc(x, y, 1.7, 0, 6.2832); ctx.fill();
+          const d = Math.hypot(x - mx, y - my);
+          if (power > 0.01 && d < RADIUS) lit.set(c + "," + r, { x, y, c, r, t: (1 - d / RADIUS) * power });
+        }
+        if (lit.size) {
+          ctx.strokeStyle = glow; ctx.fillStyle = glow; ctx.lineCap = "round";
+          // linhas entre pontos vizinhos acesos (também nas diagonais) e do ponteiro até os mais próximos
+          for (const a of lit.values()) {
+            for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+              const b = lit.get((a.c + dc) + "," + (a.r + dr));
+              if (!b) continue;
+              ctx.globalAlpha = Math.min(a.t, b.t) * 0.85; ctx.lineWidth = 0.8 + Math.min(a.t, b.t) * 1.4;
+              ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            }
+            if (a.t > 0.45) {
+              ctx.globalAlpha = (a.t - 0.45) * 0.9; ctx.lineWidth = 0.9;
+              ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(a.x, a.y); ctx.stroke();
+            }
+          }
+          for (const a of lit.values()) {
+            ctx.globalAlpha = 0.25 + a.t * 0.75;
+            ctx.beginPath(); ctx.arc(a.x, a.y, 1.8 + a.t * 2.4, 0, 6.2832); ctx.fill();
+          }
+          ctx.globalAlpha = Math.min(1, power);  // o ponteiro é o "neurônio" central
+          ctx.beginPath(); ctx.arc(mx, my, 3.2, 0, 6.2832); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        power += (target - power) * 0.2;  // acende e apaga suavemente
+        if (Math.abs(target - power) > 0.01) raf = requestAnimationFrame(draw);
+        else if (target === 0) power = 0;
+      }
+      const kick = () => { if (!raf) raf = requestAnimationFrame(draw); };
       const move = (ev) => {
         const r = card.getBoundingClientRect();
-        card.style.setProperty("--mx", (ev.clientX - r.left) + "px");
-        card.style.setProperty("--my", (ev.clientY - r.top) + "px");
-        card.classList.add("lit");
+        mx = ev.clientX - r.left; my = ev.clientY - r.top; target = 1; kick();
       };
       card.addEventListener("pointermove", move);
       card.addEventListener("pointerdown", move);
-      card.addEventListener("pointerleave", () => card.classList.remove("lit"));
+      card.addEventListener("pointerleave", () => { target = 0; kick(); });
+      new ResizeObserver(resize).observe(card);
+      resize();
     })();
   </script>
   <script src="js/captcha.js"></script>
