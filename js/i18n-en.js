@@ -1067,6 +1067,7 @@ const I18N_PATTERNS = [
   [/^Drive (\d+)%$/, "Drive $1%"],
   [/^Próximo backup automático: (.+)\. Guarda os (\d+) mais recentes\.$/, "Next automatic backup: $1. Keeps the $2 most recent."],
   [/^Enviamos um código de 6 números para (.+) \(se existir uma conta com esse e-mail\)\. Digite o código e escolha a nova senha\.$/, "We sent a 6-digit code to $1 (if an account with that email exists). Enter the code and choose the new password."],
+  [/^O serviço de SMS recusou o envio\. \(Twilio (.+)\)$/, "The SMS service refused the send. (Twilio $1)"],
   [/^Muitos SMS enviados\. Tente de novo em (.+)\.$/, "Too many SMS sent. Try again in $1."],
   [/^Limite de (\d+) servidores em VPS por conta\.$/, "Limit of $1 VPS servers per account."],
   [/^Limite de (\d+) VPS diferentes por conta\.$/, "Limit of $1 different VPS per account."],
