@@ -921,13 +921,18 @@
     const safeIcon = (url) => (url && url.startsWith("https://cdn.modrinth.com/")
       ? h("img", { class: "icon", src: url, alt: "", loading: "lazy", referrerPolicy: "no-referrer" }) : h("div", { class: "icon" }));
 
-    function closeProject() { $("ctDetail").hidden = true; $("ctMain").hidden = false; }
+    const projectTrail = [];  // páginas de mods pelas quais a pessoa passou (abrir uma dependência e voltar)
+    let projectNow = null;
 
-    async function openProject(hit) {
+    function closeProject() { projectTrail.length = 0; projectNow = null; $("ctDetail").hidden = true; $("ctMain").hidden = false; }
+
+    async function openProject(hit, fromPage) {
       const box = $("ctDetail");
+      if (fromPage && projectNow) projectTrail.push(projectNow);
+      projectNow = hit.id;
       $("ctMain").hidden = true;
       box.hidden = false;
-      const back = h("button", { class: "btn", type: "button", onclick: closeProject }, "← Voltar");
+      const back = h("button", { class: "btn", type: "button", onclick: () => { const prev = projectTrail.pop(); if (prev) openProject({ id: prev }); else closeProject(); } }, "← Voltar");
       box.replaceChildren(back, h("p", { class: "muted", style: "margin-top:14px" }, "Carregando…"));
       try {
         renderProject(await api("GET", `${base}/content/project?id=${encodeURIComponent(hit.id)}`), back);
@@ -942,7 +947,7 @@
       const locale = document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR";
       const requiredClient = p.dependencies.filter((d) => d.type === "required" && d.clientSide === "required").map((d) => d.title);
 
-      const install = h("button", { class: "btn btn-primary needs-offline", type: "button", disabled: !p.version || p.installed || running() }, p.installed ? "Já instalado" : "Instalar com as dependências");
+      const install = h("button", { class: "btn btn-primary needs-offline", type: "button", disabled: !p.version || p.installed || running() }, p.installed ? "Já instalado" : "Instalar");
       install.addEventListener("click", async () => { await installProject({ id: p.id }, install); openProject({ id: p.id }); });
 
       const head = h("div", { class: "card", style: "margin-top:14px" },
@@ -961,13 +966,21 @@
 
       const deps = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Dependências"),
         p.dependencies.length
-          ? h("div", {}, ...p.dependencies.map((d) => h("div", { class: "row" }, safeIcon(d.icon),
-              h("div", { class: "row-main" }, h("strong", { translate: "no" }, d.title), h("span", { class: "desc", translate: "no" }, d.description)),
-              h("div", { style: "display:grid;gap:4px;justify-items:end" },
-                h("span", { class: "badge " + (d.type === "required" ? "on" : d.type === "incompatible" ? "pending" : "") }, DEP_LABEL[d.type](d)),
-                d.type === "required" && d.clientSide === "required" ? h("span", { class: "badge" }, "também no Minecraft dos jogadores") : null))))
+          ? h("div", {}, ...p.dependencies.map((d) => {
+              const canInstall = d.type === "required" || d.type === "optional";  // incompatível e embutida não se instalam
+              const dbtn = canInstall ? h("button", { class: "btn needs-offline" + (d.installed ? "" : " btn-primary"), type: "button", disabled: d.installed || running() }, d.installed ? "Instalado" : "Instalar") : null;
+              if (dbtn) dbtn.addEventListener("click", async () => { await installProject({ id: d.id }, dbtn); openProject({ id: p.id }); });
+              return h("div", { class: "row clickable", tabindex: 0, role: "button", title: "Ver a página e as dependências",
+                  onclick: (ev) => { if (!ev.target.closest("button")) openProject({ id: d.id }, true); },
+                  onkeydown: (ev) => { if (ev.key === "Enter" && ev.target === ev.currentTarget) openProject({ id: d.id }, true); } }, safeIcon(d.icon),
+                h("div", { class: "row-main" }, h("strong", { translate: "no" }, d.title), h("span", { class: "desc", translate: "no" }, d.description),
+                  h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" },
+                    h("span", { class: "badge " + (d.type === "required" ? "on" : d.type === "incompatible" ? "pending" : "") }, DEP_LABEL[d.type](d)),
+                    d.type === "required" && d.clientSide === "required" ? h("span", { class: "badge" }, "também no Minecraft dos jogadores") : null)),
+                dbtn);
+            }))
           : h("p", { class: "muted", style: "margin:0" }, p.version ? "Este projeto não precisa de outros mods ou plugins." : "Sem versão compatível, não dá para ver as dependências."),
-        p.dependencies.some((d) => d.type === "required" && !d.installed) ? h("p", { class: "muted small", style: "margin:12px 0 0" }, "As dependências obrigatórias que faltam são instaladas junto, sem você precisar buscar uma por uma.") : null);
+        p.dependencies.length ? h("p", { class: "muted small", style: "margin:12px 0 0" }, "Ao instalar o mod, as dependências obrigatórias que faltam entram junto. As opcionais você instala aqui, uma a uma, se quiser. Toque numa para ver a página dela.") : null);
 
       const play = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Para jogar"),
         h("ul", { class: "steps", style: "margin:0;padding-left:20px" },

@@ -1230,6 +1230,8 @@ const I18N_EXACT = {
   "Criar com a minha VPS": "Create with my VPS",
   "Prefere não esperar? Crie um servidor na sua própria VPS.": "Prefer not to wait? Create a server on your own VPS.",
   // ---- Página do mod
+  "Ao instalar o mod, as dependências obrigatórias que faltam entram junto. As opcionais você instala aqui, uma a uma, se quiser. Toque numa para ver a página dela.": "When you install the mod, the missing required dependencies come along. Optional ones you install here, one by one, if you want. Tap one to see its page.",
+  "Instalado": "Installed",
   "Ver a página e as dependências": "See the page and dependencies",
   "← Voltar": "← Back",
   "Ver no Modrinth ↗": "See on Modrinth ↗",

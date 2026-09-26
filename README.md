@@ -159,9 +159,9 @@ Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth s
 
 Na aba **Mods/Plugins**, tocar num resultado da busca abre a **página do mod** (← Voltar volta aos resultados; o botão **Instalar** da linha continua instalando direto):
 
-- **Cabeçalho:** ícone, descrição, downloads, categorias, **Instalar com as dependências** e link para o Modrinth.
+- **Cabeçalho:** ícone, descrição, downloads, categorias, **Instalar** (as obrigatórias que faltam entram junto) e link para o Modrinth.
 - **Neste servidor:** a versão exata que será instalada (número, estável/beta/alpha) para o software e a versão do Minecraft do servidor; se não existe, avisa.
-- **Dependências:** de cada uma mostra o nome, a descrição e o tipo: **Obrigatória** (instalada junto, ou já instalada), **Opcional/recomendada** (não instala sozinha), **Incompatível** (com alerta forte se já está instalada) e **Já vem dentro do mod**. As obrigatórias que faltam são instaladas juntas.
+- **Dependências:** cada uma é uma linha com o botão **Instalar** próprio (ou *Instalado*), para instalar também as opcionais/recomendadas, como no Aternos; tocar na linha abre a página dela (e ← Voltar volta para a anterior). Mostra o nome, a descrição e o tipo: **Obrigatória** (instalada junto, ou já instalada), **Opcional/recomendada** (não instala sozinha), **Incompatível** (com alerta forte se já está instalada) e **Já vem dentro do mod**. As obrigatórias que faltam são instaladas juntas.
 - **Para jogar:** o que os jogadores precisam. Plugin: nada, só o servidor. Mod: diz se cada jogador **precisa instalar o mod no Minecraft dele** (mesmo modificador e versão), se é opcional ou se fica só no servidor, e lista as dependências obrigatórias que **também** precisam estar no cliente.
 - API: `GET /api/servers/<id>/content/project?id=<projeto ou slug>` (nível Completo). Testes: `test_moddeps.py` (17 verificações, com o Modrinth de verdade).
 
