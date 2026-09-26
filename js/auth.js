@@ -33,6 +33,7 @@
       explore_unverified: [" tirou o selo Confiável por AethelHost do servidor ", srv, "."],
       explore_lost: [": o selo Confiável por AethelHost do servidor ", srv, " foi removido porque o software ou os mods mudaram. A equipe pode verificar de novo."],
       explore_blocked: [" tirou o servidor ", srv, " do Explorar. Fale com o Suporte se achar que foi um engano."],
+      queue_started: [": a vaga abriu e o servidor ", srv, " está iniciando."],
       support_reply: [" respondeu à sua mensagem: ", h("b", { translate: "no" }, d.subject || ""), ". Veja em Suporte."],
     }[n.type] || [];
     return h("div", {}, ...name, ...parts);

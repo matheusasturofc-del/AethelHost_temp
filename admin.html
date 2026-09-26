@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="google" content="notranslate">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Administração — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
@@ -26,6 +27,7 @@
     </div>
     <div class="error" id="adErr"></div>
     <div class="info-grid" id="adTotals"></div>
+    <div id="adCapacity" style="margin-top:20px"></div>
     <div id="adExplore" style="margin-top:20px"></div>
     <div id="adSupport" style="margin-top:20px"></div>
     <div id="adList" style="margin-top:20px"></div>
@@ -108,6 +110,23 @@
       catch (e) { $("adErr").textContent = e.message; }
     }
 
+    let capData = null;
+    async function saveCapacity(value) {
+      try { capData = await api("POST", "/admin/capacity", { max: value }); $("adErr").textContent = ""; drawExtra(true); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
+    function capacitySection() {
+      const c = capData || { max: 0, running: 0, waiting: 0, queue: [], limit: 1000 };
+      const input = h("input", { type: "number", min: 0, max: c.limit, value: String(c.max), style: "max-width:120px", "aria-label": "Máximo de servidores ligados" });
+      return h("div", { class: "card", style: "padding:20px" },
+        h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Capacidade do plano Grátis"),
+        h("p", { class: "muted small", style: "margin:0 0 12px" }, "Quantos servidores do plano Grátis podem ficar ligados neste PC ao mesmo tempo. Quando lota, quem aperta Iniciar entra numa fila e o servidor liga sozinho quando abre vaga. Use 0 para não limitar."),
+        h("div", { class: "uri-row", style: "align-items:center;flex-wrap:wrap" }, input,
+          h("button", { class: "btn btn-primary", type: "button", onclick: () => saveCapacity(input.value.trim() === "" ? -1 : Number(input.value)) }, "Salvar")),
+        h("p", { style: "margin:12px 0 0" }, `Ligados agora: ${c.running}` + (c.max ? ` de ${c.max}` : " (sem limite)") + ` · Na fila: ${c.waiting}`),
+        c.queue.length ? h("ol", { class: "steps", style: "margin:8px 0 0" }, c.queue.map((q) => h("li", {}, h("b", { translate: "no" }, q.name), h("span", { class: "muted", translate: "no" }, ` · @${q.owner} · `), fmtDate(q.since)))) : null);
+    }
+
     let exploreData = null, supportData = null, supportDraft = {};
     function exploreSection() {
       const list = exploreData ? exploreData.servers : [];
@@ -169,16 +188,17 @@
 
     let extraSig = "";
     function drawExtra(force) {
-      const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest("#adSupport");
-      const sig = JSON.stringify([exploreData, supportData, document.documentElement.lang]);
+      const focus = document.activeElement && document.activeElement.closest && document.activeElement.closest("#adSupport, #adCapacity");
+      const sig = JSON.stringify([capData, exploreData, supportData, document.documentElement.lang]);
       if (!force && (sig === extraSig || focus || Object.values(supportDraft).some(Boolean))) return;
       extraSig = sig;
+      $("adCapacity").replaceChildren(capacitySection());
       $("adExplore").replaceChildren(exploreSection());
       $("adSupport").replaceChildren(supportSection());
     }
     async function loadExtra(force) {
       try {
-        [exploreData, supportData] = await Promise.all([api("GET", "/admin/explore"), api("GET", "/admin/support")]);
+        [exploreData, supportData, capData] = await Promise.all([api("GET", "/admin/explore"), api("GET", "/admin/support"), api("GET", "/admin/capacity")]);
         drawExtra(force);
       } catch { /* o erro principal já aparece em load() */ }
     }

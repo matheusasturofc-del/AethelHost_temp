@@ -1152,6 +1152,13 @@ const I18N_EXACT = {
   "Denúncia enviada. A administração vai analisar.": "Report sent. The administration will review it.",
   "Confirme que você não é um robô antes de publicar.": "Confirm you are not a robot before publishing.",
   "Para publicar, confirme que você não é um robô:": "To publish, confirm you are not a robot:",
+  // ---- Fila e teto de servidores ligados
+  "Sair da fila": "Leave the queue",
+  "Capacidade do plano Grátis": "Free plan capacity",
+  "Quantos servidores do plano Grátis podem ficar ligados neste PC ao mesmo tempo. Quando lota, quem aperta Iniciar entra numa fila e o servidor liga sozinho quando abre vaga. Use 0 para não limitar.": "How many Free plan servers can be running on this PC at the same time. When it is full, whoever presses Start joins a queue and the server starts by itself when a slot opens. Use 0 for no limit.",
+  "Máximo de servidores ligados": "Maximum running servers",
+  ": a vaga abriu e o servidor": ": a slot opened and the server",
+  "está iniciando.": "is starting.",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1305,4 +1312,11 @@ const I18N_PATTERNS = [
   // ---- Explorar: fileiras, página do servidor
   [/^(\d+) h jogadas nos últimos 7 dias$/, "$1 h played in the last 7 days"],
   [/^#(\d+) de (\d+)$/, "#$1 of $2"],
+  // ---- Fila e teto de servidores ligados
+  [/^Na fila \(posição (\d+)\)$/, "In queue (position $1)"],
+  [/^Na fila \((\d+)\)$/, "In queue ($1)"],
+  [/^Servidor cheio: (\d+) de (\d+) ligados agora\. O seu é o (\d+)º da fila e liga sozinho quando abrir vaga \(você recebe um aviso no sino\)\.$/, "Server full: $1 of $2 running right now. Yours is number $3 in the queue and starts by itself when a slot opens (you get a notice in the bell)."],
+  [/^Ligados agora: (\d+) de (\d+) · Na fila: (\d+)$/, "Running now: $1 of $2 · In queue: $3"],
+  [/^Ligados agora: (\d+) \(sem limite\) · Na fila: (\d+)$/, "Running now: $1 (no limit) · In queue: $2"],
+  [/^Informe um número de 0 a (\d+) \(0 = sem limite\)\.$/, "Enter a number from 0 to $1 (0 = no limit)."],
 ];

@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="google" content="notranslate">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Painel — AethelHost</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
@@ -62,6 +63,7 @@
           <div class="status offline" id="status">Offline</div>
           <div class="addr"><span id="addr"></span> <button class="btn" id="copy" style="padding:2px 10px;font-size:13px">Copiar</button></div>
           <button class="btn btn-primary btn-lg" id="power">Iniciar</button>
+          <p class="muted small" id="queueNote" hidden style="margin:14px 0 0;max-width:460px"></p>
           <div class="error" id="msg" style="margin-top:14px"></div>
         </div>
         <div class="card full-only" id="pubCard" hidden style="margin-bottom:16px"></div>
@@ -466,12 +468,17 @@
             ? `Rodando neste PC. Para jogar daqui, use ${server.address}. O endereço para amigos de fora está sendo preparado (veja o cartão abaixo).`
             : `Rodando neste PC. Para jogar daqui, use ${server.address}. Para amigos entrarem de fora, ative o endereço público abaixo (ou libere a porta ${server.port} no roteador).`;
 
+      const queued = rt.state === "offline" && server.queue && server.queue.position ? server.queue.position : 0;
+      const stateLabel = queued ? `Na fila (posição ${queued})` : STATUS_LABEL[rt.state];
       const st = $("status");
-      st.textContent = STATUS_LABEL[rt.state];
-      st.className = "status " + rt.state;
+      st.textContent = stateLabel;
+      st.className = "status " + (queued ? "starting" : rt.state);
+      const qn = $("queueNote");
+      qn.hidden = !queued;
+      qn.textContent = queued ? `Servidor cheio: ${server.capacity.running} de ${server.capacity.max} ligados agora. O seu é o ${queued}º da fila e liga sozinho quando abrir vaga (você recebe um aviso no sino).` : "";
       $("sideServer").dataset.state = rt.state;
-      $("sideIconState").title = STATUS_LABEL[rt.state];
-      $("sideState").textContent = STATUS_LABEL[rt.state] + (rt.state === "online" ? ` · ${rt.players.length}/${server.maxPlayers}` : "");
+      $("sideIconState").title = stateLabel;
+      $("sideState").textContent = stateLabel + (rt.state === "online" ? ` · ${rt.players.length}/${server.maxPlayers}` : "");
       $("sideName").textContent = server.name;
       $("sideAddr").textContent = server.address;
       $("sideId").textContent = "#" + server.id;
@@ -479,8 +486,8 @@
 
       const power = $("power");
       power.disabled = rt.state === "stopping";
-      power.textContent = rt.state === "offline" ? "Iniciar" : rt.state === "stopping" ? "Parando…" : "Parar";
-      power.className = "btn btn-lg " + (rt.state === "offline" ? "btn-primary" : "btn-danger");
+      power.textContent = queued ? "Sair da fila" : rt.state === "offline" ? "Iniciar" : rt.state === "stopping" ? "Parando…" : "Parar";
+      power.className = "btn btn-lg " + (queued ? "" : rt.state === "offline" ? "btn-primary" : "btn-danger");
 
       $("players").textContent = `${rt.players.length} / ${server.maxPlayers}`;
       $("playerNames").textContent = rt.players.join(", ");
@@ -630,7 +637,8 @@
     $("power").addEventListener("click", async () => {
       $("msg").textContent = "";
       try {
-        await api("POST", `${base}/${server.runtime.state === "offline" ? "start" : "stop"}`);
+        const inQueue = server.queue && server.queue.position;
+        await api("POST", `${base}/${server.runtime.state === "offline" && !inQueue ? "start" : "stop"}`);
       } catch (e) {
         $("msg").textContent = e.message;
       }

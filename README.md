@@ -219,6 +219,16 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 - O link **Explorar** só aparece no menu para quem está logado; o **Suporte** (guias) segue aberto a todos.
 - API: `GET /api/explore?q=&software=&always=0|1&verified=1&online=1&sort=top|low|new|mix|rows=1`, `GET /api/explore/<id>`, `GET /api/explore/<id>/icon` (todas exigem login), `POST /api/explore/<id>/report`, `POST /api/servers/<id>/explore` (dono), `GET`/`POST /api/admin/explore` (administrador), `GET`/`POST /api/support`, `POST /api/support/<id>/reply|close`, `GET /api/admin/support` e `POST /api/admin/support/reply` (administrador). Testes: `test_explore.py` (109 verificações).
 
+## Teto de servidores ligados e fila (plano Grátis)
+
+- **Teto:** quantos servidores do plano Grátis podem ficar ligados neste PC ao mesmo tempo (ligando, ligados ou desligando). O administrador escolhe em `admin.html` → **Capacidade do plano Grátis** (padrão **10**; **0 = sem limite**). Fica em `data/capacity.json`. Servidores em VPS (do cliente) não entram na conta.
+- **Fila:** com o teto cheio, **Iniciar** põe o servidor no fim da fila (o painel mostra "Na fila (posição N)", quantos estão ligados e o botão **Sair da fila**; a lista de servidores também mostra a posição). Se já tem gente esperando, quem chega depois também entra na fila (ordem de chegada). Quando abre vaga, ou quando o administrador aumenta o teto, o primeiro da fila liga sozinho (a checagem roda a cada 2 s) e a pessoa recebe um aviso no sino. Apertar Iniciar de novo não duplica; excluir o servidor tira da fila. A fila fica na memória: reiniciar o site a esvazia.
+- API: `POST /api/servers/<id>/start` responde 202 com `queue: { position, waiting }` e `capacity: { running, max }` no servidor; `POST .../stop` sai da fila; `GET`/`POST /api/admin/capacity` (administrador). Testes: `AETHELHOST_FAKE_START=1` liga servidores "de mentira" (sem Java), usado em `test_capacity.py` (31 verificações).
+
+## Sem oferta de tradução do navegador
+
+Todas as páginas têm `<meta name="google" content="notranslate">`: o Chrome não oferece mais "Traduzir esta página" (a tradução ruim do navegador atrapalhava). O idioma é escolhido pelo botão **PT | EN** do próprio site.
+
 ## Jogar
 
 Neste PC, use `localhost:PORTA` (a porta aparece no painel, começando em 25565).

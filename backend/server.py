@@ -37,6 +37,7 @@ import explore  # noqa: E402
 import images  # noqa: E402
 import accounts  # noqa: E402
 import auth  # noqa: E402
+import capacity  # noqa: E402
 import captcha  # noqa: E402
 import mail  # noqa: E402
 import mailtemplate  # noqa: E402
@@ -328,8 +329,12 @@ class Runtime:
         with self.lock:
             if self.state != "offline":
                 raise ApiError(409, "O servidor já está ligado ou iniciando.")
-            self.state = "starting"
             self.plan = server["plan"]
+            if os.environ.get("AETHELHOST_FAKE_START") == "1":  # só nos testes: "liga" sem Java nem processo
+                self.state = "online"
+                self.idle_since = time.time()
+                return
+            self.state = "starting"
             self.gamerules = dict(server.get("gamerules") or {})
             self.players.clear()
         if server.get("public") and server["plan"] == "free":
@@ -407,6 +412,9 @@ class Runtime:
 
     def stop(self):
         with self.lock:
+            if os.environ.get("AETHELHOST_FAKE_START") == "1" and self.proc is None and self.state == "online":
+                self.state = "offline"
+                return
             proc = self.proc
             if not proc or self.state not in ("starting", "online"):
                 raise ApiError(409, "Ainda não dá para parar: espere terminar de preparar o servidor.")
@@ -872,6 +880,8 @@ def view(server):
         "iconVersion": icon_version(server["id"]),
         "tunnel": tunnel.info(server["id"]) if server.get("public") else {"state": "off"},
         "runtime": rt.snapshot() if rt else {"state": "offline", "players": [], "idleLeft": None},
+        "queue": {"position": capacity.position(server["id"]), "waiting": capacity.waiting()} if server["plan"] == "free" else None,
+        "capacity": {"running": running_free(), "max": capacity.max_running()} if server["plan"] == "free" else None,
     }
 
 
@@ -1158,25 +1168,100 @@ def api_delete(query, body, sid):  # noqa: D401 - só o dono
         shutil.rmtree(folder, ignore_errors=True)
     RUNTIMES.pop(sid, None)
     tunnel.forget(sid)
+    capacity.remove(sid)
     explore.forget_server(sid)
     notify.remove_where(lambda n: n["type"] == "share_invite" and n["data"].get("server") == sid)  # convites de um servidor que não existe mais
     return 200, {"ok": True}
 
 
+START_LOCK = threading.RLock()  # quem decide "liga agora" ou "vai para a fila" fica sozinho na vez
+
+
+def running_free():
+    """Quantos servidores do plano Grátis estão usando este PC agora (ligando, ligados ou desligando)."""
+    return sum(1 for rt in list(RUNTIMES.values()) if not isinstance(rt, RemoteRuntime) and rt.state != "offline")
+
+
+def _check_java(server):
+    need = required_java(server["version"])
+    if not pick_java(need):
+        raise ApiError(400, f"Este PC não tem Java {need} instalado (a versão {server['version']} precisa dele).")
+
+
 def api_start(query, body, sid):
     server = find_server(sid)
-    if server["plan"] == "free":  # na VPS, quem instala o Java é o próprio script de preparação
-        need = required_java(server["version"])
-        if not pick_java(need):
-            raise ApiError(400, f"Este PC não tem Java {need} instalado (a versão {server['version']} precisa dele).")
-    runtime(server).start(server)
+    if server["plan"] != "free":  # na VPS, quem instala o Java é o próprio script de preparação e não há teto
+        runtime(server).start(server)
+        return 202, view(server)
+    if not os.environ.get("AETHELHOST_FAKE_START") == "1":
+        _check_java(server)
+    with START_LOCK:
+        if capacity.position(sid):
+            return 202, view(server)
+        rt = runtime(server)
+        cap = capacity.max_running()
+        if rt.state == "offline" and cap and (running_free() >= cap or capacity.waiting()):
+            capacity.add(sid, current_user()["id"])  # lotado (ou já tem gente esperando): entra no fim da fila
+        else:
+            rt.start(server)
     return 202, view(server)
 
 
 def api_stop(query, body, sid):
     server = find_server(sid)
+    if capacity.remove(sid):  # estava na fila: sair da fila
+        return 202, view(server)
     runtime(server).stop()
     return 202, view(server)
+
+
+def queue_worker():
+    """Quando abre vaga, liga o próximo da fila (e avisa a pessoa no sino)."""
+    while True:
+        time.sleep(2)
+        try:
+            with START_LOCK:
+                while (entry := capacity.first()):
+                    servers = db_load()
+                    server = next((s for s in servers if s["id"] == entry["sid"]), None)
+                    rt = RUNTIMES.get(entry["sid"])
+                    if not server or server["plan"] != "free" or (rt and rt.state != "offline"):
+                        capacity.remove(entry["sid"])  # sumiu, mudou de plano ou já foi ligado por outro caminho
+                        continue
+                    cap = capacity.max_running()
+                    if cap and running_free() >= cap:
+                        break
+                    capacity.remove(entry["sid"])
+                    try:
+                        if not os.environ.get("AETHELHOST_FAKE_START") == "1":
+                            _check_java(server)
+                        runtime(server).start(server)
+                        notify.add(entry["user"], "queue_started", {"fromName": "AethelHost", "serverName": server["name"], "server": server["id"]})
+                    except ApiError:
+                        traceback.print_exc()
+        except Exception:
+            traceback.print_exc()
+
+
+def api_admin_capacity(query, body):
+    _require_admin("Só o administrador pode ver isto.")
+    names = {s["id"]: s for s in db_load()}
+    queue = []
+    for e in capacity.entries():
+        s = names.get(e["sid"])
+        if s:
+            owner = auth.get_user(s.get("owner")) or {}
+            queue.append({"id": s["id"], "name": s["name"], "owner": owner.get("username") or owner.get("name") or "", "since": e["since"]})
+    return 200, {"max": capacity.max_running(), "running": running_free(), "waiting": len(queue), "queue": queue, "limit": capacity.MAX_ALLOWED}
+
+
+def api_admin_capacity_set(query, body):
+    _require_admin("Só o administrador pode fazer isto.")
+    try:
+        capacity.set_max(body.get("max"))
+    except ValueError:
+        raise ApiError(400, f"Informe um número de 0 a {capacity.MAX_ALLOWED} (0 = sem limite).")
+    return api_admin_capacity(query, body)
 
 
 def api_command(query, body, sid):
@@ -2472,6 +2557,8 @@ ROUTES = [
     ("POST", r"^/api/auth/captcha$", api_captcha_save),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("POST", r"^/api/admin/merge$", api_admin_merge),
+    ("GET", r"^/api/admin/capacity$", api_admin_capacity),
+    ("POST", r"^/api/admin/capacity$", api_admin_capacity_set),
     ("GET", r"^/api/admin/explore$", api_admin_explore),
     ("POST", r"^/api/admin/explore$", api_admin_explore_set),
     ("GET", r"^/api/admin/support$", api_admin_support),
@@ -2897,6 +2984,7 @@ def main():
     threading.Thread(target=run_scheduled_backups, daemon=True).start()
     threading.Thread(target=telegram.poll_forever, daemon=True).start()
     threading.Thread(target=explore_sampler, daemon=True).start()
+    threading.Thread(target=queue_worker, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:
