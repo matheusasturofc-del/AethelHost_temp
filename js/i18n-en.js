@@ -1175,6 +1175,17 @@ const I18N_EXACT = {
   "Minutos (folga)": "Minutes (room)",
   "Servidores (lotado)": "Servers (full)",
   "Minutos (lotado)": "Minutes (full)",
+  // ---- Limites do plano Grátis
+  "Limites de cada servidor Grátis": "Limits for each Free server",
+  "RAM máxima e jogadores de cada servidor do plano Grátis. O Vanilla usa pouca memória; com mods ou plugins o teto é maior. Servidores em VPS própria não têm esses limites.": "Maximum RAM and players for each Free plan server. Vanilla uses little memory; with mods or plugins the ceiling is higher. Servers on your own VPS don't have these limits.",
+  "RAM do Vanilla (MB)": "Vanilla RAM (MB)",
+  "RAM com mods/plugins (MB)": "RAM with mods/plugins (MB)",
+  "Máx. de jogadores": "Max players",
+  "Salvar limites": "Save limits",
+  "RAM do Vanilla": "Vanilla RAM",
+  "RAM com mods": "RAM with mods",
+  "Quantidade de RAM inválida.": "Invalid amount of RAM.",
+  "Confira os limites: RAM do Vanilla de 512 a 16384 MB, RAM com mods ou plugins de 1024 a 16384 MB (não menor que a do Vanilla) e jogadores de 1 a 1000.": "Check the limits: Vanilla RAM from 512 to 16384 MB, RAM with mods or plugins from 1024 to 16384 MB (not lower than Vanilla's) and players from 1 to 1000.",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1341,4 +1352,8 @@ const I18N_PATTERNS = [
   [/^(.+) · limite (.+)$/, (m, a, b) => `${I18N_tr(a)} · limit ${b}`],
   [/^Agora, com (\d+) ligados?: fecha em (.+)\.$/, "Now, with $1 running: closes in $2."],
   [/^Confira os tempos: servidores de 1 a (\d+) \(o segundo número maior que o primeiro\) e minutos de 1 a (\d+)\.$/, "Check the times: servers from 1 to $1 (the second number larger than the first) and minutes from 1 to $2."],
+  // ---- Limites do plano Grátis
+  [/^No plano Grátis o Vanilla usa até (.+) e, com mods ou plugins \(Paper, Purpur, Fabric, Quilt, Forge, NeoForge\), até (.+)\. O limite de jogadores é (\d+)\. Precisa de mais\? Use o plano com a sua VPS\.$/, "On the Free plan Vanilla uses up to $1 and, with mods or plugins (Paper, Purpur, Fabric, Quilt, Forge, NeoForge), up to $2. The player limit is $3. Need more? Use the plan with your own VPS."],
+  [/^No plano Grátis o (.+) aceita de (\d+) MB a (\d+) MB de RAM\. Para mais, use o plano com a sua VPS\.$/, "On the Free plan $1 accepts from $2 MB to $3 MB of RAM. For more, use the plan with your own VPS."],
+  [/^No plano Grátis o máximo é (\d+) jogadores\. Para mais, use o plano com a sua VPS\.$/, "On the Free plan the maximum is $1 players. For more, use the plan with your own VPS."],
 ];

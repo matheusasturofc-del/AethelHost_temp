@@ -707,7 +707,7 @@
         return;
       }
       $("swCards").replaceChildren(...meta.software.map((s) => h("label", { class: "plan" },
-        h("input", { type: "radio", name: "sw", value: s.id, checked: s.id === server.software, onchange: () => loadSwVersions(s.id, null) }),
+        h("input", { type: "radio", name: "sw", value: s.id, checked: s.id === server.software, onchange: () => { fillRam(meta); loadSwVersions(s.id, null); } }),
         h("h3", {}, s.label),
         h("div", { class: "kind" }, s.kind === "mods" ? "Aceita mods" : s.kind === "plugins" ? "Aceita plugins" : "Sem mods nem plugins"),
         h("p", { class: "plan-desc" }, s.desc))));
@@ -717,12 +717,16 @@
 
     function fillRam(meta) {
       const onVps = server.plan === "vps";
-      const list = onVps ? server.vpsRamOptions : meta.ramOptions;
-      const opts = list.includes(server.ramMb) ? list : [...list, server.ramMb].sort((a, b) => a - b);
-      $("swRam").replaceChildren(...opts.map((m) => h("option", { value: m, selected: m === server.ramMb }, m >= 1024 ? `${m / 1024} GB` : `${m} MB`)));
+      const chosen = document.querySelector('input[name="sw"]:checked');
+      const vanilla = (chosen ? chosen.value : server.software) === "vanilla";
+      const list = onVps ? server.vpsRamOptions : vanilla ? meta.freeRam.vanilla : meta.freeRam.modded;
+      const opts = onVps && !list.includes(server.ramMb) ? [...list, server.ramMb].sort((a, b) => a - b) : list;
+      const current = opts.includes(server.ramMb) ? server.ramMb : opts.filter((m) => m <= server.ramMb).pop() || opts[0];
+      const gb = (m) => (m >= 1024 ? `${m / 1024} GB` : `${m} MB`);
+      $("swRam").replaceChildren(...opts.map((m) => h("option", { value: m, selected: m === current }, gb(m))));
       $("ramHint").textContent = onVps
         ? "Até 80% da memória da VPS. Clique em \"Testar conexão\" (na aba Servidor) para o AethelHost medir a memória dela e liberar mais opções. Mods pesados pedem mais memória."
-        : `Seu PC tem ${(meta.systemRamMb / 1024).toFixed(1)} GB. Oferecemos até 75% dele para o Windows não travar. Mods pesados pedem mais memória.`;
+        : `No plano Grátis o Vanilla usa até ${gb(meta.freeLimits.vanillaRamMb)} e, com mods ou plugins (Paper, Purpur, Fabric, Quilt, Forge, NeoForge), até ${gb(meta.freeLimits.moddedRamMb)}. O limite de jogadores é ${meta.freeLimits.maxPlayers}. Precisa de mais? Use o plano com a sua VPS.`;
     }
 
     async function loadSwVersions(sw, keep) {

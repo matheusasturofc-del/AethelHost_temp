@@ -116,6 +116,12 @@
       catch (e) { $("adErr").textContent = e.message; }
     }
     const fmtMin = (m) => (m >= 120 && m % 60 === 0 ? `${m / 60} h` : m === 60 ? "1 h" : `${m} min`);
+    async function saveLimits(fields) {
+      const v = {};
+      for (const [k, el] of Object.entries(fields)) v[k] = el.value.trim() === "" ? -1 : Number(el.value);
+      try { capData = await api("POST", "/admin/capacity", { limits: v }); $("adErr").textContent = ""; drawExtra(true); }
+      catch (e) { $("adErr").textContent = e.message; }
+    }
     async function saveIdle(fields) {
       const v = {};
       for (const [k, el] of Object.entries(fields)) v[k] = el.value.trim() === "" ? -1 : Number(el.value);
@@ -128,6 +134,8 @@
       const idle = { lowServers: num(c.idle.lowServers, c.limit, "Servidores (folga)"), lowMinutes: num(c.idle.lowMinutes, c.idleMaxMinutes, "Minutos (folga)"),
                      highServers: num(c.idle.highServers, c.limit, "Servidores (lotado)"), highMinutes: num(c.idle.highMinutes, c.idleMaxMinutes, "Minutos (lotado)") };
       const label = (text, el) => h("label", { style: "display:grid;gap:4px;font-size:13px;color:var(--muted)" }, text, el);
+      const L = c.limits || { vanillaRamMb: 1024, moddedRamMb: 2048, maxPlayers: 20 };
+      const lim = { vanillaRamMb: num(L.vanillaRamMb, 16384, "RAM do Vanilla"), moddedRamMb: num(L.moddedRamMb, 16384, "RAM com mods"), maxPlayers: num(L.maxPlayers, 1000, "Jogadores") };
       const input = h("input", { type: "number", min: 0, max: c.limit, value: String(c.max), style: "max-width:120px", "aria-label": "Máximo de servidores ligados" });
       return h("div", { class: "card", style: "padding:20px" },
         h("h2", { style: "margin:0 0 4px;font-size:19px" }, "Capacidade do plano Grátis"),
@@ -136,6 +144,11 @@
           h("button", { class: "btn btn-primary", type: "button", onclick: () => saveCapacity(input.value.trim() === "" ? -1 : Number(input.value)) }, "Salvar")),
         h("p", { style: "margin:12px 0 0" }, `Ligados agora: ${c.running}` + (c.max ? ` de ${c.max}` : " (sem limite)") + ` · Na fila: ${c.waiting}`),
         c.queue.length ? h("ol", { class: "steps", style: "margin:8px 0 0" }, c.queue.map((q) => h("li", {}, h("b", { translate: "no" }, q.name), h("span", { class: "muted", translate: "no" }, ` · @${q.owner} · `), fmtDate(q.since)))) : null,
+        h("h3", { style: "margin:22px 0 4px;font-size:16px" }, "Limites de cada servidor Grátis"),
+        h("p", { class: "muted small", style: "margin:0 0 12px" }, "RAM máxima e jogadores de cada servidor do plano Grátis. O Vanilla usa pouca memória; com mods ou plugins o teto é maior. Servidores em VPS própria não têm esses limites."),
+        h("div", { style: "display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end" },
+          label("RAM do Vanilla (MB)", lim.vanillaRamMb), label("RAM com mods/plugins (MB)", lim.moddedRamMb), label("Máx. de jogadores", lim.maxPlayers),
+          h("button", { class: "btn btn-primary", type: "button", onclick: () => saveLimits(lim) }, "Salvar limites")),
         h("h3", { style: "margin:22px 0 4px;font-size:16px" }, "Tempo até fechar sem jogadores"),
         h("p", { class: "muted small", style: "margin:0 0 12px" }, "Um servidor do plano Grátis fecha sozinho depois desse tempo sem jogadores (ou sem ninguém entrar depois de ligar). O tempo encolhe conforme mais servidores ficam ligados: até o primeiro número de servidores vale o tempo longo, a partir do segundo vale o curto, e no meio diminui aos poucos."),
         h("div", { style: "display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end" },

@@ -225,11 +225,18 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 - **Fila:** com o teto cheio, **Iniciar** põe o servidor no fim da fila (o painel mostra "Na fila (posição N)", quantos estão ligados e o botão **Sair da fila**; a lista de servidores também mostra a posição). Se já tem gente esperando, quem chega depois também entra na fila (ordem de chegada). Quando abre vaga, ou quando o administrador aumenta o teto, o primeiro da fila liga sozinho (a checagem roda a cada 2 s) e a pessoa recebe um aviso no sino. Apertar Iniciar de novo não duplica; excluir o servidor tira da fila. A fila fica na memória: reiniciar o site a esvazia.
 - API: `POST /api/servers/<id>/start` responde 202 com `queue: { position, waiting }` e `capacity: { running, max }` no servidor; `POST .../stop` sai da fila; `GET`/`POST /api/admin/capacity` (administrador). Testes: `AETHELHOST_FAKE_START=1` liga servidores "de mentira" (sem Java), usado em `test_capacity.py` (31 verificações).
 
+## Limites de RAM e jogadores (plano Grátis)
+
+- **RAM:** no plano Grátis o **Vanilla** usa de 512 MB a **1 GB**; com **mods ou plugins** (Paper, Purpur, Fabric, Quilt, Forge, NeoForge) de **1 GB a 2 GB** (1, 1,5 e 2 GB), sempre respeitando 75% da memória do PC. Servidor novo nasce com 1 GB. A aba **Software** mostra só essas opções (e troca a lista ao escolher outro software); trocar de Vanilla para Paper libera até 2 GB e voltar ajusta a RAM para o teto do Vanilla. Servidores que já existiam acima do teto são reduzidos sozinhos, e o teto vale de novo na hora de iniciar.
+- **Jogadores:** máximo de **20** por servidor (a aba **Opções** recusa mais que isso; se o `server.properties` tiver um valor maior, ele é reduzido ao iniciar).
+- Os três números (RAM do Vanilla, RAM com mods/plugins, jogadores) o administrador muda em `admin.html` → **Capacidade do plano Grátis** → *Limites de cada servidor Grátis* (guardado em `data/capacity.json`). **Servidores em VPS própria não têm esses limites** (a opção de servidores grandes, tipo Hypixel, fica para o futuro).
+- API: `GET /api/meta` traz `freeRam` e `freeLimits`; `POST /api/admin/capacity` aceita `limits: { vanillaRamMb, moddedRamMb, maxPlayers }` (atualização parcial). Testes: `test_capacity.py` (65 verificações).
+
 ## Tempo sem jogadores até fechar (plano Grátis)
 
 - O servidor do plano Grátis fecha sozinho quando fica **sem jogadores** ou quando **ninguém entra depois de ligar** (o relógio começa quando o servidor fica online). O console avisa "Sem jogadores: o servidor fecha em 1 minuto." uma vez por período vazio e depois "Fechando o servidor: X sem jogadores."
 - O tempo **depende de quantos servidores estão ligados**: até `lowServers` ligados vale `lowMinutes`; a partir de `highServers` vale `highMinutes`; no meio diminui aos poucos (linear). Padrão: até **10** ligados = **5 h**, a partir de **100** = **10 min**. O administrador muda os quatro números em `admin.html` → **Capacidade do plano Grátis** → *Tempo até fechar sem jogadores* (guardado em `data/capacity.json`; mínimo 1 minuto, máximo 24 h). O painel do servidor mostra a contagem e o limite atual ("01:20:00 · limite 5 h"), que muda se a lotação mudar.
-- API: `GET`/`POST /api/admin/capacity` aceitam `max` e/ou `idle` (`{ lowServers, lowMinutes, highServers, highMinutes }`, atualização parcial); o servidor traz `capacity.idleSeconds`. Testes: `test_capacity.py` (47 verificações, inclui o fechamento por inatividade).
+- API: `GET`/`POST /api/admin/capacity` aceitam `max` e/ou `idle` (`{ lowServers, lowMinutes, highServers, highMinutes }`, atualização parcial); o servidor traz `capacity.idleSeconds`. Testes: `test_capacity.py` (inclui o fechamento por inatividade).
 
 ## Sem oferta de tradução do navegador
 

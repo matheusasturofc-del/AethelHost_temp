@@ -86,6 +86,53 @@ def idle_limit(running):
     return max(60, int(minutes * 60))
 
 
+# ---- limites de cada servidor do plano Grátis (RAM e jogadores). O plano com VPS própria não tem esses limites.
+# Vanilla usa pouca memória; com mods ou plugins (Paper, Purpur, Fabric, Quilt, Forge, NeoForge) o teto é maior.
+LIMITS_DEFAULT = {"vanillaRamMb": 1024, "moddedRamMb": 2048, "maxPlayers": 20}
+RAM_STEPS = (512, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384)
+
+
+def limits():
+    saved = _load().get("limits")
+    if isinstance(saved, dict) and _limits_valid(saved):
+        return {k: saved[k] for k in LIMITS_DEFAULT}
+    return dict(LIMITS_DEFAULT)
+
+
+def _limits_valid(c):
+    return (all(k in c for k in LIMITS_DEFAULT) and _int(c["vanillaRamMb"], 512, 16384) and _int(c["moddedRamMb"], 1024, 16384)
+            and c["moddedRamMb"] >= c["vanillaRamMb"] and _int(c["maxPlayers"], 1, 1000))
+
+
+def set_limits(values):
+    cfg = {**limits(), **{k: values[k] for k in LIMITS_DEFAULT if isinstance(values, dict) and k in values}}
+    if not _limits_valid(cfg):
+        raise ValueError
+    full = _load()
+    full["limits"] = cfg
+    _save(full)
+
+
+def ram_limit(software):
+    """Teto de RAM (MB) de um servidor do plano Grátis com este software."""
+    c = limits()
+    return c["vanillaRamMb"] if software == "vanilla" else c["moddedRamMb"]
+
+
+def ram_options(software, system_mb):
+    """Quantidades de RAM que o plano Grátis oferece para este software (também limitadas a 75% da memória do PC)."""
+    top = min(ram_limit(software), int(system_mb * 0.75)) if system_mb else ram_limit(software)
+    floor = 512 if software == "vanilla" else 1024
+    return [m for m in RAM_STEPS if floor <= m <= top] or [max(floor, min(top, ram_limit(software)))]
+
+
+def clamp_ram(software, ram, system_mb):
+    """`ram` dentro do que o plano Grátis oferece para este software (o maior valor permitido que não passa do pedido)."""
+    options = ram_options(software, system_mb)
+    fit = [m for m in options if m <= ram]
+    return fit[-1] if fit else options[0]
+
+
 def position(sid):
     """Posição na fila (1 = próximo), ou None se o servidor não está na fila."""
     with LOCK:

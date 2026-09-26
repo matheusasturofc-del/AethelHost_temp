@@ -153,6 +153,8 @@ def _normalize(server):
     """Servidores criados antes de existir Software/RAM/dono ganham os valores padrão."""
     server.setdefault("software", "vanilla")
     server.setdefault("ramMb", DEFAULT_RAM_MB)
+    if server.get("plan") == "free" and server["ramMb"] > capacity.ram_limit(server["software"]):
+        server["ramMb"] = capacity.ram_limit(server["software"])  # o teto do plano Grátis baixou (ou o software mudou)
     server.setdefault("owner", None)  # sem dono até a primeira conta ser criada; aí passam a ser dela
     server.setdefault("public", False)  # endereço público pelo playit.gg (só plano Grátis)
     server.setdefault("shares", [])  # compartilhamento: [{user, level, files, status}]
@@ -357,11 +359,15 @@ class Runtime:
             (sdir / "eula.txt").write_text("eula=true\n", encoding="utf-8")  # aceito na criação
             (sdir / "server-icon.png").write_bytes(icon_bytes(server["id"]))  # a capa que o Minecraft mostra na lista
             values = {"server-port": server["port"], "motd": motd_to_properties(server["subtitle"] or server["name"])}
-            if "max-players" not in read_properties(sdir / "server.properties"):  # depois disso quem manda é a aba Opções
-                values["max-players"] = MAX_PLAYERS
+            limits = capacity.limits()
+            current = read_properties(sdir / "server.properties").get("max-players")
+            if current is None:  # depois disso quem manda é a aba Opções
+                values["max-players"] = min(MAX_PLAYERS, limits["maxPlayers"])
+            elif str(current).strip().isdigit() and int(current) > limits["maxPlayers"]:
+                values["max-players"] = limits["maxPlayers"]  # o plano Grátis tem teto de jogadores
             set_properties(sdir / "server.properties", values, raw=("motd",))
             launch = prepare_launch(server["software"], server["version"], jar, sdir, java[1], self.log)
-            ram = server["ramMb"]
+            ram = min(server["ramMb"], capacity.ram_limit(server["software"]))  # o plano Grátis tem teto de RAM
             self.log(f"Iniciando {SOFTWARE[server['software']]['label']} {server['version']} com Java {java[0]} e {ram} MB de RAM…")
             self.proc = subprocess.Popen(
                 [java[1], f"-Xms{min(512, ram)}M", f"-Xmx{ram}M",
@@ -930,6 +936,8 @@ def api_meta(query, body):
         "software": [{"id": k, "label": v["label"], "kind": v["kind"], "desc": v["desc"]} for k, v in SOFTWARE.items()],
         "ramOptions": ram_options(),
         "systemRamMb": system_ram_mb(),
+        "freeRam": {"vanilla": capacity.ram_options("vanilla", system_ram_mb()), "modded": capacity.ram_options("paper", system_ram_mb())},
+        "freeLimits": capacity.limits(),
     }
 
 
@@ -1013,7 +1021,8 @@ def api_create(query, body):
             port += 1
         server = {
             "id": uuid.uuid4().hex[:12], "name": name, "subtitle": subtitle, "ip": ip,
-            "edition": "java", "software": software, "version": version, "ramMb": DEFAULT_RAM_MB,
+            "edition": "java", "software": software, "version": version,
+            "ramMb": capacity.clamp_ram(software, DEFAULT_RAM_MB, system_ram_mb()) if plan == "free" else DEFAULT_RAM_MB,
             "plan": plan, "port": port, "eula": True, "owner": current_user()["id"], "public": False,
             "createdAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
@@ -1069,9 +1078,18 @@ def api_software_set(query, body, sid):
             raise ApiError(400, "Software inválido.")
         if not valid_version(sw, version):
             raise ApiError(400, f"O {SOFTWARE[sw]['label']} não tem a versão {version}.")
-        allowed_ram = vps_ram_options(server) if server["plan"] == "vps" else ram_options()
-        if not isinstance(ram, int) or (ram not in allowed_ram and ram != server["ramMb"]):
-            raise ApiError(400, "Quantidade de RAM inválida para " + ("esta VPS." if server["plan"] == "vps" else "este PC."))
+        if server["plan"] == "vps":
+            allowed_ram = vps_ram_options(server)
+            if not isinstance(ram, int) or (ram not in allowed_ram and ram != server["ramMb"]):
+                raise ApiError(400, "Quantidade de RAM inválida para esta VPS.")
+        else:
+            allowed_ram = capacity.ram_options(sw, system_ram_mb())
+            if not isinstance(ram, int) or isinstance(ram, bool):
+                raise ApiError(400, "Quantidade de RAM inválida.")
+            if "ramMb" not in body:  # só trocou o software: ajusta a RAM atual ao teto do novo
+                ram = capacity.clamp_ram(sw, ram, system_ram_mb())
+            elif ram not in allowed_ram:
+                raise ApiError(400, f"No plano Grátis o {SOFTWARE[sw]['label']} aceita de {allowed_ram[0]} MB a {allowed_ram[-1]} MB de RAM. Para mais, use o plano com a sua VPS.")
 
         changed = (sw, version) != (server["software"], server["version"])
         backup = None
@@ -1270,7 +1288,7 @@ def api_admin_capacity(query, body):
             owner = auth.get_user(s.get("owner")) or {}
             queue.append({"id": s["id"], "name": s["name"], "owner": owner.get("username") or owner.get("name") or "", "since": e["since"]})
     return 200, {"max": capacity.max_running(), "running": running_free(), "waiting": len(queue), "queue": queue, "limit": capacity.MAX_ALLOWED,
-                 "idle": capacity.idle_config(), "idleNow": idle_limit(), "idleMaxMinutes": capacity.IDLE_MAX_MINUTES}
+                 "idle": capacity.idle_config(), "idleNow": idle_limit(), "idleMaxMinutes": capacity.IDLE_MAX_MINUTES, "limits": capacity.limits()}
 
 
 def api_admin_capacity_set(query, body):
@@ -1280,6 +1298,11 @@ def api_admin_capacity_set(query, body):
             capacity.set_max(body["max"])
         except ValueError:
             raise ApiError(400, f"Informe um número de 0 a {capacity.MAX_ALLOWED} (0 = sem limite).")
+    if "limits" in body:
+        try:
+            capacity.set_limits(body["limits"])
+        except (ValueError, TypeError):
+            raise ApiError(400, "Confira os limites: RAM do Vanilla de 512 a 16384 MB, RAM com mods ou plugins de 1024 a 16384 MB (não menor que a do Vanilla) e jogadores de 1 a 1000.")
     if "idle" in body:
         try:
             capacity.set_idle(body["idle"])
@@ -1702,7 +1725,16 @@ def api_settings_properties(query, body, sid):
     _require_offline(sid, "editar as configurações do jogo")
     if _remote(server):
         remote.pull(server, ("server.properties",))
-    options.set_property_changes(sid, body.get("changes"))
+    changes = body.get("changes")
+    if server["plan"] == "free" and isinstance(changes, dict) and "max-players" in changes:
+        cap = capacity.limits()["maxPlayers"]
+        try:
+            asked = int(str(changes["max-players"]).strip())
+        except ValueError:
+            asked = 0
+        if asked > cap:
+            raise ApiError(400, f"No plano Grátis o máximo é {cap} jogadores. Para mais, use o plano com a sua VPS.")
+    options.set_property_changes(sid, changes)
     if _remote(server):
         remote.push_properties(server)
     return 200, {"ok": True}
