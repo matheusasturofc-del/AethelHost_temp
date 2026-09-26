@@ -123,6 +123,7 @@
             <ul>
               <li>Conecte Oracle, Hetzner, etc.</li>
               <li>Sem fechar por inatividade</li>
+              <li>Sem fila nem limite de RAM do plano Grátis</li>
               <li>Instalamos tudo na sua VPS por SSH</li>
             </ul>
           </label>
@@ -353,9 +354,14 @@
         seat.position
           ? h("div", { class: "btn-row" }, h("span", {}, `Você está na lista de espera: posição ${seat.position}`),
               h("button", { class: "btn", type: "button", onclick: async () => { try { seat = await api("POST", "/free/waitlist/leave"); } catch {} drawSeat(); } }, "Sair da lista"))
-          : h("button", { class: "btn btn-primary", type: "button", onclick: async () => { try { seat = await api("POST", "/free/waitlist/join"); } catch {} drawSeat(); } }, "Entrar na lista de espera"));
+          : h("button", { class: "btn btn-primary", type: "button", onclick: async () => { try { seat = await api("POST", "/free/waitlist/join"); } catch {} drawSeat(); } }, "Entrar na lista de espera"),
+        h("button", { class: "btn", type: "button", style: "margin-left:8px", onclick: () => { const r = document.querySelector('input[name="plan"][value="vps"]'); r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); } }, "Criar com a minha VPS"));
     }
     document.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener("change", drawSeat));
+    if (new URLSearchParams(location.search).get("plan") === "vps") {  // link "use a sua VPS" (fila cheia, vagas esgotadas…)
+      const r = document.querySelector('input[name="plan"][value="vps"]');
+      r.checked = true;
+    }
     loadSeat();
     setInterval(loadSeat, 15000);
 

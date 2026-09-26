@@ -1225,6 +1225,10 @@ const I18N_EXACT = {
   "A máquina de jogo deste servidor não existe mais. Fale com a administração.": "This server's game machine no longer exists. Contact the administration.",
   "Este servidor roda numa máquina de jogo do AethelHost e já tem o endereço dela.": "This server runs on an AethelHost game machine and already has its address.",
   "Atenção: o endereço (IP) da máquina de jogo fica visível para todo mundo que abrir o Explorar.": "Warning: the game machine's address (IP) becomes visible to everyone who opens Explore.",
+  // ---- VPS própria como alternativa
+  "Sem fila nem limite de RAM do plano Grátis": "No queue or Free plan RAM limit",
+  "Criar com a minha VPS": "Create with my VPS",
+  "Prefere não esperar? Crie um servidor na sua própria VPS.": "Prefer not to wait? Create a server on your own VPS.",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.

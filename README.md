@@ -225,6 +225,15 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 - **Fila:** com o teto cheio, **Iniciar** põe o servidor no fim da fila (o painel mostra "Na fila (posição N)", quantos estão ligados e o botão **Sair da fila**; a lista de servidores também mostra a posição). Se já tem gente esperando, quem chega depois também entra na fila (ordem de chegada). Quando abre vaga, ou quando o administrador aumenta o teto, o primeiro da fila liga sozinho (a checagem roda a cada 2 s) e a pessoa recebe um aviso no sino. Apertar Iniciar de novo não duplica; excluir o servidor tira da fila. A fila fica na memória: reiniciar o site a esvazia.
 - API: `POST /api/servers/<id>/start` responde 202 com `queue: { position, waiting }` e `capacity: { running, max }` no servidor; `POST .../stop` sai da fila; `GET`/`POST /api/admin/capacity` (administrador). Testes: `AETHELHOST_FAKE_START=1` liga servidores "de mentira" (sem Java), usado em `test_capacity.py` (31 verificações).
 
+## VPS própria como saída para fila e limites
+
+O plano **VPS** (o cliente traz a máquina) não passa por nada do plano Grátis: **sem fila, sem teto de servidores ligados, sem vaga de conta, sem teto de RAM e de jogadores e sem fechar por inatividade**; o custo é da máquina do cliente, não da plataforma. Para a pessoa achar essa saída na hora certa:
+
+- **Fila:** o aviso do painel ("Servidor cheio… Nº da fila") traz o link *Prefere não esperar? Crie um servidor na sua própria VPS* (`create.html?plan=vps`, que já marca o plano VPS).
+- **Vagas esgotadas:** o aviso do passo do plano, em `create.html`, ganhou o botão **Criar com a minha VPS** ao lado de *Entrar na lista de espera*.
+- **Comparação:** os cartões de plano (página inicial e `create.html`) e o guia *Plano Grátis* do Suporte dizem que a VPS não tem fila nem limites.
+- Um servidor Grátis que já existe não vira VPS (não há migração): a pessoa cria um novo na VPS.
+
 ## Máquinas de jogo: separar o site dos servidores
 
 Para o site (contas, painel, Explorar) ficar numa máquina só de painel e os servidores do plano Grátis rodarem em outras, o administrador cadastra **máquinas de jogo** ("nós") em `admin.html` → **Máquinas de jogo** (guardadas em `data/nodes.json`).

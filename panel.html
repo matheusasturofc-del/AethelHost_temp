@@ -481,7 +481,8 @@
       st.className = "status " + (queued ? "starting" : rt.state);
       const qn = $("queueNote");
       qn.hidden = !queued;
-      qn.textContent = queued ? `Servidor cheio: ${server.capacity.running} de ${server.capacity.max} ligados agora. O seu é o ${queued}º da fila e liga sozinho quando abrir vaga (você recebe um aviso no sino).` : "";
+      qn.replaceChildren(...(queued ? [`Servidor cheio: ${server.capacity.running} de ${server.capacity.max} ligados agora. O seu é o ${queued}º da fila e liga sozinho quando abrir vaga (você recebe um aviso no sino). `,
+        h("a", { href: "create.html?plan=vps" }, "Prefere não esperar? Crie um servidor na sua própria VPS.")] : []));
       $("sideServer").dataset.state = rt.state;
       $("sideIconState").title = stateLabel;
       $("sideState").textContent = stateLabel + (rt.state === "online" ? ` · ${rt.players.length}/${server.maxPlayers}` : "");
