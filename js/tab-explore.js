@@ -4,15 +4,25 @@
 let exShown = null;
 let exBusy = false;
 let exErr = "";
+let exCap = null;  // Cloudflare Turnstile: só para publicar (a lista é pública, então confere que não é robô)
+
+if (typeof loadCaptchaKey === "function") loadCaptchaKey().then(() => { exShown = null; if (typeof renderExplore === "function") renderExplore(); });
 
 async function exSave(patch) {
   if (exBusy) return;
+  if (patch.listed === true && exCap && exCap.box && !exCap.getToken()) {
+    exErr = "Confirme que você não é um robô antes de publicar.";
+    exShown = null;
+    renderExplore();
+    return;
+  }
+  if (patch.listed === true && exCap && exCap.box) patch.captcha = exCap.getToken();
   exBusy = true;
   exErr = "";
   renderExplore();
   try {
     server = await api("POST", `${base}/explore`, patch);
-  } catch (e) { exErr = e.message; }
+  } catch (e) { exErr = e.message; if (exCap && exCap.box) exCap.reset(); }
   exBusy = false;
   exShown = null;
   renderExplore();
@@ -27,6 +37,7 @@ function renderExplore() {
   const sig = JSON.stringify([ex, server.plan, server.public, exBusy, exErr, document.documentElement.lang]);
   if (sig === exShown) return;
   exShown = sig;
+  exCap = !ex.listed && !ex.blocked && typeof captchaField === "function" ? captchaField() : null;
 
   const about = h("textarea", { maxlength: 200, rows: 3, placeholder: "Conte em poucas palavras como é o seu servidor (modo de jogo, regras, idioma…)", value: ex.about || "", disabled: exBusy });
   const parts = [h("h3", { style: "margin-top:0" }, "Explorar ", h("span", { class: "beta-tag" }, "Beta"))];
@@ -35,6 +46,7 @@ function renderExplore() {
   if (ex.blocked) {
     parts.push(h("div", { class: "error" }, "A administração tirou este servidor do Explorar. Se foi um engano, fale com o Suporte."));
   } else {
+    if (exCap && exCap.box) parts.push(h("p", { class: "muted small", style: "margin:0 0 6px" }, "Para publicar, confirme que você não é um robô:"), exCap.box);
     parts.push(h("div", { class: "card-head", style: "margin-bottom:10px" },
       h("span", { class: "muted" }, ex.listed ? "Aparecendo no Explorar" : "Fora do Explorar"),
       h("label", { class: "switch" },

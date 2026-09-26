@@ -8,6 +8,7 @@ Rodar:  python backend/server.py   ->   http://127.0.0.1:8080
 """
 import base64
 import glob
+import hashlib
 import json
 import mimetypes
 import os
@@ -786,6 +787,22 @@ def monitor():
                     rt.stop()
             except Exception:
                 traceback.print_exc()
+
+
+def explore_sampler():
+    """A cada minuto anota quantos jogadores há em cada servidor do Explorar (base do "Mais jogados")."""
+    while True:
+        time.sleep(60)
+        try:
+            counts = {}
+            for s in db_load():
+                if explore.is_listed(s):
+                    rt = RUNTIMES.get(s["id"])
+                    if rt and rt.state == "online":
+                        counts[s["id"]] = len(rt.snapshot()["players"])
+            explore.record(counts)
+        except Exception:
+            traceback.print_exc()
 
 
 def adopt_vps_servers():
@@ -2061,7 +2078,8 @@ def _explore_entry(s):
             "state": snap["state"], "players": len(snap["players"]), "maxPlayers": _max_players(s), "address": address,
             "whitelist": props.get("white-list", "false").strip().lower() == "true", "iconVersion": icon_version(s["id"]),
             "verified": explore.is_verified(s), "verifiedAt": (s.get("verified") or {}).get("at") if explore.is_verified(s) else None,
-            "owner": owner.get("username") or owner.get("name") or "", "ownerName": owner.get("name") or "", "createdAt": s.get("createdAt")}
+            "owner": owner.get("username") or owner.get("name") or "", "ownerName": owner.get("name") or "", "createdAt": s.get("createdAt"),
+            "alwaysOn": s["plan"] == "vps", "since": (s.get("explore") or {}).get("since") or (s.get("explore") or {}).get("at") or 0, "plays": PLAYS.get(s["id"], 0)}
 
 
 def _explore_visible(s, hidden):
@@ -2075,8 +2093,31 @@ def _explore_hidden():
     return {sid for sid, users in seen.items() if len(users) >= explore.HIDE_AT}
 
 
+PLAYS = {}  # jogador-minutos dos últimos 7 dias (atualizado a cada consulta)
+SORTS = ("top", "low", "new", "mix")
+ROW_SIZE = 12
+
+
+def _explore_order(items, mode):
+    if mode == "top":   # Mais jogados
+        items.sort(key=lambda e: (-e["plays"], -e["players"], e["name"].lower()))
+    elif mode == "low":  # Pouco populares
+        items.sort(key=lambda e: (e["plays"], e["players"], e["name"].lower()))
+    elif mode == "new":  # Recentes
+        items.sort(key=lambda e: (-(e["since"] or 0), e["name"].lower()))
+    else:               # Variados: uma mistura que muda a cada hora
+        seed = time.strftime("%Y%m%d%H")
+        items.sort(key=lambda e: hashlib.sha1((seed + e["id"]).encode()).hexdigest())
+    return items
+
+
 def api_explore_list(query, body):
+    PLAYS.clear()
+    PLAYS.update(explore.plays())
     q = (query.get("q", [""])[0] or "").strip().lower()[:60]
+    always = query.get("always", [""])[0]  # "1" só os sempre ligados (VPS), "0" só os que podem fechar (Grátis)
+    sort = query.get("sort", ["top"])[0]
+    sort = sort if sort in SORTS else "top"
     software = query.get("software", [""])[0]
     only_verified = query.get("verified", [""])[0] == "1"
     only_online = query.get("online", [""])[0] == "1"
@@ -2092,11 +2133,32 @@ def api_explore_list(query, body):
             continue
         if only_online and e["state"] != "online":
             continue
+        if always in ("0", "1") and e["alwaysOn"] != (always == "1"):
+            continue
         if q and not any(q in str(x).lower() for x in (e["name"], mcplain(e["subtitle"]), e["about"], e["owner"], e["softwareLabel"], e["version"])):
             continue
         items.append(e)
-    items.sort(key=lambda e: (not e["verified"], e["state"] != "online", -e["players"], e["name"].lower()))
+    if query.get("rows", [""])[0] == "1":  # fileiras da página inicial do Explorar
+        rows = {m: _explore_order(list(items), m)[:ROW_SIZE] for m in SORTS}
+        return 200, {"rows": rows, "total": len(items)}
+    _explore_order(items, sort)
     return 200, {"servers": items[:100], "total": len(items)}
+
+
+def api_explore_get(query, body, sid):
+    """A página de um servidor do Explorar."""
+    s = next((s for s in db_load() if s["id"] == sid), None)
+    if not s or not _explore_visible(s, _explore_hidden()):
+        raise ApiError(404, "Servidor não encontrado.")
+    PLAYS.clear()
+    PLAYS.update(explore.plays())
+    e = _explore_entry(s)
+    ranks = sorted((v for v in PLAYS.values() if v > 0), reverse=True)
+    e["rank"] = ranks.index(e["plays"]) + 1 if e["plays"] > 0 else None
+    e["ranked"] = len(ranks)
+    e["hours"] = round(e["plays"] / 60, 1)
+    e["reported"] = bool(current_user() and any(r["user"] == current_user()["id"] for r in explore.open_reports(sid)))
+    return 200, e
 
 
 def mcplain(text):
@@ -2130,6 +2192,8 @@ def api_explore_set(query, body, sid):
         if not isinstance(listed, bool):
             raise ApiError(400, "Informe listed: true ou false.")
         e["about"] = explore.clean_text(body.get("about", e.get("about", "")), explore.ABOUT_MAX, "Descrição")
+        if listed and not e.get("listed"):
+            captcha.require(body.get("captcha"))  # botar servidor na lista pública também passa pelo Cloudflare
         if listed:
             if e.get("blocked"):
                 raise ApiError(403, "A administração removeu este servidor do Explorar. Fale com o Suporte se achar que foi um engano.")
@@ -2138,6 +2202,8 @@ def api_explore_set(query, body, sid):
             others = [x for x in servers if x["owner"] == server["owner"] and x["id"] != sid and (x.get("explore") or {}).get("listed")]
             if len(others) >= explore.MAX_LISTED and not e.get("listed"):
                 raise ApiError(429, f"No máximo {explore.MAX_LISTED} servidores por conta no Explorar.")
+        if listed and not e.get("listed"):
+            e["since"] = int(time.time())
         e["listed"] = listed
         e["at"] = int(time.time())
         server["explore"] = e
@@ -2412,6 +2478,7 @@ ROUTES = [
     ("POST", r"^/api/admin/support/reply$", api_admin_support_reply),
     ("GET", r"^/api/explore$", api_explore_list),
     ("GET", rf"^/api/explore/{ID}/icon$", api_explore_icon),
+    ("GET", rf"^/api/explore/{ID}$", api_explore_get),
     ("POST", rf"^/api/explore/{ID}/report$", api_explore_report),
     ("POST", rf"^/api/servers/{ID}/explore$", api_explore_set),
     ("GET", r"^/api/support$", api_support_mine),
@@ -2497,7 +2564,7 @@ NEED = {
     **{f: "files_read" for f in (api_files_list, api_files_read, api_files_download)},
     **{f: "files_write" for f in (api_files_write, api_files_upload, api_files_mkdir, api_files_delete, api_files_rename)},
 }
-PUBLIC = {api_explore_list, api_explore_icon, api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
+PUBLIC = {api_explore_list, api_explore_icon, api_explore_get, api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
           api_captcha_config, api_captcha_get, api_captcha_save, api_pw_forgot, api_pw_reset,
           api_sms_get, api_sms_save, api_sms_test, api_telegram_get, api_telegram_save}  # não exigem login
@@ -2782,6 +2849,11 @@ class Handler(BaseHTTPRequestHandler):
             sid = (parse_qs(query).get("id") or [""])[0]
             if not any(s["id"] == sid and _role(s) for s in db_load()):
                 return self._not_found()
+        if rel == "listing.html":  # servidor que não está no Explorar: "não existe"
+            sid = (parse_qs(query).get("id") or [""])[0]
+            hidden = _explore_hidden()
+            if not any(s["id"] == sid and _explore_visible(s, hidden) for s in db_load()):
+                return self._not_found()
         ctype = mimetypes.guess_type(rel)[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype.endswith("javascript"):
             ctype += "; charset=utf-8"
@@ -2824,6 +2896,7 @@ def main():
     threading.Thread(target=adopt_vps_servers, daemon=True).start()
     threading.Thread(target=run_scheduled_backups, daemon=True).start()
     threading.Thread(target=telegram.poll_forever, daemon=True).start()
+    threading.Thread(target=explore_sampler, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:

@@ -146,3 +146,16 @@ const TRUST_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 function trustBadge(when) {
   return h("span", { class: "trust", title: "Testado pela equipe do AethelHost" + (when ? " em " + fmtDate(when) : "") }, h("span", { class: "trust-ico", innerHTML: TRUST_CHECK }), "Confiável por AethelHost");
 }
+
+// Administrador: dar ou tirar o selo "Confiável por AethelHost" de um servidor do Explorar. `s` = { id, name, verified }.
+async function adminTrust(s, done) {
+  let note = "";
+  if (!s.verified) {
+    note = await promptBox(`Dar o selo Confiável por AethelHost ao servidor "${s.name}"? Só dê depois de testar: entra, sem mods maliciosos, sem golpe. Nota para você (opcional):`, { title: "Dar o selo", ok: "Dar selo", placeholder: "ex.: testado em 26/09" });
+    if (note === null) return;
+  } else if (!(await confirmBox(`Tirar o selo do servidor "${s.name}"?`, { ok: "Tirar selo", danger: true }))) return;
+  try {
+    await api("POST", "/admin/explore", { id: s.id, verified: !s.verified, note });
+    if (done) done();
+  } catch (e) { await confirmBox(e.message, { ok: "OK", cancel: "Fechar" }); }
+}

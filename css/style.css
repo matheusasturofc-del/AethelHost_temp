@@ -797,3 +797,29 @@ input[type="search"]:focus, textarea:focus { outline: 2px solid var(--accent); o
 #spQ { width: 100%; }
 #adSupport textarea { width: 100%; resize: vertical; }
 .report-form input, .report-form select { width: 100%; }
+.ex-row { margin-bottom: 30px; }
+.ex-row-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.ex-row-head h2 { margin: 0; font-size: 21px; }
+.ex-row-head p { margin: 2px 0 0; }
+.ex-scroll { display: flex; gap: 16px; overflow-x: auto; padding: 2px 2px 14px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.ex-scroll .explore-card { flex: 0 0 290px; scroll-snap-align: start; }
+.explore-card.clickable { cursor: pointer; }
+.explore-card.clickable:hover { border-color: var(--accent); }
+.explore-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a.plain { color: inherit; }
+.explore-card .explore-flag { margin-top: 8px; }
+.listing-head { display: flex; gap: 20px; align-items: flex-start; padding: 36px 0 20px; flex-wrap: wrap; }
+.listing-head .card-icon { width: 96px; height: 96px; border-radius: 14px; }
+.listing-head h1 { margin: 0 0 4px; font-size: 30px; overflow-wrap: anywhere; }
+.listing-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; padding-bottom: 60px; align-items: start; }
+.listing-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.listing-stats .info { margin: 0; }
+.crumbs { padding-top: 26px; font-size: 14px; }
+@media (max-width: 800px) { .listing-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .ex-scroll .explore-card { flex-basis: 250px; }
+  .listing-head { padding-top: 24px; gap: 14px; }
+  .listing-head .card-icon { width: 72px; height: 72px; }
+  .listing-head h1 { font-size: 24px; }
+  .explore-filters select { flex: 1 1 100%; }
+}

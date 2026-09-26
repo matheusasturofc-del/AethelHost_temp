@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Servidor — Explorar — AethelHost</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a class="brand" href="index.html"><img class="logo" src="assets/icon.svg" alt="">Aethel<span>Host</span></a>
+      <nav class="topnav">
+        <a href="servers.html">Servidores</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="crumbs"><a href="explore.html">← Explorar</a></div>
+    <div id="lsHead"></div>
+    <div class="listing-grid" id="lsBody"></div>
+  </main>
+
+  <script src="js/store.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/look.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const sid = new URLSearchParams(location.search).get("id") || "";
+    const REASONS = { offensive: "Conteúdo ofensivo ou ilegal", malicious: "Mods ou plugins maliciosos", scam: "Golpe ou pedido de dinheiro/dados", broken: "Não liga ou o endereço não funciona", other: "Outro motivo" };
+    let s = null, shown = "", reportOpen = false, reportedNow = false;
+
+    async function copy(text, btn) {
+      const old = btn.textContent;
+      try { await navigator.clipboard.writeText(text); btn.textContent = "Copiado!"; } catch { btn.textContent = "Não foi possível copiar"; }
+      setTimeout(() => (btn.textContent = old), 1500);
+    }
+
+    const stat = (label, value) => h("div", { class: "info" }, h("small", {}, label), h("strong", { translate: "no" }, value));
+    const fmtSince = (t) => (t ? fmtDate(t) : "—");
+
+    function reportForm() {
+      const reason = h("select", { "aria-label": "Motivo" }, h("option", { value: "" }, "Motivo da denúncia…"), ...Object.entries(REASONS).map(([k, v]) => h("option", { value: k }, v)));
+      const note = h("input", { type: "text", placeholder: "Detalhes (opcional)", maxlength: 300, autocomplete: "off" });
+      const err = h("div", { class: "error" });
+      const send = h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+        if (!reason.value) { err.textContent = "Escolha o motivo."; return; }
+        send.disabled = true;
+        try { await api("POST", `/explore/${encodeURIComponent(sid)}/report`, { reason: reason.value, note: note.value }); reportedNow = true; reportOpen = false; shown = ""; draw(); }
+        catch (e) { err.textContent = e.message; send.disabled = false; }
+      } }, "Enviar denúncia");
+      return h("div", { class: "report-form" }, reason, note, h("div", { class: "btn-row" }, send, h("button", { class: "btn", type: "button", onclick: () => { reportOpen = false; shown = ""; draw(); } }, "Cancelar")), err);
+    }
+
+    function draw() {
+      if (!s) return;
+      const sig = JSON.stringify([s, reportOpen, reportedNow, document.documentElement.lang, window.BH_USER && [window.BH_USER.id, window.BH_USER.admin]]);
+      if (sig === shown || (reportOpen && shown)) return;  // com a denúncia aberta a página não se refaz
+      shown = sig;
+      document.title = `${s.name} — ${(document.documentElement.lang || "").startsWith("en") ? "Explore" : "Explorar"} — AethelHost`;
+      const online = s.state === "online";
+      const user = window.BH_USER;
+
+      $("lsHead").replaceChildren(h("div", { class: "listing-head" },
+        h("img", { class: "card-icon", src: `/api/explore/${encodeURIComponent(s.id)}/icon?v=${s.iconVersion}`, alt: "" }),
+        h("div", { style: "min-width:0;flex:1" },
+          h("h1", { translate: "no" }, s.name),
+          s.verified ? trustBadge(s.verifiedAt) : null,
+          h("div", { class: "sub", style: "color:var(--muted);font-size:16px" }, mcNodes(s.subtitle, { trim: true })),
+          h("div", { class: "muted small", style: "margin-top:8px" }, "por ", h("b", { translate: "no" }, s.owner ? "@" + s.owner : s.ownerName)))));
+
+      const join = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Como entrar"),
+        s.address
+          ? h("div", { class: "addr", style: "font-size:16px" }, h("span", { translate: "no" }, s.address), " ", h("button", { class: "btn", type: "button", style: "padding:2px 10px;font-size:13px", onclick: (ev) => copy(s.address, ev.target) }, "Copiar"))
+          : h("p", { class: "muted" }, "O endereço aparece quando o servidor ligar."),
+        h("ol", { class: "steps" },
+          h("li", {}, "Abra o Minecraft Java", s.version ? h("span", { translate: "no" }, ` ${s.version}`) : null, " (a mesma versão do servidor, ou uma compatível)."),
+          h("li", {}, "Vá em Multijogador → Adicionar servidor."),
+          h("li", {}, "Cole o endereço e entre.")),
+        s.whitelist ? h("p", { class: "muted small", style: "margin-bottom:0" }, "Este servidor usa lista de permitidos (whitelist): peça ao dono para liberar o seu nome.") : null);
+
+      const about = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Sobre"),
+        s.about ? h("p", { translate: "no", style: "white-space:pre-wrap;overflow-wrap:anywhere;margin:0" }, s.about) : h("p", { class: "muted", style: "margin:0" }, "O dono ainda não escreveu uma descrição."));
+
+      const left = [about, join];
+      if (s.verified) {
+        left.push(h("div", { class: "card trust-note" }, trustBadge(s.verifiedAt),
+          h("p", { class: "muted small", style: "margin:8px 0 0" }, "A equipe do AethelHost testou este servidor. O selo não é garantia para sempre: cai sozinho se o dono trocar o software, a versão ou mexer nos mods.")));
+      }
+
+      const right = [h("div", { class: "listing-stats" },
+        h("div", { class: "info" }, h("small", {}, "Estado"), h("strong", {}, h("span", { class: "status " + s.state }, STATUS_LABEL[s.state]))),
+        stat("Jogadores", online ? `${s.players} / ${s.maxPlayers}` : `— / ${s.maxPlayers}`),
+        stat("Software", `${s.softwareLabel} ${s.version}`),
+        h("div", { class: "info" }, h("small", {}, "Servidor"), h("strong", {}, s.alwaysOn ? "Sempre ligado" : "Pode fechar")),
+        stat("No Explorar desde", fmtSince(s.since)),
+        stat("Horas jogadas (7 dias)", s.plays > 0 ? String(s.hours) : "0"),
+        s.rank ? h("div", { class: "info" }, h("small", {}, "Ranking de jogados"), h("strong", {}, `#${s.rank} de ${s.ranked}`)) : null)];
+      right.push(h("p", { class: "muted small", style: "margin:2px 0 0" }, s.alwaysOn ? "Roda numa VPS e fica ligado o tempo todo." : "Roda no plano Grátis: fecha sozinho depois de 5 horas sem jogadores e o dono precisa ligar de novo."));
+
+      if (user && user.admin) {
+        right.push(h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Administração"),
+          h("div", { class: "btn-row" },
+            h("button", { class: "btn btn-primary", type: "button", onclick: () => adminTrust(s, () => { shown = ""; load(); }) }, s.verified ? "Tirar selo" : "Dar selo Confiável"),
+            h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+              if (!(await confirmBox(`Tirar "${s.name}" do Explorar? O dono não consegue anunciar de novo, e recebe um aviso.`, { ok: "Tirar do Explorar", danger: true }))) return;
+              try { await api("POST", "/admin/explore", { id: s.id, blocked: true, dismiss: true }); location.href = "explore.html"; } catch (e) { await confirmBox(e.message, { ok: "OK", cancel: "Fechar" }); }
+            } }, "Tirar do Explorar"))));
+      }
+
+      const mine = user && user.username && s.owner === user.username;
+      if (!mine) {
+        right.push(h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Algo errado?"),
+          reportedNow || s.reported ? h("p", { class: "muted small", style: "margin:0" }, "Denúncia enviada. A administração vai analisar.")
+            : reportOpen ? reportForm()
+            : h("button", { class: "btn", type: "button", onclick: () => {
+                if (!user) { location.href = "login.html?next=" + encodeURIComponent(location.pathname + location.search); return; }
+                reportOpen = true; shown = ""; draw();
+              } }, "Denunciar este servidor")));
+      }
+
+      $("lsBody").replaceChildren(h("div", { style: "display:grid;gap:16px;min-width:0" }, left), h("div", { style: "display:grid;gap:16px;min-width:0" }, right));
+    }
+
+    async function load() {
+      try { s = await api("GET", `/explore/${encodeURIComponent(sid)}`); draw(); }
+      catch (e) { if (e.status === 404) location.replace("notfound.html"); else $("lsBody").replaceChildren(h("div", { class: "empty" }, h("h2", {}, "Backend fora do ar"), h("p", {}, e.message))); }
+    }
+    window.addEventListener("langchange", () => { shown = ""; draw(); });
+    window.BH_ME_READY.then(load);
+    setInterval(load, 10000);
+  </script>
+  <script src="js/i18n-en.js"></script>
+  <script src="js/i18n.js"></script>
+</body>
+</html>

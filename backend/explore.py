@@ -109,3 +109,44 @@ def forget_server(sid):
         kept = [r for r in items if r["server"] != sid]
         if len(kept) != len(items):
             _save(kept)
+
+
+# ---------------------------------------------------------------- quanto cada servidor é jogado (para "Mais jogados")
+
+STATS = DATA / "explore_stats.json"
+STATS_DAYS = 7
+
+
+def _stats_load():
+    try:
+        return json.loads(STATS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def record(counts):
+    """`counts`: {id do servidor: jogadores agora}. Chamado a cada minuto; soma "jogador-minutos" no dia de hoje."""
+    today = time.strftime("%Y-%m-%d")
+    oldest = time.strftime("%Y-%m-%d", time.localtime(time.time() - STATS_DAYS * 86400))
+    with LOCK:
+        stats = _stats_load()
+        for sid, n in counts.items():
+            if n > 0:
+                day = stats.setdefault(sid, {})
+                day[today] = day.get(today, 0) + n
+        for sid in list(stats):
+            stats[sid] = {d: v for d, v in stats[sid].items() if d >= oldest}
+            if not stats[sid]:
+                del stats[sid]
+        tmp = STATS.with_name(STATS.name + ".part")
+        tmp.write_text(json.dumps(stats), encoding="utf-8")
+        os.replace(tmp, STATS)
+
+
+def plays(sid=None):
+    """Jogador-minutos dos últimos 7 dias de um servidor (ou de todos, em um dicionário)."""
+    oldest = time.strftime("%Y-%m-%d", time.localtime(time.time() - STATS_DAYS * 86400))
+    with LOCK:
+        stats = _stats_load()
+    total = {s: sum(v for d, v in days.items() if d >= oldest) for s, days in stats.items()}
+    return total if sid is None else total.get(sid, 0)

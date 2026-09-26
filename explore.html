@@ -22,7 +22,7 @@
     <div class="page-head">
       <div>
         <h1>Explorar <span class="beta-tag">Beta</span></h1>
-        <p class="muted" style="margin:6px 0 0">Servidores que os donos escolheram mostrar para todo mundo. Copie o endereço e entre pelo Minecraft Java.</p>
+        <p class="muted" style="margin:6px 0 0">Servidores que os donos escolheram mostrar para todo mundo. Toque em um para ver a página dele.</p>
       </div>
     </div>
 
@@ -33,9 +33,16 @@
         <option value="vanilla">Vanilla</option><option value="paper">Paper</option><option value="purpur">Purpur</option>
         <option value="fabric">Fabric</option><option value="quilt">Quilt</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option>
       </select>
+      <select id="exAlways" aria-label="Servidor">
+        <option value="">Sempre ligado ou não</option>
+        <option value="1">Sempre ligado (VPS)</option>
+        <option value="0">Pode fechar (Grátis)</option>
+      </select>
       <label class="chip-toggle"><input type="checkbox" id="exTrust"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Só confiáveis</span></label>
       <label class="chip-toggle"><input type="checkbox" id="exOnline"><span>Só online</span></label>
     </div>
+
+    <div class="support-topics" id="exSorts" role="tablist"></div>
 
     <p class="muted small" id="exNote">O Explorar está em <b>Beta</b>: pode mudar e ter falhas. O selo <b>Confiável por AethelHost</b> quer dizer que a equipe testou o servidor, mas não é garantia para sempre. Entre com cuidado e denuncie o que estiver errado.
       <a href="support.html#explorar">Como funciona</a></p>
@@ -48,8 +55,22 @@
   <script src="js/look.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
-    const REASONS = { offensive: "Conteúdo ofensivo ou ilegal", malicious: "Mods ou plugins maliciosos", scam: "Golpe ou pedido de dinheiro/dados", broken: "Não liga ou o endereço não funciona", other: "Outro motivo" };
-    let data = null, shown = "", reporting = null, reported = new Set(), me = null;
+    const SORTS = [
+      { id: "home", label: "Início" },
+      { id: "top", label: "Mais jogados" },
+      { id: "new", label: "Recentes" },
+      { id: "low", label: "Pouco populares" },
+      { id: "mix", label: "Variados" },
+    ];
+    const ROWS = [
+      { id: "top", label: "Mais jogados", hint: "Os que mais tiveram jogadores nos últimos 7 dias" },
+      { id: "new", label: "Recentes", hint: "Entraram no Explorar há pouco tempo" },
+      { id: "low", label: "Pouco populares", hint: "Ainda com poucos jogadores: dê uma chance" },
+      { id: "mix", label: "Variados", hint: "Uma mistura que muda a cada hora" },
+    ];
+    let view = new URLSearchParams(location.search).get("sort") || "home";
+    if (!SORTS.some((s) => s.id === view)) view = "home";
+    let data = null, shown = "";
 
     async function copy(text, btn) {
       const old = btn.textContent;
@@ -57,63 +78,68 @@
       setTimeout(() => (btn.textContent = old), 1500);
     }
 
-    function reportForm(s) {
-      const reason = h("select", { "aria-label": "Motivo" }, h("option", { value: "" }, "Motivo da denúncia…"), ...Object.entries(REASONS).map(([k, v]) => h("option", { value: k }, v)));
-      const note = h("input", { type: "text", placeholder: "Detalhes (opcional)", maxlength: 300, autocomplete: "off" });
-      const err = h("div", { class: "error" });
-      const send = h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
-        if (!reason.value) { err.textContent = "Escolha o motivo."; return; }
-        send.disabled = true;
-        try {
-          await api("POST", `/explore/${encodeURIComponent(s.id)}/report`, { reason: reason.value, note: note.value });
-          reported.add(s.id); reporting = null; draw(true);
-        } catch (e) { err.textContent = e.message; send.disabled = false; }
-      } }, "Enviar denúncia");
-      return h("div", { class: "report-form" }, reason, note, h("div", { class: "btn-row" }, send, h("button", { class: "btn", type: "button", onclick: () => { reporting = null; draw(true); } }, "Cancelar")), err);
-    }
+    const open = (s) => { location.href = "listing.html?id=" + encodeURIComponent(s.id); };
+    const hoursText = (s) => (s.plays > 0 ? `${Math.max(1, Math.round(s.plays / 60))} h jogadas nos últimos 7 dias` : "");
 
     function card(s) {
       const online = s.state === "online";
       const addr = s.address
-        ? h("div", { class: "addr" }, h("span", { translate: "no" }, s.address), " ", h("button", { class: "btn", type: "button", style: "padding:2px 10px;font-size:13px", onclick: (ev) => copy(s.address, ev.target) }, "Copiar"))
+        ? h("div", { class: "addr" }, h("span", { translate: "no" }, s.address), " ", h("button", { class: "btn", type: "button", style: "padding:2px 10px;font-size:13px", onclick: (ev) => { ev.stopPropagation(); copy(s.address, ev.target); } }, "Copiar"))
         : h("div", { class: "addr muted" }, "O endereço aparece quando o servidor ligar.");
-      const flag = reported.has(s.id) ? h("span", { class: "muted small" }, "Denúncia enviada")
-        : h("button", { class: "linkbtn", type: "button", onclick: () => {
-            if (!window.BH_USER) { location.href = "login.html?next=" + encodeURIComponent("/explore.html"); return; }
-            reporting = reporting === s.id ? null : s.id; draw(true);
-          } }, "Denunciar");
-      return h("div", { class: "server-card explore-card" },
+      const admin = window.BH_USER && window.BH_USER.admin
+        ? h("div", { class: "explore-flag" }, h("button", { class: "linkbtn", type: "button", onclick: (ev) => { ev.stopPropagation(); adminTrust(s, () => { shown = ""; load(); }); } }, s.verified ? "Tirar selo" : "Dar selo"))
+        : null;
+      const el = h("div", { class: "server-card explore-card clickable", tabindex: 0, role: "link", onclick: (ev) => { if (!ev.target.closest("button, a")) open(s); },
+          onkeydown: (ev) => { if (ev.key === "Enter" && ev.target === el) open(s); } },
         h("div", { class: "card-top" },
           h("img", { class: "card-icon", src: `/api/explore/${encodeURIComponent(s.id)}/icon?v=${s.iconVersion}`, alt: "" }),
           h("div", { class: "card-title" },
-            h("h3", { translate: "no" }, s.name),
+            h("h3", { translate: "no" }, h("a", { href: "listing.html?id=" + encodeURIComponent(s.id), class: "plain" }, s.name)),
             s.verified ? trustBadge(s.verifiedAt) : null,
             h("div", { class: "sub" }, mcNodes(s.subtitle, { trim: true })))),
         s.about ? h("p", { class: "about", translate: "no" }, s.about) : null,
         addr,
-        h("div", { class: "muted small", style: "margin:8px 0 0" }, "por ", h("b", { translate: "no" }, s.owner ? "@" + s.owner : s.ownerName)),
+        hoursText(s) ? h("div", { class: "muted small", style: "margin:8px 0 0" }, hoursText(s)) : null,
         h("div", { class: "card-foot" },
           h("span", { class: "status " + s.state }, STATUS_LABEL[s.state], online ? h("span", { class: "muted", style: "font-weight:600" }, ` · ${s.players}/${s.maxPlayers}`) : null),
-          h("span", {}, s.whitelist ? h("span", { class: "badge pending", title: "Só entra quem o dono liberar" }, "Whitelist") : null, " ", h("span", { class: "badge", translate: "no" }, `${s.softwareLabel} ${s.version}`))),
-        h("div", { class: "explore-flag" }, flag),
-        reporting === s.id ? reportForm(s) : null);
+          h("span", {}, s.alwaysOn ? h("span", { class: "badge on", style: "margin-left:0", title: "Fica ligado o tempo todo (VPS)" }, "24h") : null, " ",
+            s.whitelist ? h("span", { class: "badge pending", title: "Só entra quem o dono liberar" }, "Whitelist") : null, " ",
+            h("span", { class: "badge", translate: "no" }, `${s.softwareLabel} ${s.version}`))),
+        admin);
+      return el;
     }
 
-    function draw(force) {
+    function drawSorts() {
+      $("exSorts").replaceChildren(...SORTS.map((t) => h("button", { type: "button", role: "tab", class: "tab-chip" + (t.id === view ? " active" : ""), "aria-selected": String(t.id === view),
+        onclick: () => { view = t.id; history.replaceState(null, "", t.id === "home" ? "explore.html" : "explore.html?sort=" + t.id); drawSorts(); shown = ""; load(); } }, t.label)));
+    }
+
+    const filtered = () => !!($("exQ").value.trim() || $("exSoft").value || $("exAlways").value || $("exTrust").checked || $("exOnline").checked);
+
+    function draw() {
       if (!data) return;
-      const sig = JSON.stringify([data, [...reported], reporting, document.documentElement.lang]);
-      if (!force && (sig === shown || reporting)) return;  // com a denúncia aberta a lista não se refaz (senão o que você digitou sumiria)
+      const sig = JSON.stringify([data, document.documentElement.lang, window.BH_USER && window.BH_USER.admin]);
+      if (sig === shown) return;
       shown = sig;
       const list = $("exList");
-      if (!data.servers.length) {
-        const filtered = $("exQ").value || $("exSoft").value || $("exTrust").checked || $("exOnline").checked;
-        list.replaceChildren(h("div", { class: "empty" }, h("h2", {}, filtered ? "Nada encontrado" : "Ainda não tem servidor por aqui"),
-          h("p", {}, filtered ? "Tente tirar algum filtro." : "Seja o primeiro: abra o painel do seu servidor, aba Servidor, e ligue o Explorar."),
+      const isRows = !!data.rows;
+      const items = isRows ? [] : data.servers;
+      if (!data.total) {
+        list.replaceChildren(h("div", { class: "empty" }, h("h2", {}, filtered() ? "Nada encontrado" : "Ainda não tem servidor por aqui"),
+          h("p", {}, filtered() ? "Tente tirar algum filtro." : "Seja o primeiro: abra o painel do seu servidor, aba Servidor, e ligue o Explorar."),
           h("a", { class: "btn btn-primary", href: "servers.html" }, "Meus servidores")));
         return;
       }
-      list.replaceChildren(...[h("div", { class: "server-grid" }, data.servers.map(card)),
-        data.total > data.servers.length ? h("p", { class: "muted small", style: "margin:-40px 0 60px" }, `Mostrando ${data.servers.length} de ${data.total}. Use a busca para achar os outros.`) : null].filter(Boolean));
+      if (isRows) {
+        list.replaceChildren(...ROWS.map((r) => data.rows[r.id].length ? h("section", { class: "ex-row" },
+          h("div", { class: "ex-row-head" }, h("div", {}, h("h2", {}, r.label), h("p", { class: "muted small" }, r.hint)),
+            h("button", { class: "linkbtn", type: "button", onclick: () => { view = r.id; history.replaceState(null, "", "explore.html?sort=" + r.id); drawSorts(); shown = ""; load(); } }, "Ver tudo")),
+          h("div", { class: "ex-scroll" }, data.rows[r.id].map(card))) : null).filter(Boolean));
+        return;
+      }
+      const info = ROWS.find((r) => r.id === view);
+      list.replaceChildren(...[info ? h("p", { class: "muted small", style: "margin:0 0 14px" }, info.hint) : null, h("div", { class: "server-grid" }, items.map(card)),
+        data.total > items.length ? h("p", { class: "muted small", style: "margin:-40px 0 60px" }, `Mostrando ${items.length} de ${data.total}. Use a busca para achar os outros.`) : null].filter(Boolean));
     }
 
     let timer = null;
@@ -121,19 +147,23 @@
       const q = new URLSearchParams();
       if ($("exQ").value.trim()) q.set("q", $("exQ").value.trim());
       if ($("exSoft").value) q.set("software", $("exSoft").value);
+      if ($("exAlways").value) q.set("always", $("exAlways").value);
       if ($("exTrust").checked) q.set("verified", "1");
       if ($("exOnline").checked) q.set("online", "1");
-      try { data = await api("GET", "/explore" + (q.toString() ? "?" + q : "")); draw(); }
+      if (view === "home" && !filtered()) q.set("rows", "1"); else q.set("sort", view === "home" ? "top" : view);
+      try { data = await api("GET", "/explore?" + q); draw(); }
       catch (e) { $("exList").replaceChildren(h("div", { class: "empty" }, h("h2", {}, "Backend fora do ar"), h("p", {}, e.message))); }
     }
     const later = () => { clearTimeout(timer); timer = setTimeout(() => { shown = ""; load(); }, 250); };
     $("exQ").addEventListener("input", later);
-    ["exSoft", "exTrust", "exOnline"].forEach((id) => $(id).addEventListener("change", later));
-    window.addEventListener("langchange", () => draw(true));
+    ["exSoft", "exAlways", "exTrust", "exOnline"].forEach((id) => $(id).addEventListener("change", later));
+    window.addEventListener("langchange", () => { drawSorts(); shown = ""; draw(); });
+    drawSorts();
     window.BH_ME_READY.then(load);
     setInterval(load, 10000);
   </script>
   <script src="js/i18n-en.js"></script>
   <script src="js/i18n.js"></script>
+  <script>drawSorts();</script>
 </body>
 </html>
