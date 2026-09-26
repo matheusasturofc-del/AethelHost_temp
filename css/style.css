@@ -736,3 +736,8 @@ main.server-panel > section { min-width: 0; width: 100%; max-width: 1120px; marg
 }
 .login-form + p.muted { margin-top: 16px; }
 .login-form .field > label.check { font-weight: 400; font-size: 15px; color: var(--text); margin: 6px 0 0; }
+#bkDrive .error, #bkDrive .ok-msg { margin-top: 12px; }
+@media (max-width: 640px) {
+  .uri-row { flex-wrap: wrap; }
+  .uri-row .btn { flex: 1 1 100%; }
+}
