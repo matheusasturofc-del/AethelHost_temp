@@ -19,6 +19,7 @@ import unicodedata
 import auth
 import mail
 import sms
+import telegram
 from content import ContentError
 
 CODE_TTL = 600
@@ -27,6 +28,7 @@ RESEND_AFTER = 60
 MAX_SENDS = 4                 # envios por pedido (o primeiro + reenvios)
 FAIL_LIMIT, FAIL_WINDOW = 5, 15 * 60          # senhas erradas por e-mail
 SEND_PER_EMAIL, SEND_PER_ALL, SEND_WINDOW = 5, 60, 3600
+TG_PER_TARGET, TG_PER_ALL = 5, 200
 SMS_PER_TARGET, SMS_PER_ALL = 3, 30  # SMS custa dinheiro: limite bem menor que o de e-mails
 USERNAME_RE = re.compile(r"^[a-z0-9_.-]{3,20}$")  # só minúsculas
 RESERVED = {"admin", "administrador", "administrator", "root", "system", "sistema", "suporte", "support", "moderador",
@@ -126,6 +128,22 @@ def _purge():
 def _deliver(tid, ch, lang):
     """Gera um código novo e o envia por e-mail ou SMS (ou, se o e-mail já tem conta, envia o aviso). Só conta como envio se der certo.
     `fake`: o e-mail/celular não é de nenhuma conta (recuperar senha): não sai nada, mas a resposta e os limites são iguais."""
+    if ch.get("channel") == "telegram":
+        key = f"tg:{ch['email']}"
+        for k, limit in ((key, TG_PER_TARGET), ("tg:*", TG_PER_ALL)):
+            wait = _wait_for(k, limit, SEND_WINDOW)
+            if wait:
+                raise ContentError(429, f"Muitas mensagens enviadas. Tente de novo em {_wait_text(wait)}.")
+        if ch.get("fake"):
+            ch["code_hash"] = _code_hash(tid, secrets.token_hex(8))
+        else:
+            code = f"{secrets.randbelow(10 ** 6):06d}"
+            telegram.send(ch["chat"], telegram.code_text(lang, ch["purpose"], code))
+            ch["code_hash"] = _code_hash(tid, code)
+            _hit("tg:*")
+        _hit(key)
+        ch.update(sent_at=time.time(), tries=0, sends=ch.get("sends", 0) + 1, exp=time.time() + CODE_TTL)
+        return
     if ch.get("channel") == "sms":
         key = f"sms:{ch.get('email') or ch['phone']}"
         for k, limit in ((key, SMS_PER_TARGET), ("sms:*", SMS_PER_ALL)):
@@ -171,7 +189,7 @@ def _start(ch, lang):
         _purge()
         _challenges[tid] = ch
     channel = ch.get("channel", "email")
-    target = mail.mask_email(ch["email"]) if channel == "email" else (sms.mask_phone(ch["phone"]) if ch["purpose"] == "phoneadd" else "")
+    target = mail.mask_email(ch["email"]) if channel == "email" else "" if channel == "telegram" else (sms.mask_phone(ch["phone"]) if ch["purpose"] == "phoneadd" else "")
     return {"challenge": token, "email": target, "channel": channel, "target": target, "resendIn": RESEND_AFTER}
 
 
@@ -432,16 +450,20 @@ def start_reset(body):
     email = mail.normalize_email(body.get("email"))
     if not email:
         raise ContentError(400, "Esse e-mail não parece válido.")
-    channel = "sms" if body.get("channel") == "sms" else "email"
+    channel = body.get("channel") if body.get("channel") in ("sms", "telegram") else "email"
     if channel == "email":
         _need_mail()
-    elif not sms.is_configured():
+    elif channel == "sms" and not sms.is_configured():
         raise ContentError(503, "O envio de SMS ainda não foi configurado pelo administrador.")
+    elif channel == "telegram" and not telegram.is_configured():
+        raise ContentError(503, "O envio pelo Telegram ainda não foi configurado pelo administrador.")
     user = find_password_user(email)
     ch = {"purpose": "reset", "channel": channel, "email": email, "user": user["id"] if user else None,
-          "fake": not user or (channel == "sms" and not user.get("phone"))}
+          "fake": not user or (channel == "sms" and not user.get("phone")) or (channel == "telegram" and not user.get("telegram"))}
     if channel == "sms":
         ch["phone"] = (user or {}).get("phone") or "+10000000000"
+    if channel == "telegram":
+        ch["chat"] = ((user or {}).get("telegram") or {}).get("chat") or 0
     return _start(ch, _lang(body))
 
 
@@ -493,6 +515,44 @@ def remove_phone(user, body):
     email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
     if email:
         _notify(email, _lang(body), "phone_removed")
+    return user
+
+
+# ---------------------------------------------------------------- Telegram
+
+def start_telegram_link(user, body):
+    """Pede a senha atual e devolve o link para abrir o bot (o vínculo termina quando a pessoa toca em Iniciar no Telegram)."""
+    if not telegram.is_configured():
+        raise ContentError(503, "O envio pelo Telegram ainda não foi configurado pelo administrador.")
+    if not user.get("pw"):
+        raise ContentError(409, "Crie uma senha primeiro: é ela que protege o Telegram de recuperação.")
+    _check_current(user, body.get("current"))
+    return telegram.new_link(user["id"])
+
+
+def telegram_linked(user_id, chat, name):
+    """Chamado pelo bot quando alguém toca em Iniciar com um código válido. Devolve o @usuário da conta."""
+    user = auth.get_user(user_id)
+    if not user:
+        raise ContentError(410, "A conta não existe mais.")
+    auth.set_telegram(user, chat, name)
+    email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+    if email:
+        _notify(email, "pt", "telegram_linked")
+    return user.get("username") or ""
+
+
+telegram.on_link = telegram_linked
+
+
+def remove_telegram(user, body):
+    _check_current(user, body.get("current"))
+    if not user.get("telegram"):
+        raise ContentError(409, "Sua conta não tem Telegram vinculado.")
+    auth.set_telegram(user, None, None)
+    email = auth.pw_email(user) or mail.normalize_email(user.get("email"))
+    if email:
+        _notify(email, _lang(body), "telegram_removed")
     return user
 
 

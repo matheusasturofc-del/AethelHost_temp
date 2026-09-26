@@ -43,6 +43,7 @@ import manage  # noqa: E402
 import options  # noqa: E402
 import remote  # noqa: E402
 import sms  # noqa: E402
+import telegram  # noqa: E402
 import sshx  # noqa: E402
 import tunnel  # noqa: E402
 from sshx import ensure_key, ssh_cmd, ssh_permanent, ssh_script, ssh_stream  # noqa: E402
@@ -1630,7 +1631,7 @@ def _require_setup():
 def api_auth_providers(query, body):
     return 200, {"providers": auth.list_providers(), "canSetup": auth.setup_allowed(current_user()),
                  "password": {"enabled": mail.is_configured()},  # e-mail e senha só funcionam com o envio de e-mail configurado
-                 "sms": {"enabled": sms.is_configured()}}
+                 "sms": {"enabled": sms.is_configured()}, "telegram": {"enabled": telegram.is_configured()}}
 
 
 def api_auth_me(query, body):
@@ -1715,6 +1716,30 @@ def api_account_phone_start(query, body):
 
 def api_account_phone_remove(query, body):
     return 200, {"ok": True, "user": auth.self_user(accounts.remove_phone(current_user(), body))}
+
+
+def api_account_telegram_start(query, body):
+    return 200, accounts.start_telegram_link(current_user(), body)
+
+
+def api_account_telegram_status(query, body):
+    user = current_user()
+    tg = user.get("telegram") or {}
+    return 200, {"hasTelegram": bool(tg), "telegramName": tg.get("name", ""), "telegramAt": tg.get("at", 0)}
+
+
+def api_account_telegram_remove(query, body):
+    return 200, {"ok": True, "user": auth.self_user(accounts.remove_telegram(current_user(), body))}
+
+
+def api_telegram_get(query, body):
+    _require_setup()
+    return 200, telegram.config_view()
+
+
+def api_telegram_save(query, body):
+    _require_setup()
+    return 200, telegram.save(body)
 
 
 def api_sms_get(query, body):
@@ -2134,6 +2159,11 @@ ROUTES = [
     ("POST", r"^/api/account/password/start$", api_account_password_start),
     ("POST", r"^/api/account/email/start$", api_account_email_start),
     ("POST", r"^/api/account/phone/start$", api_account_phone_start),
+    ("POST", r"^/api/account/telegram/start$", api_account_telegram_start),
+    ("GET", r"^/api/account/telegram/status$", api_account_telegram_status),
+    ("POST", r"^/api/account/telegram/remove$", api_account_telegram_remove),
+    ("GET", r"^/api/auth/telegram$", api_telegram_get),
+    ("POST", r"^/api/auth/telegram$", api_telegram_save),
     ("POST", r"^/api/account/phone/remove$", api_account_phone_remove),
     ("GET", r"^/api/auth/sms$", api_sms_get),
     ("POST", r"^/api/auth/sms$", api_sms_save),
@@ -2248,7 +2278,7 @@ NEED = {
 PUBLIC = {api_auth_providers, api_auth_me, api_auth_logout, api_auth_config, api_auth_config_save,
           api_pw_register, api_pw_login, api_pw_resend, api_pw_verify, api_mail_get, api_mail_save, api_mail_test,
           api_captcha_config, api_captcha_get, api_captcha_save, api_pw_forgot, api_pw_reset,
-          api_sms_get, api_sms_save, api_sms_test}  # não exigem login
+          api_sms_get, api_sms_save, api_sms_test, api_telegram_get, api_telegram_save}  # não exigem login
 RAW_UPLOAD = {api_content_upload, api_icon_set, api_files_upload, api_account_avatar_set, api_account_banner_image}  # recebem o arquivo cru (octet-stream) em vez de JSON
 STREAM_UPLOAD = {api_world_upload}  # arquivos grandes: vão direto para o disco, sem ocupar a memória
 MAX_UPLOAD = 64 * 1024 * 1024
@@ -2568,6 +2598,7 @@ def main():
     threading.Thread(target=monitor, daemon=True).start()
     threading.Thread(target=adopt_vps_servers, daemon=True).start()
     threading.Thread(target=run_scheduled_backups, daemon=True).start()
+    threading.Thread(target=telegram.poll_forever, daemon=True).start()
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"AethelHost rodando em http://127.0.0.1:{PORT}  (Ctrl+C para parar)")
     try:

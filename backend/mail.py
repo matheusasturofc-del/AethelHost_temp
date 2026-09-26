@@ -247,6 +247,10 @@ def notice_message(lang, kind):
                           ("Seu celular de recuperação foi alterado", "O celular de recuperação da sua conta no {site} acabou de ser alterado.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
         "phone_removed": (("Your recovery phone was removed", "The recovery phone was just removed from your {site} account.\n\nIf it wasn't you, sign in and change your password right away."),
                           ("Seu celular de recuperação foi removido", "O celular de recuperação acabou de ser removido da sua conta no {site}.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
+        "telegram_linked": (("Telegram was linked to your account", "A Telegram account was just linked to your {site} account, so it can receive password-reset codes.\n\nIf it wasn't you, sign in and change your password right away."),
+                            ("Um Telegram foi vinculado à sua conta", "Um Telegram acabou de ser vinculado à sua conta no {site} e passa a poder receber os códigos de redefinir a senha.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
+        "telegram_removed": (("Telegram was unlinked from your account", "The Telegram account was just unlinked from your {site} account.\n\nIf it wasn't you, sign in and change your password right away."),
+                             ("O Telegram foi desvinculado da sua conta", "O Telegram acabou de ser desvinculado da sua conta no {site}.\n\nSe não foi você, entre e troque a senha agora mesmo.")),
         "email_changed": (("Your email was changed", "The email on your {site} account was just changed to another address.\n\nIf it wasn't you, contact the administrator."),
                           ("Seu e-mail foi alterado", "O e-mail da sua conta no {site} acabou de ser trocado por outro endereço.\n\nSe não foi você, fale com o administrador.")),
     }

@@ -508,7 +508,8 @@ def self_user(user):
     """A conta vista por ela mesma: o que os outros não precisam saber (se tem senha)."""
     import sms  # aqui para não criar ciclo
     return {**public_user(user), "hasPassword": bool(user.get("pw")), "hasPhone": bool(user.get("phone")),
-            "phoneMask": sms.mask_phone(user["phone"]) if user.get("phone") else ""}
+            "phoneMask": sms.mask_phone(user["phone"]) if user.get("phone") else "",
+            "hasTelegram": bool(user.get("telegram")), "telegramName": (user.get("telegram") or {}).get("name", "")}
 
 
 def all_users():
@@ -582,6 +583,16 @@ def set_phone(user, phone):
             user["phone"] = phone
         else:
             user.pop("phone", None)
+        _write(USERS_FILE, list(_users.values()))
+
+
+def set_telegram(user, chat, name):
+    """Liga (ou, com chat=None, desliga) o Telegram usado para receber códigos."""
+    with LOCK:
+        if chat:
+            user["telegram"] = {"chat": chat, "name": name, "at": time.time()}
+        else:
+            user.pop("telegram", None)
         _write(USERS_FILE, list(_users.values()))
 
 

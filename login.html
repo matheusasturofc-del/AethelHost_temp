@@ -77,6 +77,7 @@
     let providers = [];
     let pwEnabled = false;
     let smsEnabled = false;
+    let telegramEnabled = false;
     let canSetup = false;
     let resendTimer = null;
     const NEXT_OK = /^\/(?:servers|create|panel|admin|profile|settings|index)\.html(?:\?[A-Za-z0-9=&%._-]{0,200})?$/;  // só páginas do próprio site
@@ -150,9 +151,12 @@
       $("lgHint").hidden = true;
       const email = formField("E-mail da conta", "email", { type: "email", autocomplete: "username", max: 254 });
       let channel = "email";
-      const choose = smsEnabled ? h("div", { class: "field" }, h("label", {}, "Como você quer receber o código?"),
-        h("label", { class: "check", style: "margin-bottom:6px" }, h("input", { type: "radio", name: "channel", value: "email", checked: true, onchange: () => { channel = "email"; } }), h("span", {}, "Por e-mail")),
-        h("label", { class: "check" }, h("input", { type: "radio", name: "channel", value: "sms", onchange: () => { channel = "sms"; } }), h("span", {}, "Por SMS, para o celular cadastrado na conta"))) : null;
+      const option = (value, text, checked) => h("label", { class: "check", style: "margin-bottom:6px" },
+        h("input", { type: "radio", name: "channel", value, checked, onchange: () => { channel = value; } }), h("span", {}, text));
+      const choose = smsEnabled || telegramEnabled ? h("div", { class: "field" }, h("label", {}, "Como você quer receber o código?"),
+        option("email", "Por e-mail", true),
+        smsEnabled ? option("sms", "Por SMS, para o celular cadastrado na conta", false) : null,
+        telegramEnabled ? option("telegram", "Pelo Telegram, se você vinculou na conta", false) : null) : null;
       const cap = captchaField();
       const go = h("button", { class: "btn btn-primary btn-block", type: "submit" }, "Enviar código");
       show("Esqueci a senha", "Digite o e-mail da sua conta. Enviamos um código de 6 números para você criar uma nova senha.",
@@ -195,12 +199,15 @@
           resendAt = Date.now() + r.resendIn * 1000;
         } catch (e) { dead(e); }
       });
-      show("Redefinir a senha", channel === "sms"
+      show("Redefinir a senha", channel === "telegram"
+          ? "Se a conta tiver o Telegram vinculado, enviamos uma mensagem com um código de 6 números. Digite o código e escolha a nova senha."
+          : channel === "sms"
           ? "Se a conta tiver um celular cadastrado, enviamos um SMS com um código de 6 números. Digite o código e escolha a nova senha."
           : `Enviamos um código de 6 números para ${state.email} (se existir uma conta com esse e-mail). Digite o código e escolha a nova senha.`,
         form,
         h("div", { class: "btn-row", style: "justify-content:center" }, resend, h("button", { class: "btn", type: "button", onclick: viewForgot }, "Voltar")),
-        h("p", { class: "muted small center" }, channel === "sms" ? "O código vale por 10 minutos. Não chegou? Confira o número da conta, ou tente por e-mail." : "O código vale por 10 minutos. Olhe também a caixa de spam."));
+        h("p", { class: "muted small center" }, channel === "telegram" ? "O código vale por 10 minutos. Não chegou? Confira se você vinculou o Telegram nesta conta, ou tente por e-mail."
+          : channel === "sms" ? "O código vale por 10 minutos. Não chegou? Confira o número da conta, ou tente por e-mail." : "O código vale por 10 minutos. Olhe também a caixa de spam."));
       const tick = () => {
         const left = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
         resend.disabled = left > 0;
@@ -309,6 +316,7 @@
       providers = data.providers;
       pwEnabled = !!(data.password && data.password.enabled);
       smsEnabled = !!(data.sms && data.sms.enabled);
+      telegramEnabled = !!(data.telegram && data.telegram.enabled);
       canSetup = data.canSetup;
       viewLogin();
       $("lgSetup").hidden = !data.canSetup;
@@ -323,9 +331,11 @@
       try { mailCfg = await api("GET", "/auth/mail"); } catch { /* sem o bloco do e-mail */ }
       let smsCfg = null;
       try { smsCfg = await api("GET", "/auth/sms"); } catch { /* sem o bloco do SMS */ }
+      let tgCfg = null;
+      try { tgCfg = await api("GET", "/auth/telegram"); } catch { /* sem o bloco do Telegram */ }
       let captchaCfg = null;
       try { captchaCfg = await api("GET", "/auth/captcha"); } catch { /* sem o bloco do captcha */ }
-      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...(smsCfg ? [smsBlock(smsCfg)] : []), ...(captchaCfg ? [captchaBlock(captchaCfg)] : []),
+      $("lgConfig").replaceChildren(...(mailCfg ? [mailBlock(mailCfg)] : []), ...(smsCfg ? [smsBlock(smsCfg)] : []), ...(tgCfg ? [telegramBlock(tgCfg)] : []), ...(captchaCfg ? [captchaBlock(captchaCfg)] : []),
         ...Object.entries(cfg).map(([id, c]) => setupBlock(id, c)));
     }
 
@@ -368,6 +378,33 @@
         h("summary", {}, "SMS (códigos por celular)", c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
         h("ol", { class: "steps", translate: "no" }, SMS_HELP.map((s) => h("li", {}, s[lang]))),
         form, msg, c.configured ? test : null);
+    }
+
+    const TG_HELP = [
+      ["No Telegram, abra uma conversa com o @BotFather (o bot oficial que cria bots) e mande /newbot. Escolha um nome e um @usuário que termine em \"bot\".", "In Telegram, open a chat with @BotFather (the official bot that creates bots) and send /newbot. Pick a name and a username ending in \"bot\"."],
+      ["Ele devolve um token parecido com 123456789:AAE… . Copie inteiro e cole abaixo (é como uma senha do bot: não compartilhe).", "It gives you a token like 123456789:AAE… . Copy all of it and paste it below (it's like the bot's password: don't share it)."],
+      ["Salve. O AethelHost confere o token e passa a escutar o bot. Depois, cada pessoa vincula o próprio Telegram em Editar perfil → Segurança. É grátis e sem limite de mensagens.", "Save. AethelHost checks the token and starts listening to the bot. Then each person links their own Telegram in Edit profile → Security. It's free with no message limit."],
+    ];
+
+    function telegramBlock(c) {
+      const lang = en() ? 1 : 0;
+      const msg = h("div", { class: "ok-msg" }, saved === "telegram" ? "Salvo. O bot já está no ar." : "");
+      const token = h("input", { type: "password", name: "token", placeholder: c.hasToken ? "•••••••• (já salvo; deixe vazio para manter)" : "123456789:AAE…", autocomplete: "off", spellcheck: false });
+      const form = h("form", { class: "setup-form", onsubmit: async (ev) => {
+        ev.preventDefault();
+        msg.className = "ok-msg"; msg.textContent = "";
+        try { await api("POST", "/auth/telegram", { token: token.value }); saved = "telegram"; await loadProviders(); }
+        catch (e) { msg.className = "error"; msg.textContent = e.message; }
+      } },
+        h("div", { class: "field" }, h("label", {}, "Token do bot"), token),
+        h("div", { class: "btn-row" },
+          h("button", { class: "btn btn-primary", type: "submit" }, "Salvar"),
+          c.configured ? h("button", { class: "btn btn-danger", type: "button", onclick: async () => { await api("POST", "/auth/telegram", { clear: true }); saved = null; await loadProviders(); } }, "Remover") : null));
+      return h("details", { class: "setup-block", open: saved === "telegram" },
+        h("summary", {}, "Telegram (códigos pelo Telegram)", c.configured ? h("span", { class: "badge on" }, "Configurado") : null),
+        h("ol", { class: "steps", translate: "no" }, TG_HELP.map((s) => h("li", {}, s[lang]))),
+        ...(c.configured ? [h("p", { class: "muted small" }, "Bot no ar: ", h("b", { translate: "no" }, "@" + c.username))] : []),
+        form, msg);
     }
 
     const CAPTCHA_HELP = [

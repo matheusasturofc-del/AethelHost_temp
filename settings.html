@@ -146,6 +146,28 @@
       <div class="ok-msg" id="stPhoneOk"></div>
       <div class="error" id="stPhoneErr"></div>
     </section>
+
+    <!-- Telegram -->
+    <section class="card" id="stTgCard">
+      <h2>Telegram de recuperação</h2>
+      <p class="muted" style="margin-bottom:6px" id="stTgNow"></p>
+      <p class="muted">Vincule o seu Telegram para receber por lá o código do "Esqueci a senha": é grátis e chega na hora. Digite a senha atual, toque em "Vincular Telegram" e, no Telegram, em "Iniciar".</p>
+      <div class="notice" id="stTgOff" hidden>O envio pelo Telegram ainda não foi configurado pelo administrador.</div>
+      <div class="notice" id="stTgNeedPw" hidden>Crie uma senha primeiro (acima): é ela que protege o Telegram de recuperação.</div>
+      <form id="stTgForm">
+        <div class="field"><label for="stTgPw">Senha atual</label><input type="password" id="stTgPw" autocomplete="current-password" maxlength="128"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" type="submit" id="stTgGo">Vincular Telegram</button>
+          <button class="btn btn-danger" type="button" id="stTgRemove" hidden>Desvincular Telegram</button>
+        </div>
+      </form>
+      <div id="stTgWait" hidden>
+        <p style="margin:12px 0 8px">Abra o Telegram e toque em <b>Iniciar</b> (Start). Esta tela atualiza sozinha.</p>
+        <div class="btn-row"><a class="btn btn-primary" id="stTgOpen" target="_blank" rel="noopener">Abrir o Telegram</a><button class="btn" type="button" id="stTgCancel">Cancelar</button></div>
+      </div>
+      <div class="ok-msg" id="stTgOk"></div>
+      <div class="error" id="stTgErr"></div>
+    </section>
     </div>
 
     <!-- Aba: Conectar-se (outros logins na mesma conta) -->
@@ -170,6 +192,8 @@
     let me = null;
     let mailOn = true;
     let smsOn = false;
+    let tgOn = false;
+    let tgTimer = null;
 
     // ---------- Abas (Personalizar | Segurança), como no painel do servidor ----------
     const TABS = ["custom", "security", "connect"];
@@ -216,9 +240,63 @@
       $("stMailOff").hidden = mailOn;
       for (const f of [$("stPwForm"), $("stEmailForm")]) f.querySelectorAll("input, button").forEach((el) => { if (!mailOn) el.disabled = true; });
       paintPhone();
+      paintTelegram();
       paintTheme();
       paintConnect();
     }
+
+    function paintTelegram() {
+      $("stTgNow").replaceChildren(...(me.hasTelegram ? ["O Telegram vinculado é ", h("b", { translate: "no" }, me.telegramName || "Telegram"), "."] : ["Você ainda não vinculou um Telegram."]));
+      $("stTgOff").hidden = tgOn;
+      $("stTgNeedPw").hidden = me.hasPassword;
+      const waiting = !$("stTgWait").hidden;
+      $("stTgForm").hidden = !me.hasPassword || waiting;
+      $("stTgGo").textContent = me.hasTelegram ? "Vincular outro Telegram" : "Vincular Telegram";
+      $("stTgRemove").hidden = !me.hasTelegram;
+      $("stTgForm").querySelectorAll("input, button").forEach((el) => { el.disabled = !tgOn; });
+    }
+
+    function stopTgWait() {
+      clearInterval(tgTimer);
+      $("stTgWait").hidden = true;
+      paintTelegram();
+    }
+
+    $("stTgForm").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      $("stTgOk").textContent = $("stTgErr").textContent = "";
+      $("stTgGo").disabled = true;
+      try {
+        const before = (await api("GET", "/account/telegram/status")).telegramAt;
+        const r = await api("POST", "/account/telegram/start", { current: $("stTgPw").value });
+        $("stTgPw").value = "";
+        $("stTgOpen").href = r.url;
+        $("stTgWait").hidden = false;
+        $("stTgForm").hidden = true;
+        window.open(r.url, "_blank", "noopener");
+        const deadline = Date.now() + r.expiresIn * 1000;
+        clearInterval(tgTimer);
+        tgTimer = setInterval(async () => {
+          if (Date.now() > deadline) { stopTgWait(); $("stTgErr").textContent = "O tempo acabou. Tente vincular de novo."; return; }
+          try {
+            const s = await api("GET", "/account/telegram/status");
+            if (s.hasTelegram && s.telegramAt !== before) {
+              me = (await api("GET", "/auth/me")).user; window.BH_USER = me;
+              stopTgWait(); paint();
+              $("stTgOk").textContent = "Telegram vinculado! Avisamos você por e-mail.";
+            }
+          } catch { /* tenta de novo */ }
+        }, 2000);
+      } catch (e) { $("stTgErr").textContent = e.message; } finally { $("stTgGo").disabled = !tgOn; }
+    });
+    $("stTgCancel").addEventListener("click", stopTgWait);
+    $("stTgRemove").addEventListener("click", async () => {
+      $("stTgOk").textContent = $("stTgErr").textContent = "";
+      if (!$("stTgPw").value) { $("stTgErr").textContent = "Digite a senha atual para desvincular o Telegram."; $("stTgPw").focus(); return; }
+      if (!(await confirmBox("Desvincular o Telegram? Você continuará recebendo o código de \"Esqueci a senha\" por e-mail.", { title: "Você tem certeza?", ok: "Desvincular", danger: true }))) return;
+      const r = await act($("stTgErr"), $("stTgOk"), () => api("POST", "/account/telegram/remove", { current: $("stTgPw").value, lang: lang() }), "Telegram desvinculado. Avisamos você por e-mail.");
+      if (r) $("stTgPw").value = "";
+    });
 
     function paintPhone() {
       const has = me.hasPassword;
@@ -458,6 +536,7 @@
         const info = await api("GET", "/auth/providers");
         mailOn = !!(info.password || {}).enabled;
         smsOn = !!(info.sms || {}).enabled;
+        tgOn = !!(info.telegram || {}).enabled;
         providers = info.providers;
       } catch { /* segue */ }
       paint();
