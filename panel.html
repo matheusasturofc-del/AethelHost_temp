@@ -997,7 +997,7 @@
           // só as linhas suaves do ponteiro até os pontos mais próximos (sem grade entre os pontos)
           for (const a of lit.values()) {
             if (a.t > 0.3) {
-              ctx.globalAlpha = (a.t - 0.3) * 0.4; ctx.lineWidth = 1;
+              ctx.globalAlpha = 0.25 + (a.t - 0.3) * 0.7; ctx.lineWidth = 1.6;
               ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(a.x, a.y); ctx.stroke();
             }
           }
