@@ -207,6 +207,64 @@ def install(server, project):
     return result
 
 
+def _is_installed(server, pid, meta):
+    """O projeto já está na pasta do servidor (ligado ou desativado)?"""
+    if _remote(server):
+        present = {n for n, _ in _rem().content_list(server, kind_of(server))}
+        return any(m.get("project") == pid and (n in present or n + ".disabled" in present) for n, m in meta.items())
+    folder = folder_of(server)
+    return any(m.get("project") == pid and ((folder / n).exists() or (folder / (n + ".disabled")).exists())
+               for n, m in meta.items())
+
+
+DEP_ORDER = {"required": 0, "optional": 1, "incompatible": 2, "embedded": 3}
+
+
+def project_info(server, project):
+    """A página de um mod/plugin: descrição, a versão que será instalada neste servidor e as dependências
+    (obrigatórias, opcionais, incompatíveis e embutidas), com o que precisa estar também no Minecraft dos jogadores."""
+    if not PROJECT_RE.match(project or ""):
+        raise ContentError(400, "Projeto inválido.")
+    info = get_json(f"{MODRINTH}/project/{quote(project)}")
+    pid = info["id"]
+    version = _pick_version(pid, server)
+    meta = _read_meta(server)
+    deps, ids = [], []
+    if version:
+        for d in version.get("dependencies", [])[:30]:
+            if d.get("dependency_type") not in DEP_ORDER:
+                continue
+            dp = d.get("project_id")
+            if not dp and d.get("version_id") and PROJECT_RE.match(d["version_id"]):
+                try:  # dependência dada só pela versão: descobre de que projeto ela é
+                    dp = get_json(f"{MODRINTH}/version/{quote(d['version_id'])}").get("project_id")
+                except Exception:
+                    dp = None
+            if dp and PROJECT_RE.match(dp) and dp != pid and all(x[0] != dp for x in ids):
+                ids.append((dp, d["dependency_type"]))
+    if ids:
+        listed = get_json(f"{MODRINTH}/projects?ids={quote(json.dumps([i for i, _ in ids]))}")
+        by_id = {p["id"]: p for p in listed}
+        for dp, typ in ids:
+            p = by_id.get(dp)
+            if not p:
+                continue
+            deps.append({"id": dp, "title": p["title"], "description": p.get("description", ""), "icon": p.get("icon_url"), "type": typ,
+                         "clientSide": p.get("client_side"), "serverSide": p.get("server_side"), "slug": p.get("slug"),
+                         "installed": _is_installed(server, dp, meta)})
+        deps.sort(key=lambda x: (DEP_ORDER[x["type"]], x["title"].lower()))
+    return {
+        "id": pid, "title": info["title"], "description": info.get("description", ""), "icon": info.get("icon_url"),
+        "downloads": info.get("downloads", 0), "followers": info.get("followers", 0), "categories": info.get("categories", []),
+        "clientSide": info.get("client_side"), "serverSide": info.get("server_side"), "projectType": info.get("project_type"),
+        "url": f"https://modrinth.com/{info.get('project_type', 'mod')}/{info.get('slug', pid)}",
+        "kind": kind_of(server), "software": SOFTWARE[server["software"]]["label"], "mcVersion": server["version"],
+        "installed": _is_installed(server, pid, meta),
+        "version": {"number": version["version_number"], "name": version.get("name", ""), "type": version["version_type"], "date": version["date_published"]} if version else None,
+        "dependencies": deps,
+    }
+
+
 def _install_one(server, project, meta, result, seen, depth):
     info = get_json(f"{MODRINTH}/project/{quote(project)}")
     pid, title = info["id"], info["title"]
@@ -214,13 +272,7 @@ def _install_one(server, project, meta, result, seen, depth):
         return
     seen.add(pid)
     folder = folder_of(server)
-    if _remote(server):
-        present = {n for n, _ in _rem().content_list(server, kind_of(server))}
-        already = any(m.get("project") == pid and (n in present or n + ".disabled" in present) for n, m in meta.items())
-    else:
-        already = any(m.get("project") == pid and ((folder / n).exists() or (folder / (n + ".disabled")).exists())
-                      for n, m in meta.items())
-    if already:
+    if _is_installed(server, pid, meta):
         result["skipped"].append(title)
         return
     version = _pick_version(pid, server)

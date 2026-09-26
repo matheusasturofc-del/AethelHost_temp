@@ -1229,6 +1229,34 @@ const I18N_EXACT = {
   "Sem fila nem limite de RAM do plano Grátis": "No queue or Free plan RAM limit",
   "Criar com a minha VPS": "Create with my VPS",
   "Prefere não esperar? Crie um servidor na sua própria VPS.": "Prefer not to wait? Create a server on your own VPS.",
+  // ---- Página do mod
+  "Ver a página e as dependências": "See the page and dependencies",
+  "← Voltar": "← Back",
+  "Ver no Modrinth ↗": "See on Modrinth ↗",
+  "Instalar com as dependências": "Install with dependencies",
+  "Neste servidor": "On this server",
+  "Dependências": "Dependencies",
+  "Para jogar": "To play",
+  "Obrigatória · já instalada": "Required · already installed",
+  "Obrigatória · instalada junto": "Required · installed along",
+  "Opcional · já instalada": "Optional · already installed",
+  "Recomendada · opcional (não instala sozinha)": "Recommended · optional (doesn't install by itself)",
+  "Incompatível · está instalada, remova!": "Incompatible · it is installed, remove it!",
+  "Incompatível · não use junto": "Incompatible · don't use together",
+  "Já vem dentro do mod": "Already comes inside the mod",
+  "também no Minecraft dos jogadores": "also on the players' Minecraft",
+  "Este projeto não precisa de outros mods ou plugins.": "This project doesn't need other mods or plugins.",
+  "Sem versão compatível, não dá para ver as dependências.": "No compatible version, so the dependencies can't be shown.",
+  "As dependências obrigatórias que faltam são instaladas junto, sem você precisar buscar uma por uma.": "Missing required dependencies are installed along with it, so you don't have to look them up one by one.",
+  "No servidor: fica instalado aqui, na pasta do servidor.": "On the server: it is installed here, in the server folder.",
+  "Os jogadores não precisam instalar nada: plugin funciona só no servidor.": "Players don't need to install anything: a plugin works on the server only.",
+  "No Minecraft dos jogadores ele é opcional: funciona só no servidor, e quem instalar também pode ganhar recursos extras.": "On the players' Minecraft it is optional: it works on the server only, and those who install it too may get extra features.",
+  "Fica só no servidor: os jogadores não precisam instalar nada.": "It stays on the server only: players don't need to install anything.",
+  "Dependências que os jogadores também precisam instalar:": "Dependencies that players also need to install:",
+  "Será instalada a versão": "The version to be installed is",
+  "(estável) para": "(stable) for",
+  "(beta) para": "(beta) for",
+  "(alpha) para": "(alpha) for",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1415,4 +1443,7 @@ const I18N_PATTERNS = [
   [/^Ainda há (\d+) servidor(?:es)? nesta máquina\. Desative-a para não receber novos, mas ela só pode ser removida sem servidores\.$/, "There are still $1 server(s) on this machine. Disable it so it stops receiving new ones, but it can only be removed with no servers."],
   [/^Rodando na máquina de jogo (.+) do AethelHost\. Para jogar, use (.+)\.$/, "Running on the AethelHost game machine $1. To play, use $2."],
   [/^Conectando à máquina de jogo (.+)…$/, "Connecting to the game machine $1…"],
+  // ---- Página do mod
+  [/^Cada jogador também precisa instalar este mod no Minecraft dele, com o mesmo modificador e a mesma versão do servidor \((.+)\)\.$/, "Each player also needs to install this mod on their Minecraft, with the same loader and the same version as the server ($1)."],
+  [/^Este projeto não tem versão para (.+)\.$/, "This project has no version for $1."],
 ];

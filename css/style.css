@@ -797,6 +797,9 @@ input[type="search"]:focus, textarea:focus { outline: 2px solid var(--accent); o
 #spQ { width: 100%; }
 #adSupport textarea { width: 100%; resize: vertical; }
 .report-form input, .report-form select { width: 100%; }
+.row.clickable { cursor: pointer; }
+.row.clickable:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.row.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ex-row { margin-bottom: 30px; }
 .ex-row-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .ex-row-head h2 { margin: 0; font-size: 21px; }

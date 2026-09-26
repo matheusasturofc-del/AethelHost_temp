@@ -1164,6 +1164,11 @@ def api_content_list(query, body, sid):
     return 200, {"kind": kind, "items": content.list_items(server), "supported": True}
 
 
+def api_content_project(query, body, sid):
+    server = _content_server(sid)
+    return 200, content.project_info(server, query.get("id", [""])[0])
+
+
 def api_content_search(query, body, sid):
     server = _content_server(sid)
     try:
@@ -2862,6 +2867,7 @@ ROUTES = [
     ("POST", rf"^/api/servers/{ID}/software$", api_software_set),
     ("GET", rf"^/api/servers/{ID}/content$", api_content_list),
     ("GET", rf"^/api/servers/{ID}/content/search$", api_content_search),
+    ("GET", rf"^/api/servers/{ID}/content/project$", api_content_project),
     ("POST", rf"^/api/servers/{ID}/content/install$", api_content_install),
     ("POST", rf"^/api/servers/{ID}/content/upload$", api_content_upload),
     ("POST", rf"^/api/servers/{ID}/content/toggle$", api_content_toggle),
@@ -2905,7 +2911,7 @@ ROUTES = [
 NEED = {
     **{f: "basic" for f in (api_get, api_start, api_stop, api_console, api_icon_get, api_players, api_shares_list, api_share_leave)},
     **{f: "full" for f in (api_command, api_players_action, api_patch, api_icon_set, api_icon_reset, api_software_set, api_public_set,
-                           api_content_list, api_content_search, api_content_install, api_content_upload, api_content_toggle, api_content_delete,
+                           api_content_list, api_content_search, api_content_project, api_content_install, api_content_upload, api_content_toggle, api_content_delete,
                            api_worlds, api_world_use, api_world_create, api_world_delete, api_world_download, api_world_upload,
                            api_backups, api_backup_create, api_backup_restore, api_backup_delete, api_backup_download,
                            api_backup_drive_get, api_backup_drive_send, api_backup_schedule_set,

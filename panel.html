@@ -128,6 +128,7 @@
       <!-- Aba: Mods / Plugins -->
       <div id="tab-content" hidden>
         <div class="notice" id="ctNotice" hidden></div>
+        <div id="ctDetail" hidden></div>
         <div id="ctMain">
           <div class="card">
             <div class="card-head">
@@ -881,7 +882,9 @@
         : h("div", { class: "icon" });
       const btn = h("button", { class: "btn btn-primary needs-offline" }, "Instalar");
       btn.addEventListener("click", () => installProject(hit, btn));
-      return h("div", { class: "row" }, icon,
+      return h("div", { class: "row clickable", tabindex: 0, role: "button", title: "Ver a página e as dependências",
+          onclick: (ev) => { if (!ev.target.closest("button")) openProject(hit); },
+          onkeydown: (ev) => { if (ev.key === "Enter" && ev.target === ev.currentTarget) openProject(hit); } }, icon,
         h("div", { class: "row-main" },
           h("strong", {}, hit.title),
           h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString(document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR")} downloads`),
@@ -906,6 +909,79 @@
         btn.textContent = "Instalar";
       }
       loadContentList();
+    }
+
+    // ---------- Página do mod: descrição, versão que será instalada, dependências e o que os jogadores precisam ----------
+    const DEP_LABEL = {
+      required: (d) => (d.installed ? "Obrigatória · já instalada" : "Obrigatória · instalada junto"),
+      optional: (d) => (d.installed ? "Opcional · já instalada" : "Recomendada · opcional (não instala sozinha)"),
+      incompatible: (d) => (d.installed ? "Incompatível · está instalada, remova!" : "Incompatível · não use junto"),
+      embedded: () => "Já vem dentro do mod",
+    };
+    const safeIcon = (url) => (url && url.startsWith("https://cdn.modrinth.com/")
+      ? h("img", { class: "icon", src: url, alt: "", loading: "lazy", referrerPolicy: "no-referrer" }) : h("div", { class: "icon" }));
+
+    function closeProject() { $("ctDetail").hidden = true; $("ctMain").hidden = false; }
+
+    async function openProject(hit) {
+      const box = $("ctDetail");
+      $("ctMain").hidden = true;
+      box.hidden = false;
+      const back = h("button", { class: "btn", type: "button", onclick: closeProject }, "← Voltar");
+      box.replaceChildren(back, h("p", { class: "muted", style: "margin-top:14px" }, "Carregando…"));
+      try {
+        renderProject(await api("GET", `${base}/content/project?id=${encodeURIComponent(hit.id)}`), back);
+      } catch (e) {
+        box.replaceChildren(back, h("p", { class: "error", style: "margin-top:14px" }, e.message));
+      }
+    }
+
+    function renderProject(p, back) {
+      const box = $("ctDetail");
+      const plugin = p.kind === "plugins" || p.projectType === "plugin";
+      const locale = document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR";
+      const requiredClient = p.dependencies.filter((d) => d.type === "required" && d.clientSide === "required").map((d) => d.title);
+
+      const install = h("button", { class: "btn btn-primary needs-offline", type: "button", disabled: !p.version || p.installed || running() }, p.installed ? "Já instalado" : "Instalar com as dependências");
+      install.addEventListener("click", async () => { await installProject({ id: p.id }, install); openProject({ id: p.id }); });
+
+      const head = h("div", { class: "card", style: "margin-top:14px" },
+        h("div", { class: "row", style: "border:0;padding:0" }, safeIcon(p.icon),
+          h("div", { class: "row-main" },
+            h("strong", { style: "font-size:20px", translate: "no" }, p.title),
+            h("small", {}, `${p.downloads.toLocaleString(locale)} downloads`, p.categories.length ? " · " : "", p.categories.length ? h("span", { translate: "no" }, p.categories.join(", ")) : null),
+            h("span", { class: "desc", translate: "no" }, p.description))),
+        h("div", { class: "btn-row", style: "margin-top:14px" }, install,
+          h("a", { class: "btn", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Ver no Modrinth ↗")));
+
+      const version = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Neste servidor"),
+        p.version
+          ? h("p", { style: "margin:0" }, `Será instalada a versão `, h("b", { translate: "no" }, p.version.number), ` (${{ release: "estável", beta: "beta", alpha: "alpha" }[p.version.type] || p.version.type}) para `, h("span", { translate: "no" }, `${p.software} ${p.mcVersion}`), ".")
+          : h("p", { class: "error", style: "margin:0" }, `Este projeto não tem versão para ${p.software} ${p.mcVersion}.`));
+
+      const deps = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Dependências"),
+        p.dependencies.length
+          ? h("div", {}, ...p.dependencies.map((d) => h("div", { class: "row" }, safeIcon(d.icon),
+              h("div", { class: "row-main" }, h("strong", { translate: "no" }, d.title), h("span", { class: "desc", translate: "no" }, d.description)),
+              h("div", { style: "display:grid;gap:4px;justify-items:end" },
+                h("span", { class: "badge " + (d.type === "required" ? "on" : d.type === "incompatible" ? "pending" : "") }, DEP_LABEL[d.type](d)),
+                d.type === "required" && d.clientSide === "required" ? h("span", { class: "badge" }, "também no Minecraft dos jogadores") : null))))
+          : h("p", { class: "muted", style: "margin:0" }, p.version ? "Este projeto não precisa de outros mods ou plugins." : "Sem versão compatível, não dá para ver as dependências."),
+        p.dependencies.some((d) => d.type === "required" && !d.installed) ? h("p", { class: "muted small", style: "margin:12px 0 0" }, "As dependências obrigatórias que faltam são instaladas junto, sem você precisar buscar uma por uma.") : null);
+
+      const play = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Para jogar"),
+        h("ul", { class: "steps", style: "margin:0;padding-left:20px" },
+          h("li", {}, "No servidor: fica instalado aqui, na pasta do servidor."),
+          plugin
+            ? h("li", {}, "Os jogadores não precisam instalar nada: plugin funciona só no servidor.")
+            : p.clientSide === "required"
+              ? h("li", {}, `Cada jogador também precisa instalar este mod no Minecraft dele, com o mesmo modificador e a mesma versão do servidor (${p.software} ${p.mcVersion}).`)
+              : p.clientSide === "optional"
+                ? h("li", {}, "No Minecraft dos jogadores ele é opcional: funciona só no servidor, e quem instalar também pode ganhar recursos extras.")
+                : h("li", {}, "Fica só no servidor: os jogadores não precisam instalar nada."),
+          !plugin && requiredClient.length ? h("li", {}, "Dependências que os jogadores também precisam instalar: ", h("b", { translate: "no" }, requiredClient.join(", ")), ".") : null));
+
+      box.replaceChildren(back, head, version, deps, play);
     }
 
     $("ctForm").addEventListener("submit", (ev) => {
