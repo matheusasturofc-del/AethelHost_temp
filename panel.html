@@ -966,7 +966,9 @@
       cv.setAttribute("aria-hidden", "true");
       card.prepend(cv);
       const ctx = cv.getContext("2d");
-      const GAP = 28, RADIUS = 170;
+      const GAP = 28, RADIUS = 210;
+      // "aleatório" estável por ponto (não muda a cada quadro): deixa a grade irregular e o alcance de cada linha diferente
+      const rnd = (c, r, k) => { const s = Math.sin(c * 127.1 + r * 311.7 + k * 74.7) * 43758.5453; return s - Math.floor(s); };
       let w = 0, h = 0, dpr = 1, mx = -1e4, my = -1e4, power = 0, target = 0, raf = 0;
 
       function resize() {
@@ -987,10 +989,11 @@
         const lit = new Map();  // "c,r" -> { x, y, t }
         ctx.globalAlpha = 0.4; ctx.fillStyle = gray;
         for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-          const x = ox + c * GAP, y = oy + r * GAP;
+          const x = ox + c * GAP + (rnd(c, r, 1) - 0.5) * 16, y = oy + r * GAP + (rnd(c, r, 2) - 0.5) * 16;
           ctx.beginPath(); ctx.arc(x, y, 1.7, 0, 6.2832); ctx.fill();
           const d = Math.hypot(x - mx, y - my);
-          if (power > 0.01 && d < RADIUS) lit.set(c + "," + r, { x, y, c, r, t: (1 - d / RADIUS) * power });
+          const reach = RADIUS * (0.35 + rnd(c, r, 3) * 0.95);  // cada ponto alcança uma distância diferente: nada de círculo perfeito
+          if (power > 0.01 && d < reach && rnd(c, r, 4) > 0.3) lit.set(c + "," + r, { x, y, c, r, t: (1 - d / reach) * power });
         }
         if (lit.size) {
           ctx.strokeStyle = gray; ctx.lineCap = "round";
