@@ -823,3 +823,7 @@ a.plain { color: inherit; }
   .listing-head h1 { font-size: 24px; }
   .explore-filters select { flex: 1 1 100%; }
 }
+.support-topics { flex-wrap: wrap; overflow-x: visible; }
+@media (max-width: 640px) {
+  .support-topics { flex-wrap: nowrap; overflow-x: auto; }
+}
