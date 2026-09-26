@@ -832,3 +832,6 @@ a.plain { color: inherit; }
   .server-panel .side button > span:not(.badge-count) { min-width: 0; overflow-wrap: anywhere; }
   .server-panel .side button.active::after { flex: none; }
 }
+@media (min-width: 801px) {
+  .server-panel:not(.side-collapsed) .side button { white-space: normal; }
+}
