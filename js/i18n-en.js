@@ -989,6 +989,7 @@ const I18N_EXACT = {
   // ---- Explorar, selo e Suporte (Beta)
   "Explorar": "Explore",
   "por": "by",
+  "Alternar o efeito do cartão": "Switch the card effect",
   "Verificado": "Verified",
   "Explorar — AethelHost": "Explore — AethelHost",
   "Suporte": "Support",

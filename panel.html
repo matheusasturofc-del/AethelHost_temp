@@ -87,6 +87,7 @@
           <div class="info"><small>Plano</small><strong id="plan"></strong></div>
           <div class="info"><small>Fecha por inatividade</small><strong id="autoclose">—</strong></div>
         </div>
+        <div class="fx-secret-row"><button class="fx-secret" id="fxToggle" type="button" aria-label="Alternar o efeito do cartão">···</button></div>
       </div>
 
       <!-- Aba: Console -->
@@ -966,7 +967,12 @@
       cv.setAttribute("aria-hidden", "true");
       card.prepend(cv);
       const ctx = cv.getContext("2d");
-      const GAP = 28, RADIUS = 210;
+      const GAP = 28;
+      // Dois estilos (o botão discreto no fim da aba Servidor alterna; fica guardado neste navegador):
+      //  "grid": bolinhas retas e linhas espalhadas na medida (padrão)  |  "scatter": bolinhas irregulares e linhas bem espalhadas
+      let style = "grid";
+      try { if (localStorage.getItem("bh_dots") === "scatter") style = "scatter"; } catch { /* sem armazenamento: fica no padrão */ }
+      const STYLES = { grid: { radius: 190, jitter: 0, lo: 0.6, span: 0.6, keep: 0.2 }, scatter: { radius: 210, jitter: 16, lo: 0.35, span: 0.95, keep: 0.3 } };
       // "aleatório" estável por ponto (não muda a cada quadro): deixa a grade irregular e o alcance de cada linha diferente
       const rnd = (c, r, k) => { const s = Math.sin(c * 127.1 + r * 311.7 + k * 74.7) * 43758.5453; return s - Math.floor(s); };
       let w = 0, h = 0, dpr = 1, mx = -1e4, my = -1e4, power = 0, target = 0, raf = 0;
@@ -989,11 +995,12 @@
         const lit = new Map();  // "c,r" -> { x, y, t }
         ctx.globalAlpha = 0.4; ctx.fillStyle = gray;
         for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-          const x = ox + c * GAP + (rnd(c, r, 1) - 0.5) * 16, y = oy + r * GAP + (rnd(c, r, 2) - 0.5) * 16;
+          const S = STYLES[style];
+          const x = ox + c * GAP + (rnd(c, r, 1) - 0.5) * S.jitter, y = oy + r * GAP + (rnd(c, r, 2) - 0.5) * S.jitter;
           ctx.beginPath(); ctx.arc(x, y, 1.7, 0, 6.2832); ctx.fill();
           const d = Math.hypot(x - mx, y - my);
-          const reach = RADIUS * (0.35 + rnd(c, r, 3) * 0.95);  // cada ponto alcança uma distância diferente: nada de círculo perfeito
-          if (power > 0.01 && d < reach && rnd(c, r, 4) > 0.3) lit.set(c + "," + r, { x, y, c, r, t: (1 - d / reach) * power });
+          const reach = S.radius * (S.lo + rnd(c, r, 3) * S.span);  // cada ponto alcança uma distância diferente: nada de círculo perfeito
+          if (power > 0.01 && d < reach && rnd(c, r, 4) > S.keep) lit.set(c + "," + r, { x, y, c, r, t: (1 - d / reach) * power });
         }
         if (lit.size) {
           ctx.strokeStyle = gray; ctx.lineCap = "round";
@@ -1018,6 +1025,12 @@
       card.addEventListener("pointermove", move);
       card.addEventListener("pointerdown", move);
       card.addEventListener("pointerleave", () => { target = 0; kick(); });
+      const fx = document.getElementById("fxToggle");
+      if (fx) fx.addEventListener("click", () => {
+        style = style === "grid" ? "scatter" : "grid";
+        try { localStorage.setItem("bh_dots", style); } catch { /* tudo bem */ }
+        draw();
+      });
       new ResizeObserver(resize).observe(card);
       resize();
     })();
