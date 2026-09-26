@@ -1005,6 +1005,12 @@ def api_create(query, body):
         servers = db_load()
         if any(s["ip"] == ip for s in servers):
             raise ApiError(409, "Este endereço já está em uso. Escolha outro.")
+        if plan == "free":
+            st = free_seat(current_user()["id"], servers)
+            if not st["canCreate"]:
+                position = capacity.wait_join(current_user()["id"])
+                raise ApiError(403, f"As vagas do plano Grátis estão esgotadas ({st['used']} de {st['max']} contas). Você entrou na lista de espera (posição {position}) e recebe um aviso no sino quando abrir vaga. Enquanto isso, dá para usar a sua própria VPS.",
+                               {"waitlist": position})
         if plan == "vps":
             mine = [s for s in servers if s["plan"] == "vps" and s["owner"] == current_user()["id"]]
             if len(mine) >= MAX_VPS_SERVERS:
@@ -1030,6 +1036,8 @@ def api_create(query, body):
             server["vps"] = vps
         servers.append(server)
         db_save(servers)
+        if plan == "free":
+            capacity.wait_leave(current_user()["id"])  # usou a vaga: sai da lista de espera
     return 201, view(server)
 
 
@@ -1209,6 +1217,59 @@ def api_delete(query, body, sid):  # noqa: D401 - só o dono
     return 200, {"ok": True}
 
 
+def free_seat(user_id, servers=None):
+    """Situação da conta no limite de contas do plano Grátis."""
+    servers = db_load() if servers is None else servers
+    owners = {s["owner"] for s in servers if s["plan"] == "free" and s.get("owner")}
+    limit = capacity.max_accounts()
+    waiting = capacity.waitlist()
+    pos = capacity.wait_position(user_id)
+    slots = max(0, limit - len(owners)) if limit else None
+    if not limit or user_id in owners:
+        can = True
+    elif pos:
+        can = slots is not None and pos <= slots
+    else:
+        can = slots is not None and len(waiting) < slots  # quem já espera tem a vez antes
+    return {"limited": bool(limit), "max": limit, "used": len(owners), "waiting": len(waiting), "position": pos, "hasFree": user_id in owners, "canCreate": can}
+
+
+def api_free_status(query, body):
+    return 200, free_seat(current_user()["id"])
+
+
+def api_free_join(query, body):
+    st = free_seat(current_user()["id"])
+    if not st["limited"] or st["canCreate"]:
+        return 200, st  # não precisa esperar
+    capacity.wait_join(current_user()["id"])
+    return 200, free_seat(current_user()["id"])
+
+
+def api_free_leave(query, body):
+    capacity.wait_leave(current_user()["id"])
+    return 200, free_seat(current_user()["id"])
+
+
+def _seat_notify():
+    """Avisa (uma vez) quem está na frente da lista quando abre vaga; quem não usa a vaga em 48 h perde a vez."""
+    now = int(time.time())
+
+    def work(items):
+        users = {u["id"] for u in auth.all_users()}
+        items[:] = [e for e in items if e["user"] in users and not (e["notified"] and now - e["notified"] > capacity.SEAT_HOLD)]
+        limit = capacity.max_accounts()
+        if not limit:
+            return
+        owners = {s["owner"] for s in db_load() if s["plan"] == "free" and s.get("owner")}
+        slots = max(0, limit - len(owners))
+        for e in items[:slots]:
+            if not e["notified"]:
+                e["notified"] = now
+                notify.add(e["user"], "free_seat", {"fromName": "AethelHost"})
+    capacity.wait_update(work)
+
+
 START_LOCK = threading.RLock()  # quem decide "liga agora" ou "vai para a fila" fica sozinho na vez
 
 
@@ -1252,8 +1313,15 @@ def api_stop(query, body, sid):
 
 def queue_worker():
     """Quando abre vaga, liga o próximo da fila (e avisa a pessoa no sino)."""
+    tick = 0
     while True:
         time.sleep(2)
+        tick += 1
+        if tick % 15 == 0:  # a cada ~30 s vê se abriu vaga de conta na lista de espera
+            try:
+                _seat_notify()
+            except Exception:
+                traceback.print_exc()
         try:
             with START_LOCK:
                 while (entry := capacity.first()):
@@ -1288,7 +1356,17 @@ def api_admin_capacity(query, body):
             owner = auth.get_user(s.get("owner")) or {}
             queue.append({"id": s["id"], "name": s["name"], "owner": owner.get("username") or owner.get("name") or "", "since": e["since"]})
     return 200, {"max": capacity.max_running(), "running": running_free(), "waiting": len(queue), "queue": queue, "limit": capacity.MAX_ALLOWED,
-                 "idle": capacity.idle_config(), "idleNow": idle_limit(), "idleMaxMinutes": capacity.IDLE_MAX_MINUTES, "limits": capacity.limits()}
+                 "idle": capacity.idle_config(), "idleNow": idle_limit(), "idleMaxMinutes": capacity.IDLE_MAX_MINUTES, "limits": capacity.limits(),
+                 "accounts": _admin_accounts()}
+
+
+def _admin_accounts():
+    owners = {s["owner"] for s in db_load() if s["plan"] == "free" and s.get("owner")}
+    waiting = []
+    for e in capacity.waitlist():
+        u = auth.get_user(e["user"]) or {}
+        waiting.append({"name": u.get("name", "?"), "username": u.get("username", ""), "since": e["since"], "notified": bool(e["notified"])})
+    return {"max": capacity.max_accounts(), "used": len(owners), "waiting": waiting}
 
 
 def api_admin_capacity_set(query, body):
@@ -1298,6 +1376,12 @@ def api_admin_capacity_set(query, body):
             capacity.set_max(body["max"])
         except ValueError:
             raise ApiError(400, f"Informe um número de 0 a {capacity.MAX_ALLOWED} (0 = sem limite).")
+    if "freeAccounts" in body:
+        try:
+            capacity.set_max_accounts(body["freeAccounts"])
+        except ValueError:
+            raise ApiError(400, "Informe um número de 0 a 1000000 (0 = sem limite de contas).")
+        _seat_notify()  # se abriu vaga (limite aumentou), avisa quem espera
     if "limits" in body:
         try:
             capacity.set_limits(body["limits"])
@@ -2613,6 +2697,9 @@ ROUTES = [
     ("POST", r"^/api/auth/captcha$", api_captcha_save),
     ("GET", r"^/api/admin/overview$", api_admin_overview),
     ("POST", r"^/api/admin/merge$", api_admin_merge),
+    ("GET", r"^/api/free/status$", api_free_status),
+    ("POST", r"^/api/free/waitlist/join$", api_free_join),
+    ("POST", r"^/api/free/waitlist/leave$", api_free_leave),
     ("GET", r"^/api/admin/capacity$", api_admin_capacity),
     ("POST", r"^/api/admin/capacity$", api_admin_capacity_set),
     ("GET", r"^/api/admin/explore$", api_admin_explore),

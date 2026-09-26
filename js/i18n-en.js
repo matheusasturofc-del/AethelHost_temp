@@ -1186,6 +1186,15 @@ const I18N_EXACT = {
   "RAM com mods": "RAM with mods",
   "Quantidade de RAM inválida.": "Invalid amount of RAM.",
   "Confira os limites: RAM do Vanilla de 512 a 16384 MB, RAM com mods ou plugins de 1024 a 16384 MB (não menor que a do Vanilla) e jogadores de 1 a 1000.": "Check the limits: Vanilla RAM from 512 to 16384 MB, RAM with mods or plugins from 1024 to 16384 MB (not lower than Vanilla's) and players from 1 to 1000.",
+  // ---- Vagas de contas no plano Grátis
+  "As vagas do plano Grátis estão esgotadas": "Free plan spots are sold out",
+  "Entrar na lista de espera": "Join the waitlist",
+  "Sair da lista": "Leave the list",
+  "Contas no plano Grátis": "Accounts on the Free plan",
+  "Quantas contas diferentes podem ter servidor no plano Grátis. Quem já tem continua tendo. As outras entram numa lista de espera e recebem um aviso no sino quando abre vaga (têm 48 horas para usar). Use 0 para não limitar. A VPS própria não conta.": "How many different accounts can have a Free plan server. Those who already have one keep it. The others join a waitlist and get a notice in the bell when a spot opens (they have 48 hours to use it). Use 0 for no limit. Your own VPS doesn't count.",
+  "Avisada": "Notified",
+  ": abriu vaga no plano Grátis! Vá em Criar servidor para usar a sua (você tem 48 horas).": ": a Free plan spot opened! Go to Create server to use yours (you have 48 hours).",
+  "Informe um número de 0 a 1000000 (0 = sem limite de contas).": "Enter a number from 0 to 1000000 (0 = no account limit).",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1356,4 +1365,10 @@ const I18N_PATTERNS = [
   [/^No plano Grátis o Vanilla usa até (.+) e, com mods ou plugins \(Paper, Purpur, Fabric, Quilt, Forge, NeoForge\), até (.+)\. O limite de jogadores é (\d+)\. Precisa de mais\? Use o plano com a sua VPS\.$/, "On the Free plan Vanilla uses up to $1 and, with mods or plugins (Paper, Purpur, Fabric, Quilt, Forge, NeoForge), up to $2. The player limit is $3. Need more? Use the plan with your own VPS."],
   [/^No plano Grátis o (.+) aceita de (\d+) MB a (\d+) MB de RAM\. Para mais, use o plano com a sua VPS\.$/, "On the Free plan $1 accepts from $2 MB to $3 MB of RAM. For more, use the plan with your own VPS."],
   [/^No plano Grátis o máximo é (\d+) jogadores\. Para mais, use o plano com a sua VPS\.$/, "On the Free plan the maximum is $1 players. For more, use the plan with your own VPS."],
+  // ---- Vagas de contas no plano Grátis
+  [/^(\d+) de (\d+) contas usam o plano Grátis\. Entre na lista de espera e você recebe um aviso no sino quando abrir vaga\. Enquanto isso, dá para usar a sua própria VPS\.$/, "$1 of $2 accounts use the Free plan. Join the waitlist and you get a notice in the bell when a spot opens. Meanwhile, you can use your own VPS."],
+  [/^Você está na lista de espera: posição (\d+)$/, "You are on the waitlist: position $1"],
+  [/^As vagas do plano Grátis estão esgotadas \((\d+) de (\d+) contas\)\. Você entrou na lista de espera \(posição (\d+)\) e recebe um aviso no sino quando abrir vaga\. Enquanto isso, dá para usar a sua própria VPS\.$/, "Free plan spots are sold out ($1 of $2 accounts). You joined the waitlist (position $3) and get a notice in the bell when a spot opens. Meanwhile, you can use your own VPS."],
+  [/^Contas com servidor Grátis: (\d+) de (\d+) · Na lista de espera: (\d+)$/, "Accounts with a Free server: $1 of $2 · On the waitlist: $3"],
+  [/^Contas com servidor Grátis: (\d+) \(sem limite\) · Na lista de espera: (\d+)$/, "Accounts with a Free server: $1 (no limit) · On the waitlist: $2"],
 ];

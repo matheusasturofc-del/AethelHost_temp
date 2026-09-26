@@ -112,7 +112,7 @@
             <ul>
               <li>Acesso a tudo</li>
               <li>Roda neste PC</li>
-              <li>Fecha após 5h de inatividade</li>
+              <li>Fecha sozinho sem jogadores</li>
             </ul>
           </label>
           <label class="plan ribbon-host">
@@ -127,6 +127,7 @@
             </ul>
           </label>
         </div>
+        <div class="trust-note" id="freeSeat" hidden style="margin-bottom:16px"></div>
         <div id="captchaMount"></div>
         <div class="actions">
           <button class="btn" type="button" id="back2">Voltar</button>
@@ -334,6 +335,30 @@
       else createServer();
     });
 
+    // ---- Vagas de contas no plano Grátis: quando esgotam, entra-se numa lista de espera ----
+    let seat = null;
+    async function loadSeat() {
+      try { seat = await api("GET", "/free/status"); } catch { seat = null; }
+      drawSeat();
+    }
+    function drawSeat() {
+      const box = $("freeSeat");
+      const blocked = !!seat && seat.limited && !seat.canCreate && currentPlan() === "free";
+      box.hidden = !blocked;
+      $("next2").disabled = blocked;
+      if (!blocked) return;
+      box.replaceChildren(
+        h("strong", {}, "As vagas do plano Grátis estão esgotadas"),
+        h("p", { class: "muted small", style: "margin:6px 0 10px" }, `${seat.used} de ${seat.max} contas usam o plano Grátis. Entre na lista de espera e você recebe um aviso no sino quando abrir vaga. Enquanto isso, dá para usar a sua própria VPS.`),
+        seat.position
+          ? h("div", { class: "btn-row" }, h("span", {}, `Você está na lista de espera: posição ${seat.position}`),
+              h("button", { class: "btn", type: "button", onclick: async () => { try { seat = await api("POST", "/free/waitlist/leave"); } catch {} drawSeat(); } }, "Sair da lista"))
+          : h("button", { class: "btn btn-primary", type: "button", onclick: async () => { try { seat = await api("POST", "/free/waitlist/join"); } catch {} drawSeat(); } }, "Entrar na lista de espera"));
+    }
+    document.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener("change", drawSeat));
+    loadSeat();
+    setInterval(loadSeat, 15000);
+
     // ---- Passo 3 ----
     $("back3").addEventListener("click", () => showStep(2));
 
@@ -384,6 +409,7 @@
         $("formErr").textContent = e.message;
         cap.reset();
         $("next2").disabled = $("finish").disabled = false;
+        if (e.data && e.data.waitlist) loadSeat();
       }
     }
 

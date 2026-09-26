@@ -133,6 +133,79 @@ def clamp_ram(software, ram, system_mb):
     return fit[-1] if fit else options[0]
 
 
+# ---- vagas de contas no plano Grátis: no máximo N contas diferentes com servidor Grátis (0 = sem limite).
+# Quem já tem servidor Grátis continua tendo; as outras esperam numa lista e são avisadas quando abre vaga.
+WAITLIST = DATA / "waitlist.json"
+SEAT_HOLD = 48 * 3600  # depois de avisada, a pessoa tem 48 h para criar o servidor antes de perder a vez
+
+
+def max_accounts():
+    value = _load().get("maxFreeAccounts", 0)
+    return value if _int(value, 0, 1_000_000) else 0
+
+
+def set_max_accounts(value):
+    if not _int(value, 0, 1_000_000):
+        raise ValueError
+    cfg = _load()
+    cfg["maxFreeAccounts"] = value
+    _save(cfg)
+
+
+def _wl_load():
+    try:
+        items = json.loads(WAITLIST.read_text(encoding="utf-8"))
+        return items if isinstance(items, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _wl_save(items):
+    WAITLIST.parent.mkdir(parents=True, exist_ok=True)
+    tmp = WAITLIST.with_name(WAITLIST.name + ".part")
+    tmp.write_text(json.dumps(items), encoding="utf-8")
+    os.replace(tmp, WAITLIST)
+
+
+def waitlist():
+    with LOCK:
+        return _wl_load()
+
+
+def wait_position(user):
+    with LOCK:
+        for i, e in enumerate(_wl_load()):
+            if e["user"] == user:
+                return i + 1
+    return None
+
+
+def wait_join(user):
+    with LOCK:
+        items = _wl_load()
+        if not any(e["user"] == user for e in items):
+            items.append({"user": user, "since": int(time.time()), "notified": None})
+            _wl_save(items)
+        return wait_position(user)
+
+
+def wait_leave(user):
+    with LOCK:
+        items = _wl_load()
+        kept = [e for e in items if e["user"] != user]
+        if len(kept) != len(items):
+            _wl_save(kept)
+        return len(kept) != len(items)
+
+
+def wait_update(fn):
+    """Deixa `fn(lista)` mexer na lista de espera e guarda o resultado."""
+    with LOCK:
+        items = _wl_load()
+        fn(items)
+        _wl_save(items)
+
+
 def position(sid):
     """Posição na fila (1 = próximo), ou None se o servidor não está na fila."""
     with LOCK:

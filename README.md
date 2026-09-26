@@ -225,12 +225,20 @@ Os menus de versão, software, memória e tipo de mundo usam o componente própr
 - **Fila:** com o teto cheio, **Iniciar** põe o servidor no fim da fila (o painel mostra "Na fila (posição N)", quantos estão ligados e o botão **Sair da fila**; a lista de servidores também mostra a posição). Se já tem gente esperando, quem chega depois também entra na fila (ordem de chegada). Quando abre vaga, ou quando o administrador aumenta o teto, o primeiro da fila liga sozinho (a checagem roda a cada 2 s) e a pessoa recebe um aviso no sino. Apertar Iniciar de novo não duplica; excluir o servidor tira da fila. A fila fica na memória: reiniciar o site a esvazia.
 - API: `POST /api/servers/<id>/start` responde 202 com `queue: { position, waiting }` e `capacity: { running, max }` no servidor; `POST .../stop` sai da fila; `GET`/`POST /api/admin/capacity` (administrador). Testes: `AETHELHOST_FAKE_START=1` liga servidores "de mentira" (sem Java), usado em `test_capacity.py` (31 verificações).
 
+## Vagas de contas no plano Grátis e lista de espera
+
+- **Limite de contas:** quantas contas *diferentes* podem ter servidor no plano Grátis (o administrador escolhe em `admin.html` → **Capacidade do plano Grátis** → *Contas no plano Grátis*; **0 = sem limite**, que é o padrão; fica em `data/capacity.json`). Quem já tem servidor Grátis continua tendo (mesmo que o limite baixe) e pode criar mais servidores; a VPS própria não conta.
+- **Sem vaga:** ao tentar criar um servidor Grátis, a conta nova recebe erro 403 e entra na **lista de espera** (`data/waitlist.json`). Em `create.html`, no passo do plano, aparece "As vagas do plano Grátis estão esgotadas", com **Entrar na lista de espera** / **Sair da lista** e a posição; escolher VPS libera o botão.
+- **Ordem justa:** quem espera tem a vez antes de quem chega depois: se sobra 1 vaga, só o primeiro da lista pode criar; quem furar a fila entra no fim da lista.
+- **Aviso:** quando abre vaga (alguém apaga todos os servidores Grátis, ou o administrador aumenta o limite), o primeiro da lista recebe um aviso no sino, checado a cada ~30 s e na hora em que o limite é mudado. A pessoa tem **48 horas** para criar; depois perde a vez. Criar o servidor tira da lista. O administrador vê a lista (com "Avisada") no mesmo cartão.
+- API: `GET /api/free/status`, `POST /api/free/waitlist/join|leave`, `freeAccounts` em `POST /api/admin/capacity`. Testes: `test_capacity.py` (95 verificações no total).
+
 ## Limites de RAM e jogadores (plano Grátis)
 
 - **RAM:** no plano Grátis o **Vanilla** usa de 512 MB a **1 GB**; com **mods ou plugins** (Paper, Purpur, Fabric, Quilt, Forge, NeoForge) de **1 GB a 2 GB** (1, 1,5 e 2 GB), sempre respeitando 75% da memória do PC. Servidor novo nasce com 1 GB. A aba **Software** mostra só essas opções (e troca a lista ao escolher outro software); trocar de Vanilla para Paper libera até 2 GB e voltar ajusta a RAM para o teto do Vanilla. Servidores que já existiam acima do teto são reduzidos sozinhos, e o teto vale de novo na hora de iniciar.
 - **Jogadores:** máximo de **20** por servidor (a aba **Opções** recusa mais que isso; se o `server.properties` tiver um valor maior, ele é reduzido ao iniciar).
 - Os três números (RAM do Vanilla, RAM com mods/plugins, jogadores) o administrador muda em `admin.html` → **Capacidade do plano Grátis** → *Limites de cada servidor Grátis* (guardado em `data/capacity.json`). **Servidores em VPS própria não têm esses limites** (a opção de servidores grandes, tipo Hypixel, fica para o futuro).
-- API: `GET /api/meta` traz `freeRam` e `freeLimits`; `POST /api/admin/capacity` aceita `limits: { vanillaRamMb, moddedRamMb, maxPlayers }` (atualização parcial). Testes: `test_capacity.py` (65 verificações).
+- API: `GET /api/meta` traz `freeRam` e `freeLimits`; `POST /api/admin/capacity` aceita `limits: { vanillaRamMb, moddedRamMb, maxPlayers }` (atualização parcial). Testes: `test_capacity.py`.
 
 ## Tempo sem jogadores até fechar (plano Grátis)
 
