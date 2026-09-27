@@ -256,7 +256,27 @@ def project_info(server, project):
                          "clientSide": p.get("client_side"), "serverSide": p.get("server_side"), "slug": p.get("slug"),
                          "installed": _is_installed(server, dp, meta)})
         deps.sort(key=lambda x: (DEP_ORDER[x["type"]], x["title"].lower()))
+    members = []
+    try:  # criadores do projeto (não é essencial: se falhar, a página abre sem eles)
+        for m in get_json(f"{MODRINTH}/project/{quote(pid)}/members")[:12]:
+            u = m.get("user") or {}
+            if u.get("username"):
+                members.append({"name": u["username"], "role": m.get("role") or "", "avatar": u.get("avatar_url")})
+    except Exception:
+        members = []
+    if not members:  # projeto de uma organização: mostra a organização como criadora
+        try:
+            org = get_json(f"{MODRINTH}/project/{quote(pid)}/organization")
+            if org and org.get("name"):
+                members.append({"name": org["name"], "role": "Organization", "avatar": org.get("icon_url")})
+        except Exception:
+            pass
+    links = {k: info.get(f) for k, f in (("source", "source_url"), ("issues", "issues_url"), ("wiki", "wiki_url"), ("discord", "discord_url"))}
+    lic = info.get("license") or {}
     return {
+        "published": info.get("published"), "updated": info.get("updated"), "gameVersions": info.get("game_versions", []), "loaders": info.get("loaders", []),
+        "license": {"id": lic.get("id"), "name": lic.get("name"), "url": lic.get("url")} if lic else None,
+        "links": {k: v for k, v in links.items() if isinstance(v, str) and v.startswith("https://")}, "members": members,
         "id": pid, "title": info["title"], "description": info.get("description", ""), "icon": info.get("icon_url"),
         "downloads": info.get("downloads", 0), "followers": info.get("followers", 0), "categories": info.get("categories", []),
         "body": (info.get("body") or "")[:30000],

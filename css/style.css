@@ -877,6 +877,10 @@ a.plain { color: inherit; }
 .mr-shot { display: block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; color: var(--text); }
 .mr-shot img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
 .mr-shot span { display: block; padding: 8px 10px; font-size: 13px; }
+.mr-kv { margin-bottom: 12px; }
+.mr-kv:last-child { margin-bottom: 0; }
+.mr-kv > small { display: block; color: var(--muted); margin-bottom: 4px; }
+.mr-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .mr-log { padding: 14px 0; border-top: 1px solid var(--border); }
 .mr-log:first-child { border-top: 0; padding-top: 0; }
 .mr-log-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }

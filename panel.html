@@ -1016,6 +1016,15 @@
     const projectState = { tab: "description", versions: null, onlyCompatible: false, changelogShown: 15, versionsShown: 30, note: { ok: "", err: "" }, id: null, alt: null };
     const TYPE_LABEL = { release: "Estável", beta: "Beta", alpha: "Alpha" };
 
+    // "há 3 dias", "3 days ago": no idioma escolhido
+    function ago(iso) {
+      const secs = (new Date(iso).getTime() - Date.now()) / 1000;
+      const units = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+      const fmt = new Intl.RelativeTimeFormat(document.documentElement.lang.startsWith("en") ? "en" : "pt-BR", { numeric: "auto" });
+      for (const [unit, s] of units) if (Math.abs(secs) >= s) return fmt.format(Math.round(secs / s), unit);
+      return fmt.format(0, "second");
+    }
+
     async function loadProjectVersions(id) {
       if (projectState.versions && projectState.versions.id === id) return projectState.versions;
       const r = await api("GET", `${base}/content/versions?id=${encodeURIComponent(id)}`);
@@ -1060,7 +1069,7 @@
         h("div", { class: "row", style: "border:0;padding:0" }, safeIcon(p.icon),
           h("div", { class: "row-main" },
             h("strong", { style: "font-size:20px", translate: "no" }, p.title),
-            h("small", {}, `${p.downloads.toLocaleString(locale)} downloads`, p.categories.length ? " · " : "", p.categories.length ? h("span", { translate: "no" }, p.categories.join(", ")) : null),
+            h("small", {}, `${p.downloads.toLocaleString(locale)} downloads`, " · ", `${(p.followers || 0).toLocaleString(locale)} seguidores`, p.updated ? " · " : null, p.updated ? `Atualizado ${ago(p.updated)}` : null, p.categories.length ? " · " : "", p.categories.length ? h("span", { translate: "no" }, p.categories.join(", ")) : null),
             h("span", { class: "desc", translate: "no" }, p.description))),
         h("div", { class: "btn-row", style: "margin-top:14px" }, install,
           h("a", { class: "btn", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Ver no Modrinth ↗")),
@@ -1157,8 +1166,35 @@
                 : h("li", {}, "Fica só no servidor: os jogadores não precisam instalar nada."),
           !plugin && requiredClient.length ? h("li", {}, "Dependências que os jogadores também precisam instalar: ", h("b", { translate: "no" }, requiredClient.join(", ")), ".") : null));
 
+      // ---- como no Modrinth: Compatibilidade, Links, Criadores e Detalhes (publicado, atualizado, licença)
+      const games = (p.gameVersions || []).slice().reverse();
+      const has = games.includes(p.mcVersion);
+      const gvBox = h("div", { class: "mr-chips" }, ...(projectState.allGames ? games : games.slice(0, 10)).map((g) => h("span", { class: "badge" + (g === p.mcVersion ? " on" : ""), translate: "no" }, g)),
+        games.length > 10 ? h("button", { class: "linkbtn", type: "button", onclick: () => { projectState.allGames = !projectState.allGames; renderProject(p, back); } }, projectState.allGames ? "Mostrar menos" : `+${games.length - 10} mais`) : null);
+      const compat = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Compatibilidade"),
+        h("div", { class: "mr-kv" }, h("small", {}, "Versões do Minecraft"), gvBox,
+          h("small", { class: has ? "" : "error", style: "display:block;margin-top:6px" }, has ? `O seu servidor (${p.mcVersion}) está na lista.` : `O seu servidor (${p.mcVersion}) não está na lista.`)),
+        p.loaders && p.loaders.length ? h("div", { class: "mr-kv" }, h("small", {}, "Plataformas"), h("div", { class: "mr-chips" }, ...p.loaders.map((l) => h("span", { class: "badge", translate: "no" }, l.charAt(0).toUpperCase() + l.slice(1))))) : null);
+      const LINKS = { source: "Código-fonte", issues: "Problemas", wiki: "Wiki", discord: "Discord" };
+      const linkKeys = Object.keys(p.links || {});
+      const links = linkKeys.length ? h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Links"),
+        h("div", { style: "display:grid;gap:6px" }, ...linkKeys.map((k) => h("a", { href: p.links[k], target: "_blank", rel: "noopener noreferrer" }, LINKS[k] + " ↗")))) : null;
+      const avatarOk = (u) => u && /^https:\/\/(cdn\.modrinth\.com|avatars\.githubusercontent\.com)\//.test(u);
+      const creators = p.members && p.members.length ? h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Criadores"),
+        h("div", { style: "display:grid;gap:8px" }, ...p.members.map((m) => h("div", { class: "row", style: "border:0;padding:0" },
+          avatarOk(m.avatar) ? h("img", { class: "icon", src: m.avatar, alt: "", loading: "lazy", referrerPolicy: "no-referrer", style: "border-radius:50%" }) : h("div", { class: "icon", style: "border-radius:50%" }),
+          h("div", { class: "row-main" }, h("strong", { translate: "no" }, m.name), m.role ? h("small", { translate: "no" }, m.role) : null))))) : null;
+      const detailRow = (label, value) => h("div", { class: "mr-kv" }, h("small", {}, label), h("div", { translate: "no" }, value));
+      const when = (iso) => `${ago(iso)} (${fmtDate(new Date(iso).getTime() / 1000)})`;
+      const details = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Detalhes"),
+        p.license && p.license.name ? h("div", { class: "mr-kv" }, h("small", {}, "Licença"), p.license.url && p.license.url.startsWith("https://")
+          ? h("a", { href: p.license.url, target: "_blank", rel: "noopener noreferrer", translate: "no" }, p.license.name) : h("div", { translate: "no" }, p.license.name)) : null,
+        p.published ? detailRow("Publicado", when(p.published)) : null,
+        p.updated ? detailRow("Atualizado", when(p.updated)) : null,
+        h("div", { class: "mr-kv" }, h("small", {}, "Seguidores"), h("div", {}, (p.followers || 0).toLocaleString(locale))));
+
       box.replaceChildren(back, head,
-        h("div", { class: "mr-layout" }, h("div", { class: "mr-main" }, tabs, content), h("div", { class: "mr-side" }, version, deps, play)));
+        h("div", { class: "mr-layout" }, h("div", { class: "mr-main" }, tabs, content), h("div", { class: "mr-side" }, version, deps, play, compat, links, creators, details)));
     }
 
     $("ctForm").addEventListener("submit", (ev) => {

@@ -1274,6 +1274,19 @@ const I18N_EXACT = {
   "Instalar mesmo assim": "Install anyway",
   "Versão de outro Minecraft": "Another Minecraft version",
   "Essa versão não é deste projeto.": "That version is not from this project.",
+  // ---- Barra lateral da página do mod
+  "Compatibilidade": "Compatibility",
+  "Versões do Minecraft": "Minecraft versions",
+  "Plataformas": "Platforms",
+  "Links": "Links",
+  "Criadores": "Creators",
+  "Licença": "License",
+  "Publicado": "Published",
+  "Atualizado": "Updated",
+  "Seguidores": "Followers",
+  "Mostrar menos": "Show less",
+  "Código-fonte": "Source code",
+  "Problemas": "Issues",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1470,4 +1483,10 @@ const I18N_PATTERNS = [
   [/^A versão (.+) não é para o Minecraft (.+) deste servidor\. Ela vai ser instalada, mas pode não funcionar\. Instalar mesmo assim\?$/, "Version $1 is not for Minecraft $2 on this server. It will be installed, but it may not work. Install anyway?"],
   [/^(.+): a versão (.+) não é para o Minecraft (.+)\. Ela foi instalada, mas pode não funcionar\.$/, "$1: version $2 is not for Minecraft $3. It was installed, but it may not work."],
   [/^Essa versão é para outro software \((.+)\): não dá para usar num servidor (.+)\.$/, "That version is for other software ($1): it can't be used on a $2 server."],
+  // ---- Barra lateral da página do mod
+  [/^\+(\d+) mais$/, "+$1 more"],
+  [/^O seu servidor \((.+)\) está na lista\.$/, "Your server ($1) is on the list."],
+  [/^O seu servidor \((.+)\) não está na lista\.$/, "Your server ($1) is not on the list."],
+  [/^([\d.,]+) seguidores$/, "$1 followers"],
+  [/^Atualizado (.+)$/, "Updated $1"],
 ];
