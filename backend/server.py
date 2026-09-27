@@ -1175,7 +1175,7 @@ def api_content_search(query, body, sid):
         offset = max(0, int(query.get("offset", ["0"])[0]))
     except ValueError:
         offset = 0
-    return 200, content.search(server, query.get("q", [""])[0][:100], offset)
+    return 200, content.search(server, query.get("q", [""])[0][:100], offset, query.get("compat", [""])[0] == "1")
 
 
 def api_content_versions(query, body, sid):

@@ -145,6 +145,7 @@
               <input type="text" id="ctQuery" placeholder="Nome (deixe vazio para ver os mais baixados)" maxlength="100" autocomplete="off">
               <button class="btn btn-primary" type="submit">Buscar</button>
             </form>
+            <label class="switch" style="margin-top:10px"><input type="checkbox" id="ctCompat"><span class="knob"></span><span id="ctCompatLabel">Só compatíveis</span></label>
             <div class="hint" id="ctFilterHint" style="margin-top:8px"></div>
             <div id="ctResults"></div>
             <button class="btn" id="ctMore" hidden style="margin-top:12px">Carregar mais</button>
@@ -784,7 +785,7 @@
     $("swSave").addEventListener("click", () => saveSoftware(false));
 
     // ---------- Aba Mods / Plugins ----------
-    const ct = { supported: null, offset: 0, query: "", busy: false };
+    const ct = { supported: null, offset: 0, query: "", busy: false, compat: false };
 
     async function loadContent() {
       $("ctErr").textContent = $("ctOk").textContent = "";
@@ -804,7 +805,8 @@
         $("ctNotice").textContent = "O Vanilla não aceita mods nem plugins. Na aba Software, escolha Paper ou Purpur (plugins) ou Fabric, Forge, NeoForge ou Quilt (mods).";
         return;
       }
-      $("ctFilterHint").textContent = `Só aparecem itens compatíveis com ${server.softwareLabel} ${server.version}.`;
+      $("ctCompatLabel").textContent = `Só compatíveis com ${server.version}`;
+      $("ctFilterHint").textContent = `Aparecem todos os mods e plugins para ${server.softwareLabel}, de qualquer versão do Minecraft. Os que não são para a ${server.version} vêm marcados: dá para ver as versões e instalar mesmo assim, mas provavelmente não vão funcionar.`;
       renderContentList(data.items, label);
       render();
       searchContent(true);
@@ -863,7 +865,7 @@
       const box = $("ctResults");
       if (reset) { ct.offset = 0; box.replaceChildren(h("p", { class: "muted" }, "Buscando…")); }
       try {
-        const r = await api("GET", `${base}/content/search?q=${encodeURIComponent(ct.query)}&offset=${ct.offset}`);
+        const r = await api("GET", `${base}/content/search?q=${encodeURIComponent(ct.query)}&offset=${ct.offset}${ct.compat ? "&compat=1" : ""}`);
         if (reset) box.replaceChildren();
         if (reset && !r.hits.length) box.append(h("p", { class: "muted" }, "Nada encontrado para esta versão."));
         r.hits.forEach((hit) => box.append(resultRow(hit)));
@@ -880,14 +882,18 @@
       const icon = hit.icon && hit.icon.startsWith("https://cdn.modrinth.com/")
         ? h("img", { class: "icon", src: hit.icon, alt: "", loading: "lazy", referrerPolicy: "no-referrer" })
         : h("div", { class: "icon" });
-      const btn = h("button", { class: "btn btn-primary needs-offline" }, "Instalar");
-      btn.addEventListener("click", () => installProject(hit, btn));
+      // Quem não tem versão para o Minecraft do servidor: o botão leva à aba Versões (instalar mesmo assim, por sua conta e risco)
+      const btn = hit.compatible === false
+        ? h("button", { class: "btn", type: "button" }, "Ver versões")
+        : h("button", { class: "btn btn-primary needs-offline" }, "Instalar");
+      btn.addEventListener("click", () => (hit.compatible === false ? openProject(hit, false, "versions") : installProject(hit, btn)));
       return h("div", { class: "row clickable", tabindex: 0, role: "button", title: "Ver a página e as dependências",
           onclick: (ev) => { if (!ev.target.closest("button")) openProject(hit); },
           onkeydown: (ev) => { if (ev.key === "Enter" && ev.target === ev.currentTarget) openProject(hit); } }, icon,
         h("div", { class: "row-main" },
           h("strong", {}, hit.title),
-          h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString(document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR")} downloads`),
+          h("small", {}, `${hit.author ? "por " + hit.author + " · " : ""}${hit.downloads.toLocaleString(document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR")} downloads`,
+            hit.compatible === false ? " " : null, hit.compatible === false ? h("span", { class: "badge pending" }, "Outra versão do Minecraft") : null),
           h("span", { class: "desc" }, hit.description)),
         btn);
     }
@@ -926,11 +932,12 @@
 
     function closeProject() { projectTrail.length = 0; projectNow = null; projectState.id = null; projectState.versions = null; $("ctDetail").hidden = true; $("ctMain").hidden = false; }
 
-    async function openProject(hit, fromPage) {
+    async function openProject(hit, fromPage, tab) {
       const box = $("ctDetail");
       if (fromPage && projectNow) projectTrail.push(projectNow);
       projectNow = hit.id;
       if (projectState.id !== hit.id && projectState.alt !== hit.id) Object.assign(projectState, { id: hit.id, tab: "description", versions: null, changelogShown: 15, versionsShown: 30, note: { ok: "", err: "" } });
+      if (tab) projectState.tab = tab;  // ex.: "Ver versões" abre direto na aba Versões
       $("ctMain").hidden = true;
       box.hidden = false;
       const back = h("button", { class: "btn", type: "button", onclick: () => { const prev = projectTrail.pop(); if (prev) openProject({ id: prev }); else closeProject(); } }, "← Voltar");
@@ -1203,6 +1210,7 @@
       searchContent(true);
     });
     $("ctMore").addEventListener("click", () => searchContent(false));
+    $("ctCompat").addEventListener("change", (ev) => { ct.compat = ev.target.checked; searchContent(true); });
 
     $("save").addEventListener("click", async () => {
       $("optErr").textContent = "";

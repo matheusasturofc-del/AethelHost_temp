@@ -1287,6 +1287,9 @@ const I18N_EXACT = {
   "Mostrar menos": "Show less",
   "Código-fonte": "Source code",
   "Problemas": "Issues",
+  // ---- Busca de mods: todos, com filtro
+  "Ver versões": "See versions",
+  "Só compatíveis": "Only compatible",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1489,4 +1492,6 @@ const I18N_PATTERNS = [
   [/^O seu servidor \((.+)\) não está na lista\.$/, "Your server ($1) is not on the list."],
   [/^([\d.,]+) seguidores$/, "$1 followers"],
   [/^Atualizado (.+)$/, "Updated $1"],
+  // ---- Busca de mods: todos, com filtro
+  [/^Aparecem todos os mods e plugins para (.+), de qualquer versão do Minecraft\. Os que não são para a (.+) vêm marcados: dá para ver as versões e instalar mesmo assim, mas provavelmente não vão funcionar\.$/, "All mods and plugins for $1 are shown, from any Minecraft version. The ones not for $2 are marked: you can see the versions and install anyway, but they probably won't work."],
 ];

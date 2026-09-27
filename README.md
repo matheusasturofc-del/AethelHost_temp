@@ -155,6 +155,10 @@ Ao trocar de software ou de versão, o backend guarda um backup do mundo em `dat
 
 Na aba **Mods** (Fabric) ou **Plugins** (Paper/Purpur) você busca no Modrinth só o que é compatível com o seu servidor, instala (as dependências obrigatórias vêm junto), envia um `.jar` seu, ativa/desativa ou remove. Tudo isso só com o servidor desligado.
 
+### Busca: todos os mods do software, com filtro
+
+A busca do **Modrinth** na aba Mods/Plugins mostra **todos** os mods (ou plugins) do **software do servidor**, de qualquer versão do Minecraft, e não só os da versão atual. O interruptor **Só compatíveis com <versão>** filtra os que têm versão para o Minecraft do servidor. Cada resultado fora da versão vem marcado **Outra versão do Minecraft** e o botão vira **Ver versões** (abre a página do mod direto na aba Versões, onde dá para instalar mesmo assim); os compatíveis continuam com **Instalar**. Mods de outros softwares nunca aparecem. API: `GET /api/servers/<id>/content/search?q=&offset=&compat=1` (cada resultado traz `compatible`).
+
 ### Página do mod e dependências
 
 Na aba **Mods/Plugins**, tocar num resultado da busca abre a **página do mod** (← Voltar volta aos resultados; o botão **Instalar** da linha continua instalando direto):
@@ -167,7 +171,7 @@ Na aba **Mods/Plugins**, tocar num resultado da busca abre a **página do mod** 
 - **Como no Modrinth (barra lateral e cabeçalho):** o cabeçalho traz downloads, **seguidores** e **quando foi atualizado pela última vez** ("Atualizado há 6 dias", no idioma da página). A coluna do lado ganhou **Compatibilidade** (versões do Minecraft do projeto, com a do seu servidor em destaque e o aviso se ela está ou não na lista; e as plataformas), **Links** (código-fonte, problemas, wiki, Discord; só https), **Criadores** (pessoas ou a organização) e **Detalhes** (licença, **publicado** e **atualizado** com data completa, seguidores).
 - **Todas as versões, mesmo as incompatíveis:** a aba **Versões** lista todas as versões do projeto para o **software do servidor** (em qualquer versão do Minecraft), com tipo (estável/beta/alpha), versões do Minecraft, data, downloads e a marca *Compatível com o seu servidor* ou *Outra versão do Minecraft*; há o filtro "Só compatíveis". O botão **Instalar** normal (topo da página e das linhas de busca) continua escolhendo sozinho a versão compatível. Na aba Versões cada linha tem o seu botão: **Instalar** (compatível) ou **Instalar mesmo assim** (pede confirmação e instala com o aviso "pode não funcionar"). Escolher uma versão troca a que já estava instalada.
 - **Sem misturar softwares:** versões de outros softwares (Forge num servidor Fabric, Paper num Fabric…) não aparecem e o servidor recusa instalá-las (400). As dependências obrigatórias da versão escolhida entram pela versão compatível de cada uma.
-- API: `GET /api/servers/<id>/content/project?id=<projeto ou slug>` (descrição, galeria, dependências), `GET .../content/versions?id=` (todas as versões) e `POST .../content/install` com `version` opcional (nível Completo). Testes: `test_moddeps.py` (38 verificações, com o Modrinth de verdade).
+- API: `GET /api/servers/<id>/content/project?id=<projeto ou slug>` (descrição, galeria, dependências), `GET .../content/versions?id=` (todas as versões) e `POST .../content/install` com `version` opcional (nível Completo). Testes: `test_moddeps.py` (43 verificações, com o Modrinth de verdade).
 
 ## Aparência: capa e subtítulo
 

@@ -166,21 +166,24 @@ def loaders_for(server):
             "purpur": ["purpur", "paper", "spigot", "bukkit"]}.get(server.get("software", ""), [])
 
 
-def search(server, query, offset=0):
-    """Só mostra o que é compatível com o software e a versão deste servidor."""
+def search(server, query, offset=0, only_compatible=False):
+    """Todos os mods/plugins do software deste servidor (de qualquer versão do Minecraft); com `only_compatible`, só os
+    que têm versão para o Minecraft do servidor. Cada resultado diz se é compatível."""
     kind = kind_of(server)
     facets = [
         ["project_type:mod"] if kind == "mods" else ["project_type:mod", "project_type:plugin"],
         [f"categories:{loader}" for loader in loaders_for(server)],
-        [f"versions:{server['version']}"],
     ]
+    if only_compatible:
+        facets.append([f"versions:{server['version']}"])
     if kind == "mods":  # mod só de cliente não serve num servidor
         facets.append(["server_side:required", "server_side:optional"])
     params = {"query": query, "limit": 20, "offset": max(0, offset),
               "index": "relevance" if query else "downloads", "facets": json.dumps(facets)}
     data = get_json(f"{MODRINTH}/search?{urlencode(params)}")
     hits = [{"id": h["project_id"], "title": h["title"], "description": h["description"],
-             "downloads": h["downloads"], "icon": h.get("icon_url"), "author": h.get("author")}
+             "downloads": h["downloads"], "icon": h.get("icon_url"), "author": h.get("author"),
+             "compatible": server["version"] in (h.get("versions") or [])}
             for h in data["hits"]]
     return {"hits": hits, "total": data["total_hits"], "offset": data["offset"]}
 
