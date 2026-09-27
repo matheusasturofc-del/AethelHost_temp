@@ -954,19 +954,25 @@
         .replace(/<\/?(p|div|center|span|details|summary|b|strong|i|em|u|ul|ol|li|table|tr|td|th|thead|tbody|hr|kbd|code|pre|font|sup|sub|iframe|video|source)[^>]*>/gi, "\n")
         .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
       const okLink = (u) => /^https?:\/\//i.test(u);
-      const okImg = (u) => /^https:\/\/cdn\.modrinth\.com\//i.test(u);
+      // Imagens só de sites conhecidos (o Modrinth também limita): as insígnias (shields.io), o CDN do Modrinth, o GitHub e afins.
+      const okImg = (u) => /^https:\/\/(cdn\.modrinth\.com|cdn-raw\.modrinth\.com|img\.shields\.io|raw\.githubusercontent\.com|user-images\.githubusercontent\.com|camo\.githubusercontent\.com|avatars\.githubusercontent\.com|github\.com|i\.imgur\.com|imgur\.com|cdn\.discordapp\.com|media\.discordapp\.net|bstats\.org|discord\.com|crowdin\.com|badges\.crowdin\.net|cdn\.jsdelivr\.net|flat\.badgen\.net|shields\.io)\//i.test(u);
       function inline(s) {
         const nodes = [];
-        const re = /(!\[([^\]]*)\]\(([^)\s]+)[^)]*\))|(\[([^\]]+)\]\(([^)\s]+)[^)]*\))|(`([^`]+)`)|(\*\*([^*]+)\*\*|__([^_]+)__)|(~~([^~]+)~~)|(\*([^*\s][^*]*)\*)/g;
+        // 1 imagem dentro de link ([![alt](img)](href)), 5 imagem, 8 link, 11 código, 13 negrito, 16 riscado, 18 itálico
+        const re = /(\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)[^)]*\))|(!\[([^\]]*)\]\(([^)\s]+)[^)]*\))|(\[([^\]]+)\]\(([^)\s]+)[^)]*\))|(`([^`]+)`)|(\*\*([^*]+)\*\*|__([^_]+)__)|(~~([^~]+)~~)|(\*([^*\s][^*]*)\*)/g;
+        const img = (src, alt) => h("img", { src, alt, loading: "lazy", referrerPolicy: "no-referrer", class: "md-img" });
         let last = 0, m;
         while ((m = re.exec(s))) {
           if (m.index > last) nodes.push(s.slice(last, m.index));
-          if (m[1]) nodes.push(okImg(m[3]) ? h("img", { src: m[3], alt: m[2], loading: "lazy", referrerPolicy: "no-referrer", class: "md-img" }) : okLink(m[3]) ? h("a", { href: m[3], target: "_blank", rel: "noopener noreferrer" }, m[2] || m[3]) : (m[2] || ""));
-          else if (m[4]) nodes.push(okLink(m[6]) ? h("a", { href: m[6], target: "_blank", rel: "noopener noreferrer" }, ...inline(m[5])) : m[5]);
-          else if (m[7]) nodes.push(h("code", {}, m[8]));
-          else if (m[9]) nodes.push(h("b", {}, m[10] || m[11]));
-          else if (m[12]) nodes.push(h("s", {}, m[13]));
-          else nodes.push(h("i", {}, m[15]));
+          if (m[1]) {  // imagem clicável (insígnia com link): sem imagem permitida, vira o texto do link
+            const inner = okImg(m[3]) ? img(m[3], m[2]) : (m[2] || m[4]);
+            nodes.push(okLink(m[4]) ? h("a", { href: m[4], target: "_blank", rel: "noopener noreferrer" }, inner) : inner);
+          } else if (m[5]) nodes.push(okImg(m[7]) ? img(m[7], m[6]) : okLink(m[7]) ? h("a", { href: m[7], target: "_blank", rel: "noopener noreferrer" }, m[6] || m[7]) : (m[6] || ""));
+          else if (m[8]) nodes.push(okLink(m[10]) ? h("a", { href: m[10], target: "_blank", rel: "noopener noreferrer" }, ...inline(m[9])) : m[9]);
+          else if (m[11]) nodes.push(h("code", {}, m[12]));
+          else if (m[13]) nodes.push(h("b", {}, m[14] || m[15]));
+          else if (m[16]) nodes.push(h("s", {}, m[17]));
+          else nodes.push(h("i", {}, m[19]));
           last = re.lastIndex;
         }
         if (last < s.length) nodes.push(s.slice(last));
