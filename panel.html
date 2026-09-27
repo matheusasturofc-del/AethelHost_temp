@@ -924,12 +924,13 @@
     const projectTrail = [];  // páginas de mods pelas quais a pessoa passou (abrir uma dependência e voltar)
     let projectNow = null;
 
-    function closeProject() { projectTrail.length = 0; projectNow = null; $("ctDetail").hidden = true; $("ctMain").hidden = false; }
+    function closeProject() { projectTrail.length = 0; projectNow = null; projectState.id = null; projectState.versions = null; $("ctDetail").hidden = true; $("ctMain").hidden = false; }
 
     async function openProject(hit, fromPage) {
       const box = $("ctDetail");
       if (fromPage && projectNow) projectTrail.push(projectNow);
       projectNow = hit.id;
+      if (projectState.id !== hit.id && projectState.alt !== hit.id) Object.assign(projectState, { id: hit.id, tab: "description", versions: null, changelogShown: 15, versionsShown: 30, note: { ok: "", err: "" } });
       $("ctMain").hidden = true;
       box.hidden = false;
       const back = h("button", { class: "btn", type: "button", onclick: () => { const prev = projectTrail.pop(); if (prev) openProject({ id: prev }); else closeProject(); } }, "← Voltar");
@@ -941,14 +942,113 @@
       }
     }
 
+    // Markdown do Modrinth -> elementos (nunca innerHTML): títulos, listas, código, citações, links https e imagens só do CDN do Modrinth.
+    function renderMd(source) {
+      const out = document.createDocumentFragment();
+      const text = String(source || "").replace(/\r\n?/g, "\n")
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/<img[^>]*?src=["']([^"']+)["'][^>]*?>/gi, (m, src) => `![${(/alt=["']([^"']*)["']/i.exec(m) || [, ""])[1]}](${src})`)
+        .replace(/<a[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (m, n, t) => `\n${"#".repeat(Number(n))} ${t.replace(/<[^>]+>/g, "")}\n`)
+        .replace(/<\/?(p|div|center|span|details|summary|b|strong|i|em|u|ul|ol|li|table|tr|td|th|thead|tbody|hr|kbd|code|pre|font|sup|sub|iframe|video|source)[^>]*>/gi, "\n")
+        .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+      const okLink = (u) => /^https?:\/\//i.test(u);
+      const okImg = (u) => /^https:\/\/cdn\.modrinth\.com\//i.test(u);
+      function inline(s) {
+        const nodes = [];
+        const re = /(!\[([^\]]*)\]\(([^)\s]+)[^)]*\))|(\[([^\]]+)\]\(([^)\s]+)[^)]*\))|(`([^`]+)`)|(\*\*([^*]+)\*\*|__([^_]+)__)|(~~([^~]+)~~)|(\*([^*\s][^*]*)\*)/g;
+        let last = 0, m;
+        while ((m = re.exec(s))) {
+          if (m.index > last) nodes.push(s.slice(last, m.index));
+          if (m[1]) nodes.push(okImg(m[3]) ? h("img", { src: m[3], alt: m[2], loading: "lazy", referrerPolicy: "no-referrer", class: "md-img" }) : okLink(m[3]) ? h("a", { href: m[3], target: "_blank", rel: "noopener noreferrer" }, m[2] || m[3]) : (m[2] || ""));
+          else if (m[4]) nodes.push(okLink(m[6]) ? h("a", { href: m[6], target: "_blank", rel: "noopener noreferrer" }, ...inline(m[5])) : m[5]);
+          else if (m[7]) nodes.push(h("code", {}, m[8]));
+          else if (m[9]) nodes.push(h("b", {}, m[10] || m[11]));
+          else if (m[12]) nodes.push(h("s", {}, m[13]));
+          else nodes.push(h("i", {}, m[15]));
+          last = re.lastIndex;
+        }
+        if (last < s.length) nodes.push(s.slice(last));
+        return nodes;
+      }
+      const lines = text.split("\n");
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (/^\s*```/.test(line)) {  // bloco de código
+          const buf = [];
+          for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) buf.push(lines[i]);
+          i++;
+          out.append(h("pre", {}, h("code", {}, buf.join("\n"))));
+        } else if (/^\s*$/.test(line)) {
+          i++;
+        } else if (/^#{1,6}\s/.test(line)) {
+          const n = /^#+/.exec(line)[0].length;
+          out.append(h("h" + Math.min(6, n + 1), { class: "md-h" }, ...inline(line.replace(/^#+\s*/, "").replace(/\s*#+\s*$/, ""))));
+          i++;
+        } else if (/^\s*([-*+]|\d+\.)\s+/.test(line)) {
+          const ordered = /^\s*\d+\./.test(line);
+          const items = [];
+          for (; i < lines.length && /^\s*([-*+]|\d+\.)\s+/.test(lines[i]); i++) items.push(h("li", {}, ...inline(lines[i].replace(/^\s*([-*+]|\d+\.)\s+/, ""))));
+          out.append(h(ordered ? "ol" : "ul", {}, ...items));
+        } else if (/^\s*>/.test(line)) {
+          const buf = [];
+          for (; i < lines.length && /^\s*>/.test(lines[i]); i++) buf.push(lines[i].replace(/^\s*>\s?/, ""));
+          out.append(h("blockquote", {}, ...inline(buf.join(" "))));
+        } else if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) {
+          out.append(h("hr")); i++;
+        } else {
+          const buf = [];
+          for (; i < lines.length && lines[i].trim() && !/^(#{1,6}\s|\s*```|\s*>|\s*([-*+]|\d+\.)\s+)/.test(lines[i]); i++) buf.push(lines[i].trim());
+          out.append(h("p", {}, ...inline(buf.join(" "))));
+        }
+      }
+      return out;
+    }
+
+    const projectState = { tab: "description", versions: null, onlyCompatible: false, changelogShown: 15, versionsShown: 30, note: { ok: "", err: "" }, id: null, alt: null };
+    const TYPE_LABEL = { release: "Estável", beta: "Beta", alpha: "Alpha" };
+
+    async function loadProjectVersions(id) {
+      if (projectState.versions && projectState.versions.id === id) return projectState.versions;
+      const r = await api("GET", `${base}/content/versions?id=${encodeURIComponent(id)}`);
+      projectState.versions = { id, ...r };
+      return projectState.versions;
+    }
+
+    function gameVersionsText(list) {
+      if (!list.length) return "";
+      const shown = list.slice(0, 4).join(", ");
+      return list.length > 4 ? `${shown} +${list.length - 4}` : shown;
+    }
+
+    async function installVersion(p, v, btn) {
+      if (running()) { projectState.note = { ok: "", err: "Desligue o servidor primeiro." }; return renderProjectAgain(p); }
+      if (!v.compatible && !(await confirmBox(`A versão ${v.number} não é para o Minecraft ${p.mcVersion} deste servidor. Ela vai ser instalada, mas pode não funcionar. Instalar mesmo assim?`, { title: "Versão de outro Minecraft", ok: "Instalar mesmo assim", danger: true }))) return;
+      btn.disabled = true;
+      btn.textContent = "Instalando…";
+      try {
+        const r = await api("POST", `${base}/content/install`, { project: p.id, version: v.id });
+        projectState.note = { ok: [r.installed.length && "Instalado: " + r.installed.join(", "), r.skipped.length && "Já estava instalado: " + r.skipped.join(", ")].filter(Boolean).join(". "), err: r.warnings.join(" ") };
+      } catch (e) {
+        projectState.note = { ok: "", err: e.message };
+      }
+      loadContentList();
+      openProject({ id: p.id });
+    }
+
+    function renderProjectAgain(p) { renderProject(p, $("ctDetail").firstChild); }
+
     function renderProject(p, back) {
       const box = $("ctDetail");
+      projectState.alt = p.id;  // o mesmo projeto pode ser aberto pelo apelido (slug) ou pelo id
       const plugin = p.kind === "plugins" || p.projectType === "plugin";
       const locale = document.documentElement.lang.startsWith("en") ? "en-US" : "pt-BR";
       const requiredClient = p.dependencies.filter((d) => d.type === "required" && d.clientSide === "required").map((d) => d.title);
 
       const install = h("button", { class: "btn btn-primary needs-offline", type: "button", disabled: !p.version || p.installed || running() }, p.installed ? "Já instalado" : "Instalar");
-      install.addEventListener("click", async () => { await installProject({ id: p.id }, install); openProject({ id: p.id }); });
+      install.addEventListener("click", async () => { await installProject({ id: p.id }, install); projectState.note = { ok: $("ctOk").textContent, err: $("ctErr").textContent }; openProject({ id: p.id }); });
 
       const head = h("div", { class: "card", style: "margin-top:14px" },
         h("div", { class: "row", style: "border:0;padding:0" }, safeIcon(p.icon),
@@ -957,19 +1057,76 @@
             h("small", {}, `${p.downloads.toLocaleString(locale)} downloads`, p.categories.length ? " · " : "", p.categories.length ? h("span", { translate: "no" }, p.categories.join(", ")) : null),
             h("span", { class: "desc", translate: "no" }, p.description))),
         h("div", { class: "btn-row", style: "margin-top:14px" }, install,
-          h("a", { class: "btn", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Ver no Modrinth ↗")));
+          h("a", { class: "btn", href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Ver no Modrinth ↗")),
+        projectState.note.ok ? h("div", { class: "ok-msg", style: "margin-top:10px" }, projectState.note.ok) : null,
+        projectState.note.err ? h("div", { class: "error", style: "margin-top:10px" }, projectState.note.err) : null);
 
-      const version = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Neste servidor"),
+      // ---- abas, como no Modrinth
+      const TABS = [["description", "Descrição"], ["gallery", "Galeria"], ["changelog", "Changelog"], ["versions", "Versões"]];
+      const content = h("div", { class: "card mr-content" });
+      const tabs = h("div", { class: "mr-tabs", role: "tablist" }, ...TABS.map(([id, label]) =>
+        h("button", { type: "button", role: "tab", class: id === projectState.tab ? "active" : "", "aria-selected": String(id === projectState.tab),
+          onclick: () => { projectState.tab = id; renderProject(p, back); } }, label)));
+
+      const tab = projectState.tab;
+      if (tab === "description") {
+        content.append(p.body ? h("div", { class: "md", translate: "no" }, renderMd(p.body)) : h("p", { class: "muted", style: "margin:0" }, "Este projeto não tem descrição."));
+      } else if (tab === "gallery") {
+        content.append(p.gallery.length
+          ? h("div", { class: "mr-gallery" }, p.gallery.map((g) => h("a", { href: g.url, target: "_blank", rel: "noopener noreferrer", class: "mr-shot", title: g.title },
+              h("img", { src: g.url, alt: g.title, loading: "lazy", referrerPolicy: "no-referrer" }), g.title ? h("span", { translate: "no" }, g.title) : null)))
+          : h("p", { class: "muted", style: "margin:0" }, "Este projeto não tem imagens."));
+      } else {
+        content.append(h("p", { class: "muted", style: "margin:0" }, "Carregando…"));
+        loadProjectVersions(p.id).then((data) => {
+          if (projectState.tab !== tab || $("ctDetail").hidden) return;
+          content.replaceChildren();
+          const list = projectState.onlyCompatible ? data.versions.filter((v) => v.compatible) : data.versions;
+          if (tab === "changelog") {
+            const withLog = data.versions.filter((v) => v.changelog && v.changelog.trim());
+            if (!withLog.length) return content.append(h("p", { class: "muted", style: "margin:0" }, "Nenhuma versão tem changelog."));
+            withLog.slice(0, projectState.changelogShown).forEach((v) => content.append(h("div", { class: "mr-log" },
+              h("div", { class: "mr-log-head" }, h("strong", { translate: "no" }, v.name || v.number), h("span", { class: "badge" }, TYPE_LABEL[v.type] || v.type),
+                h("span", { class: "muted small" }, fmtDate(new Date(v.date).getTime() / 1000))),
+              h("div", { class: "md", translate: "no" }, renderMd(v.changelog)))));
+            if (withLog.length > projectState.changelogShown) content.append(h("button", { class: "btn", type: "button", onclick: () => { projectState.changelogShown += 15; renderProject(p, back); } }, "Mostrar mais"));
+          } else {
+            content.append(h("div", { class: "mr-vhead" },
+              h("label", { class: "switch" }, h("input", { type: "checkbox", checked: projectState.onlyCompatible, onchange: (ev) => { projectState.onlyCompatible = ev.target.checked; renderProject(p, back); } }),
+                h("span", { class: "knob" }), h("span", {}, `Só compatíveis com ${p.software} ${p.mcVersion}`)),
+              h("span", { class: "muted small" }, `${list.length} de ${data.versions.length} versões`)));
+            content.append(h("p", { class: "muted small", style: "margin:0 0 8px" }, `Só aparecem versões para ${p.software}: mods e plugins de outros softwares não se misturam. Versões de outro Minecraft podem ser instaladas, mas provavelmente não vão funcionar.`));
+            if (!list.length) content.append(h("p", { class: "muted", style: "margin:0" }, "Nenhuma versão compatível."));
+            list.slice(0, projectState.versionsShown).forEach((v) => {
+              const vb = h("button", { class: "btn needs-offline" + (v.compatible ? " btn-primary" : ""), type: "button", disabled: running() }, v.compatible ? "Instalar" : "Instalar mesmo assim");
+              vb.addEventListener("click", () => installVersion(p, v, vb));
+              content.append(h("div", { class: "row" },
+                h("div", { class: "row-main" },
+                  h("strong", { translate: "no" }, v.name || v.number),
+                  h("small", { translate: "no" }, `${v.number} · ${gameVersionsText(v.gameVersions)} · ${v.loaders.join(", ")}`),
+                  h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" },
+                    h("span", { class: "badge" + (v.type === "release" ? " on" : "") }, TYPE_LABEL[v.type] || v.type),
+                    v.compatible ? h("span", { class: "badge on" }, "Compatível com o seu servidor") : h("span", { class: "badge pending" }, "Outra versão do Minecraft"),
+                    h("span", { class: "muted small" }, fmtDate(new Date(v.date).getTime() / 1000)), h("span", { class: "muted small" }, `${v.downloads.toLocaleString(locale)} downloads`))),
+                vb));
+            });
+            if (list.length > projectState.versionsShown) content.append(h("button", { class: "btn", type: "button", style: "margin-top:12px", onclick: () => { projectState.versionsShown += 30; renderProject(p, back); } }, "Mostrar mais"));
+          }
+        }).catch((e) => { content.replaceChildren(h("p", { class: "error", style: "margin:0" }, e.message)); });
+      }
+
+      // ---- coluna lateral: este servidor, dependências e o que os jogadores precisam
+      const version = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Neste servidor"),
         p.version
           ? h("p", { style: "margin:0" }, `Será instalada a versão `, h("b", { translate: "no" }, p.version.number), ` (${{ release: "estável", beta: "beta", alpha: "alpha" }[p.version.type] || p.version.type}) para `, h("span", { translate: "no" }, `${p.software} ${p.mcVersion}`), ".")
-          : h("p", { class: "error", style: "margin:0" }, `Este projeto não tem versão para ${p.software} ${p.mcVersion}.`));
+          : h("p", { class: "error", style: "margin:0" }, `Este projeto não tem versão para ${p.software} ${p.mcVersion}. Na aba Versões dá para instalar outra mesmo assim.`));
 
-      const deps = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Dependências"),
+      const deps = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Dependências"),
         p.dependencies.length
           ? h("div", {}, ...p.dependencies.map((d) => {
               const canInstall = d.type === "required" || d.type === "optional";  // incompatível e embutida não se instalam
               const dbtn = canInstall ? h("button", { class: "btn needs-offline" + (d.installed ? "" : " btn-primary"), type: "button", disabled: d.installed || running() }, d.installed ? "Instalado" : "Instalar") : null;
-              if (dbtn) dbtn.addEventListener("click", async () => { await installProject({ id: d.id }, dbtn); openProject({ id: p.id }); });
+              if (dbtn) dbtn.addEventListener("click", async () => { await installProject({ id: d.id }, dbtn); projectState.note = { ok: $("ctOk").textContent, err: $("ctErr").textContent }; openProject({ id: p.id }); });
               return h("div", { class: "row clickable", tabindex: 0, role: "button", title: "Ver a página e as dependências",
                   onclick: (ev) => { if (!ev.target.closest("button")) openProject({ id: d.id }, true); },
                   onkeydown: (ev) => { if (ev.key === "Enter" && ev.target === ev.currentTarget) openProject({ id: d.id }, true); } }, safeIcon(d.icon),
@@ -982,7 +1139,7 @@
           : h("p", { class: "muted", style: "margin:0" }, p.version ? "Este projeto não precisa de outros mods ou plugins." : "Sem versão compatível, não dá para ver as dependências."),
         p.dependencies.length ? h("p", { class: "muted small", style: "margin:12px 0 0" }, "Ao instalar o mod, as dependências obrigatórias que faltam entram junto. As opcionais você instala aqui, uma a uma, se quiser. Toque numa para ver a página dela.") : null);
 
-      const play = h("div", { class: "card", style: "margin-top:16px" }, h("h3", { style: "margin-top:0" }, "Para jogar"),
+      const play = h("div", { class: "card" }, h("h3", { style: "margin-top:0" }, "Para jogar"),
         h("ul", { class: "steps", style: "margin:0;padding-left:20px" },
           h("li", {}, "No servidor: fica instalado aqui, na pasta do servidor."),
           plugin
@@ -994,7 +1151,8 @@
                 : h("li", {}, "Fica só no servidor: os jogadores não precisam instalar nada."),
           !plugin && requiredClient.length ? h("li", {}, "Dependências que os jogadores também precisam instalar: ", h("b", { translate: "no" }, requiredClient.join(", ")), ".") : null));
 
-      box.replaceChildren(back, head, version, deps, play);
+      box.replaceChildren(back, head,
+        h("div", { class: "mr-layout" }, h("div", { class: "mr-main" }, tabs, content), h("div", { class: "mr-side" }, version, deps, play)));
     }
 
     $("ctForm").addEventListener("submit", (ev) => {

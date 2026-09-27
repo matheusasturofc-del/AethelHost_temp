@@ -195,14 +195,17 @@ def _pick_version(project, server):
     return versions[0] if versions else None
 
 
-def install(server, project):
-    """Instala o projeto e as dependências obrigatórias. Devolve {installed, skipped, warnings}."""
+def install(server, project, version_id=None):
+    """Instala o projeto e as dependências obrigatórias. Sem `version_id` escolhe sozinho a versão compatível com o servidor;
+    com `version_id` instala aquela (mesmo de outra versão do Minecraft: avisa que pode não funcionar). Devolve {installed, skipped, warnings}."""
     if not PROJECT_RE.match(project):
         raise ContentError(400, "Projeto inválido.")
+    if version_id is not None and not PROJECT_RE.match(str(version_id)):
+        raise ContentError(400, "Versão inválida.")
     result = {"installed": [], "skipped": [], "warnings": []}
     with LOCK:
         meta = _read_meta(server)
-        _install_one(server, project, meta, result, seen=set(), depth=0)
+        _install_one(server, project, meta, result, seen=set(), depth=0, version_id=version_id)
         _write_meta(server, meta)
     return result
 
@@ -256,6 +259,10 @@ def project_info(server, project):
     return {
         "id": pid, "title": info["title"], "description": info.get("description", ""), "icon": info.get("icon_url"),
         "downloads": info.get("downloads", 0), "followers": info.get("followers", 0), "categories": info.get("categories", []),
+        "body": (info.get("body") or "")[:30000],
+        "gallery": [{"url": g["url"], "title": g.get("title") or "", "description": g.get("description") or "", "featured": bool(g.get("featured"))}
+                    for g in sorted(info.get("gallery") or [], key=lambda g: (not g.get("featured"), g.get("ordering", 0)))
+                    if str(g.get("url", "")).startswith("https://cdn.modrinth.com/")][:24],
         "clientSide": info.get("client_side"), "serverSide": info.get("server_side"), "projectType": info.get("project_type"),
         "url": f"https://modrinth.com/{info.get('project_type', 'mod')}/{info.get('slug', pid)}",
         "kind": kind_of(server), "software": SOFTWARE[server["software"]]["label"], "mcVersion": server["version"],
@@ -265,17 +272,60 @@ def project_info(server, project):
     }
 
 
-def _install_one(server, project, meta, result, seen, depth):
+def versions(server, project):
+    """Todas as versões do projeto para o software deste servidor (de qualquer versão do Minecraft), marcando as compatíveis.
+    Versões de outros softwares (ex.: Forge num servidor Fabric) não entram: não se mistura mods e plugins de outros softwares."""
+    if not PROJECT_RE.match(project or ""):
+        raise ContentError(400, "Projeto inválido.")
+    params = urlencode({"loaders": json.dumps(loaders_for(server))})
+    raw = get_json(f"{MODRINTH}/project/{quote(project)}/version?{params}")
+    raw.sort(key=lambda v: v["date_published"], reverse=True)
+    out = []
+    for v in raw[:150]:
+        files = v.get("files") or []
+        f = next((x for x in files if x.get("primary")), files[0] if files else None)
+        games = v.get("game_versions", [])
+        out.append({"id": v["id"], "number": v["version_number"], "name": v.get("name") or "", "type": v["version_type"], "date": v["date_published"],
+                    "gameVersions": games, "loaders": v.get("loaders", []), "downloads": v.get("downloads", 0),
+                    "changelog": (v.get("changelog") or "")[:6000], "compatible": server["version"] in games,
+                    "size": (f or {}).get("size", 0), "file": (f or {}).get("filename", "")})
+    return {"versions": out, "total": len(raw), "mcVersion": server["version"], "loaders": loaders_for(server)}
+
+
+def _remove_project_files(server, meta, pid):
+    """Tira do servidor os arquivos deste projeto (para trocar por outra versão). Chamado com LOCK já em mãos."""
+    for name in [n for n, m in meta.items() if m.get("project") == pid]:
+        on, off = _paths(server, name)
+        if _remote(server):
+            _rem().content_delete(server, kind_of(server), [name, name + ".disabled"])
+        else:
+            on.unlink(missing_ok=True)
+            off.unlink(missing_ok=True)
+        meta.pop(name, None)
+
+
+def _install_one(server, project, meta, result, seen, depth, version_id=None):
     info = get_json(f"{MODRINTH}/project/{quote(project)}")
     pid, title = info["id"], info["title"]
     if pid in seen:
         return
     seen.add(pid)
     folder = folder_of(server)
-    if _is_installed(server, pid, meta):
+    if version_id:  # uma versão escolhida na página do mod
+        if _is_installed(server, pid, meta):
+            _remove_project_files(server, meta, pid)  # troca a versão que já estava instalada
+        version = get_json(f"{MODRINTH}/version/{quote(version_id)}")
+        if version.get("project_id") != pid:
+            raise ContentError(400, "Essa versão não é deste projeto.")
+        if not set(version.get("loaders", [])) & set(loaders_for(server)):
+            raise ContentError(400, f"Essa versão é para outro software ({', '.join(version.get('loaders', [])) or '?'}): não dá para usar num servidor {SOFTWARE[server['software']]['label']}.")
+        if server["version"] not in version.get("game_versions", []):
+            result["warnings"].append(f"{title}: a versão {version['version_number']} não é para o Minecraft {server['version']}. Ela foi instalada, mas pode não funcionar.")
+    elif _is_installed(server, pid, meta):
         result["skipped"].append(title)
         return
-    version = _pick_version(pid, server)
+    else:
+        version = _pick_version(pid, server)
     if not version:
         result["warnings"].append(
             f"{title}: não tem versão para {SOFTWARE[server['software']]['label']} {server['version']}.")

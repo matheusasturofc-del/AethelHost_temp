@@ -1259,6 +1259,21 @@ const I18N_EXACT = {
   "(estável) para": "(stable) for",
   "(beta) para": "(beta) for",
   "(alpha) para": "(alpha) for",
+  // ---- Abas e versões da página do mod
+  "Descrição": "Description",
+  "Galeria": "Gallery",
+  "Versões": "Versions",
+  "Este projeto não tem descrição.": "This project has no description.",
+  "Este projeto não tem imagens.": "This project has no images.",
+  "Nenhuma versão tem changelog.": "No version has a changelog.",
+  "Mostrar mais": "Show more",
+  "Nenhuma versão compatível.": "No compatible version.",
+  "Estável": "Stable",
+  "Compatível com o seu servidor": "Compatible with your server",
+  "Outra versão do Minecraft": "Another Minecraft version",
+  "Instalar mesmo assim": "Install anyway",
+  "Versão de outro Minecraft": "Another Minecraft version",
+  "Essa versão não é deste projeto.": "That version is not from this project.",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.
@@ -1447,5 +1462,12 @@ const I18N_PATTERNS = [
   [/^Conectando à máquina de jogo (.+)…$/, "Connecting to the game machine $1…"],
   // ---- Página do mod
   [/^Cada jogador também precisa instalar este mod no Minecraft dele, com o mesmo modificador e a mesma versão do servidor \((.+)\)\.$/, "Each player also needs to install this mod on their Minecraft, with the same loader and the same version as the server ($1)."],
-  [/^Este projeto não tem versão para (.+)\.$/, "This project has no version for $1."],
+  [/^Este projeto não tem versão para (.+)\. Na aba Versões dá para instalar outra mesmo assim\.$/, "This project has no version for $1. On the Versions tab you can install another one anyway."],
+  // ---- Abas e versões da página do mod
+  [/^Só compatíveis com (.+)$/, "Only compatible with $1"],
+  [/^(\d+) de (\d+) versões$/, "$1 of $2 versions"],
+  [/^Só aparecem versões para (.+): mods e plugins de outros softwares não se misturam\. Versões de outro Minecraft podem ser instaladas, mas provavelmente não vão funcionar\.$/, "Only versions for $1 are shown: mods and plugins from other software are not mixed. Versions for another Minecraft can be installed, but they probably won't work."],
+  [/^A versão (.+) não é para o Minecraft (.+) deste servidor\. Ela vai ser instalada, mas pode não funcionar\. Instalar mesmo assim\?$/, "Version $1 is not for Minecraft $2 on this server. It will be installed, but it may not work. Install anyway?"],
+  [/^(.+): a versão (.+) não é para o Minecraft (.+)\. Ela foi instalada, mas pode não funcionar\.$/, "$1: version $2 is not for Minecraft $3. It was installed, but it may not work."],
+  [/^Essa versão é para outro software \((.+)\): não dá para usar num servidor (.+)\.$/, "That version is for other software ($1): it can't be used on a $2 server."],
 ];
