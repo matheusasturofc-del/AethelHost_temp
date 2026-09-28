@@ -72,7 +72,7 @@
       $("pfName").textContent = user.name;
       $("pfHandle").textContent = user.username ? "@" + user.username : "";
       $("pfBio").hidden = !user.bio;
-      $("pfBio").textContent = user.bio || "";
+      $("pfBio").replaceChildren(bioNodes(user.bio || ""));
       $("pfEmail").textContent = user.email || "—";
       $("pfMethods").textContent = user.methods.map(methodName).join(" · ");
       $("pfMethods").setAttribute("translate", "no");

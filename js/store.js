@@ -141,6 +141,20 @@ function fmtDate(seconds) {
 
 const STATUS_LABEL = { offline: "Offline", starting: "Iniciando…", online: "Online", stopping: "Parando…" };
 
+// Biografia do perfil: só **negrito** e quebra de linha (emoji é texto normal, funciona sozinho). Nunca HTML.
+function bioNodes(text) {
+  const frag = document.createDocumentFragment();
+  const lines = String(text ?? "").split("\n");
+  lines.forEach((line, i) => {
+    for (const part of line.split(/(\*\*[^*]+\*\*)/)) {
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) frag.append(h("b", {}, part.slice(2, -2)));
+      else if (part) frag.append(document.createTextNode(part));
+    }
+    if (i < lines.length - 1) frag.append(document.createElement("br"));
+  });
+  return frag;
+}
+
 // Selo "Confiável por AethelHost" (Explorar) e a etiqueta Beta.
 const TRUST_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 function trustBadge(when) {

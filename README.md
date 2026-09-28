@@ -119,7 +119,7 @@ No menu do seu nome (topo): **Editar perfil**. A página tem duas abas na latera
 
 ## Biografia do perfil
 
-Um texto curto (até 160 caracteres) sobre a pessoa, editável em **Editar perfil → Personalizar** (embaixo do nome exibido, com contador de caracteres) e mostrado em **Ver perfil**, logo abaixo do @usuário. É opcional: sem biografia, o espaço nem aparece. O texto é limpo de HTML e caracteres de controle (mesma regra do resto do site: sem `<`/`>`, linhas em branco demais somem), mas quebras de linha comuns são mantidas. API: `POST /api/account/bio` (campo `bio` em `GET /api/auth/me` e em toda conta pública). Testes: `test_bio.py` (12 verificações).
+Um texto curto (até 160 caracteres) sobre a pessoa, editável em **Editar perfil → Personalizar** (embaixo do nome exibido, com contador de caracteres) e mostrado em **Ver perfil**, logo abaixo do @usuário. É opcional: sem biografia, o espaço nem aparece. Aceita **negrito** (`**texto**`), emojis (o botão 🙂 abre um seletor com 36 emojis prontos, sem precisar de teclado especial) e quebra de linha (Enter na caixa de texto); em "Ver perfil" tudo isso aparece formatado, nunca como HTML. O texto é limpo de HTML e caracteres de controle (mesma regra do resto do site: sem `<`/`>`, linhas em branco demais somem), mas quebras de linha comuns são mantidas. API: `POST /api/account/bio` (campo `bio` em `GET /api/auth/me` e em toda conta pública). Testes: `test_bio.py` (12 verificações).
 
 ## Como funciona
 

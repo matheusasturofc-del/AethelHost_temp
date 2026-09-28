@@ -75,7 +75,15 @@
         <form id="stBioForm" style="margin-top:22px">
           <div class="field" style="margin:0">
             <label for="stBioInput">Biografia</label>
-            <textarea id="stBioInput" rows="3" maxlength="160" placeholder="Conte um pouco sobre você (opcional)."></textarea>
+            <div class="bio-toolbar">
+              <button class="btn" type="button" id="stBioBold" title="Negrito"><b>B</b></button>
+              <div class="emoji-wrap">
+                <button class="btn" type="button" id="stBioEmoji" title="Emoji" aria-haspopup="true" aria-expanded="false">🙂</button>
+                <div class="emoji-pop" id="stEmojiPop" hidden role="menu"></div>
+              </div>
+              <span class="hint" style="margin:0">**negrito**, emoji e Enter para pular linha</span>
+            </div>
+            <textarea id="stBioInput" rows="3" maxlength="160" placeholder="Conte um pouco sobre você (opcional). Dá para usar **negrito**, emojis 🙂 e quebrar linha."></textarea>
             <div class="hint" id="stBioCount">0 / 160</div>
           </div>
           <button class="btn btn-primary" type="submit" style="margin-top:10px">Salvar biografia</button>
@@ -366,6 +374,34 @@
       act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/name", { name: $("stNameInput").value }), "Nome salvo.");
     });
     $("stBioInput").addEventListener("input", () => { $("stBioCount").textContent = `${$("stBioInput").value.length} / 160`; });
+
+    // ---------- Biografia: negrito (envolve a seleção) e emojis (insere no cursor) ----------
+    function wrapSelection(input, before, after = before) {
+      const { selectionStart: s, selectionEnd: e, value } = input;
+      const middle = value.slice(s, e) || (document.documentElement.lang.startsWith("en") ? "bold" : "negrito");
+      input.value = value.slice(0, s) + before + middle + after + value.slice(e);
+      input.focus();
+      input.setSelectionRange(s + before.length, s + before.length + middle.length);
+      input.dispatchEvent(new Event("input"));
+    }
+    $("stBioBold").addEventListener("click", () => wrapSelection($("stBioInput"), "**"));
+
+    const EMOJIS = ["😀", "😄", "😁", "😂", "🙂", "😉", "😍", "🤩", "😎", "🤔", "😅", "🙃",
+                    "👍", "👎", "🙌", "👏", "💪", "🤝", "🎮", "🕹️", "⚔️", "🛡️", "⛏️", "🏰",
+                    "🔥", "⭐", "✨", "💚", "❤️", "💙", "🌟", "🎉", "🏆", "🧱", "🐉", "🌍"];
+    const emojiBtn = $("stBioEmoji"), emojiPop = $("stEmojiPop");
+    emojiPop.replaceChildren(...EMOJIS.map((em) => h("button", { type: "button", onclick: () => {
+      const input = $("stBioInput"), { selectionStart: s, selectionEnd: e, value } = input;
+      input.value = value.slice(0, s) + em + value.slice(e);
+      input.focus();
+      input.setSelectionRange(s + em.length, s + em.length);
+      input.dispatchEvent(new Event("input"));
+      closeEmoji();
+    } }, em)));
+    const closeEmoji = () => { emojiPop.hidden = true; emojiBtn.setAttribute("aria-expanded", "false"); };
+    emojiBtn.addEventListener("click", (ev) => { ev.stopPropagation(); emojiPop.hidden = !emojiPop.hidden; emojiBtn.setAttribute("aria-expanded", String(!emojiPop.hidden)); });
+    document.addEventListener("click", (ev) => { if (!emojiPop.hidden && !emojiPop.contains(ev.target) && ev.target !== emojiBtn) closeEmoji(); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeEmoji(); });
     $("stBioForm").addEventListener("submit", (ev) => {
       ev.preventDefault();
       act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/bio", { bio: $("stBioInput").value }), "Biografia salva.");

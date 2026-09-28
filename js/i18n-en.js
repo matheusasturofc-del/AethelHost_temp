@@ -1291,6 +1291,9 @@ const I18N_EXACT = {
   "Ver versões": "See versions",
   "Só compatíveis": "Only compatible",
   // ---- Biografia do perfil
+  "**negrito**, emoji e Enter para pular linha": "**bold**, emoji and Enter for a new line",
+  "Conte um pouco sobre você (opcional). Dá para usar **negrito**, emojis 🙂 e quebrar linha.": "Tell a bit about yourself (optional). You can use **bold**, emojis 🙂 and line breaks.",
+  "Emoji": "Emoji",
   "Biografia": "Bio",
   "Salvar biografia": "Save bio",
   "Biografia salva.": "Bio saved.",
