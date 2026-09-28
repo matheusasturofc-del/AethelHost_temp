@@ -30,6 +30,7 @@
         </div>
       </div>
       <div class="profile-body">
+        <p class="profile-bio" id="pfBio" hidden translate="no"></p>
         <dl class="profile-facts">
           <div><dt>E-mail</dt><dd id="pfEmail" translate="no">—</dd></div>
           <div><dt>Formas de entrar</dt><dd id="pfMethods">—</dd></div>
@@ -70,6 +71,8 @@
       paintBanner(document.querySelector(".banner"), user);
       $("pfName").textContent = user.name;
       $("pfHandle").textContent = user.username ? "@" + user.username : "";
+      $("pfBio").hidden = !user.bio;
+      $("pfBio").textContent = user.bio || "";
       $("pfEmail").textContent = user.email || "—";
       $("pfMethods").textContent = user.methods.map(methodName).join(" · ");
       $("pfMethods").setAttribute("translate", "no");

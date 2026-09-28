@@ -1945,6 +1945,12 @@ def api_account_name(query, body):
     return 200, {"user": auth.self_user(user)}
 
 
+def api_account_bio(query, body):
+    user = current_user()
+    auth.update_user(user, bio=accounts.check_bio(body.get("bio")))
+    return 200, {"user": auth.self_user(user)}
+
+
 def _image(data, kind, max_bytes, max_side):
     try:
         return images.check(data, max_bytes, max_side)
@@ -2779,6 +2785,7 @@ def api_captcha_config(query, body):
 ID = r"([a-z0-9]{1,32})"
 ROUTES = [
     ("POST", r"^/api/account/name$", api_account_name),
+    ("POST", r"^/api/account/bio$", api_account_bio),
     ("POST", r"^/api/account/avatar$", api_account_avatar_set),
     ("DELETE", r"^/api/account/avatar$", api_account_avatar_reset),
     ("POST", r"^/api/account/banner$", api_account_banner_set),

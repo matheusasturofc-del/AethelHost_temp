@@ -71,6 +71,15 @@
           </div>
           <button class="btn btn-primary" type="submit">Salvar nome</button>
         </form>
+
+        <form id="stBioForm" style="margin-top:22px">
+          <div class="field" style="margin:0">
+            <label for="stBioInput">Biografia</label>
+            <textarea id="stBioInput" rows="3" maxlength="160" placeholder="Conte um pouco sobre você (opcional)."></textarea>
+            <div class="hint" id="stBioCount">0 / 160</div>
+          </div>
+          <button class="btn btn-primary" type="submit" style="margin-top:10px">Salvar biografia</button>
+        </form>
         <div class="ok-msg" id="stProfileOk"></div>
         <div class="error" id="stProfileErr"></div>
       </div>
@@ -224,6 +233,7 @@
       $("stHandle").textContent = "@" + me.username;
       $("stUsername").textContent = "@" + me.username;
       if (document.activeElement !== $("stNameInput")) $("stNameInput").value = me.name;
+      if (document.activeElement !== $("stBioInput")) { $("stBioInput").value = me.bio || ""; $("stBioCount").textContent = `${me.bio.length} / 160`; }
       $("stEmailNow").textContent = me.email || "—";
       const chosen = me.banner.image ? "" : me.banner.preset;
       $("stSwatches").replaceChildren(...BANNER_PRESETS.map((id) => h("button", { class: "b-swatch b-" + id, type: "button", "aria-pressed": String(id === chosen), title: id,
@@ -354,6 +364,11 @@
     $("stNameForm").addEventListener("submit", (ev) => {
       ev.preventDefault();
       act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/name", { name: $("stNameInput").value }), "Nome salvo.");
+    });
+    $("stBioInput").addEventListener("input", () => { $("stBioCount").textContent = `${$("stBioInput").value.length} / 160`; });
+    $("stBioForm").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      act($("stProfileErr"), $("stProfileOk"), () => api("POST", "/account/bio", { bio: $("stBioInput").value }), "Biografia salva.");
     });
 
     // ---------- Tema (fica na conta) ----------

@@ -1290,6 +1290,12 @@ const I18N_EXACT = {
   // ---- Busca de mods: todos, com filtro
   "Ver versões": "See versions",
   "Só compatíveis": "Only compatible",
+  // ---- Biografia do perfil
+  "Biografia": "Bio",
+  "Salvar biografia": "Save bio",
+  "Biografia salva.": "Bio saved.",
+  "Conte um pouco sobre você (opcional).": "Tell a bit about yourself (optional).",
+  "A biografia pode ter no máximo 160 caracteres.": "The bio can have at most 160 characters.",
 };
 
 // [expressão, texto em inglês]. No texto, $1, $2… vêm do que a expressão capturou.

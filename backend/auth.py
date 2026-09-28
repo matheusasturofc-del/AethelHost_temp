@@ -642,6 +642,7 @@ def public_user(user):
     return {"id": user["id"], "name": user["name"], "username": user.get("username") or "", "email": user["email"],
             "avatar": avatar_url(user), "banner": banner_of(user), "prefs": user.get("prefs") or {},
             "provider": user["provider"], "methods": methods, "created": user.get("created"),
+            "bio": user.get("bio") or "",
             "admin": bool(user.get("admin")),
             "needsProfile": not user.get("username")}  # conta criada por um serviço: falta escolher nome exibido e usuário
 

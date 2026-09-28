@@ -117,6 +117,10 @@ No menu do seu nome (topo): **Editar perfil**. A página tem duas abas na latera
 - **Trocar o e-mail:** senha atual + novo e-mail (duas vezes) → o código vai para o e-mail **novo** (prova que é seu) → ao digitá-lo o e-mail muda e o e-mail antigo recebe um aviso. Exige ter senha. Se o e-mail novo já é de outra conta, a resposta é a mesma (ninguém descobre quem tem conta) e a dona recebe um aviso.
 - Segurança: 5 senhas atuais erradas seguidas travam por 15 minutos; fotos/banners são conferidos pelo conteúdo (só PNG/JPEG de verdade, com limite de tamanho e de dimensões); tudo só afeta a conta logada. Arquivos em `data/avatars/` e `data/banners/`. API: `/api/account/*`, `/api/users/<id>/avatar|banner`.
 
+## Biografia do perfil
+
+Um texto curto (até 160 caracteres) sobre a pessoa, editável em **Editar perfil → Personalizar** (embaixo do nome exibido, com contador de caracteres) e mostrado em **Ver perfil**, logo abaixo do @usuário. É opcional: sem biografia, o espaço nem aparece. O texto é limpo de HTML e caracteres de controle (mesma regra do resto do site: sem `<`/`>`, linhas em branco demais somem), mas quebras de linha comuns são mantidas. API: `POST /api/account/bio` (campo `bio` em `GET /api/auth/me` e em toda conta pública). Testes: `test_bio.py` (12 verificações).
+
 ## Como funciona
 
 - `index.html`, `login.html`, `servers.html`, `create.html`, `panel.html`, `css/`, `js/`: o site.

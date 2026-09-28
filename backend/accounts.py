@@ -86,6 +86,19 @@ def check_name(name):
     return name
 
 
+BIO_MAX = 160
+
+
+def check_bio(bio):
+    """Biografia do perfil: até 160 caracteres, sem HTML nem caracteres de controle. Linhas em branco demais somem."""
+    bio = re.sub(r"[\x00-\x08\x0b-\x1f\x7f<>]", "", str(bio or "")).replace("\r", "")
+    bio = re.sub(r"[ \t]+", " ", bio)
+    bio = re.sub(r"\n{3,}", "\n\n", bio).strip()
+    if len(bio) > BIO_MAX:
+        raise ContentError(400, f"A biografia pode ter no máximo {BIO_MAX} caracteres.")
+    return bio
+
+
 # ---------------------------------------------------------------- limitador
 
 def _wait_for(key, limit, window):
